@@ -517,7 +517,7 @@ class GridSearchWraper(Wraper):
                 super().run_training()
                 metrics:dict[str,float] = {}
                 if (self.work_type == "reg"):
-                    metrics = self.regreccion_test_accuracy(self._X_vali, self._y_vali, num_features=num_features)
+                    metrics = self.regreccion_test_accuracy(self._X_vali, self._y_vali)
                 else:
                     metrics = self.classification_test_accuracy(self._X_vali,self._y_vali)
                 score = metrics.get(metric_to_optimize)
