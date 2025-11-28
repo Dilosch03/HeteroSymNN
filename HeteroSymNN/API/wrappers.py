@@ -37,7 +37,7 @@ def _denormalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray)
 
 class Wraper():
     def __init__(self, model: ConfigurableNN,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
-        self._model = None
+        self._model:ConfigurableNN = None
         self.training_data = None
         self.training_data_norm = None
         self.normalize_inputs = normalize_inputs 
@@ -49,7 +49,7 @@ class Wraper():
         self.y_max = None
         self._loaded_train_data = False
 
-        self.model = model
+        self.model:ConfigurableNN = model
 
     @property
     def model(self):
@@ -160,10 +160,9 @@ class Wraper():
         else:
             return Y_pred_norm 
 
-    def classification_test_accuracy(self, test_data: list, expected_results: list,type:Literal["binary","multiclass"]):
+    def classification_test_accuracy(self, test_data: list, expected_results: list):
         predictions_raw = self.predict(test_data)
         
-
         predictions = (predictions_raw > 0.5).astype(int).flatten()
         
         expected_results = list(expected_results)
@@ -201,7 +200,7 @@ class Wraper():
 
         return (evals, results_compare)
     
-    def regreccion_test_accuracy(self, test_data: list, expected_results: list, num_features: int):
+    def regreccion_test_accuracy(self, test_data: list, expected_results: list):
         predictions_raw = self.predict(test_data)
         
         if predictions_raw.ndim == 2 and predictions_raw.shape[1] == 1:
@@ -233,7 +232,7 @@ class Wraper():
         
         tss = rss + ssr
         n = len(expected_results)
-        k = num_features 
+        k = self.model.layers[0].num_inputs
         
         evaluations = {"TSS":tss, "RSS":rss, "SSR":ssr, "R2":np.nan, "MSE":np.nan, "RMSE":np.nan,
                        "MAPE":np.nan, "MAE":np.nan, "AIC":np.nan, "BIC":np.nan,
@@ -281,6 +280,7 @@ class Wraper():
                 'description': description,
                 'save_timestamp': datetime.datetime.now().isoformat(),
                 'total_training_iterations': self.model.num_complited_train_iterations,
+                'total_epochs_iteratios':self.model.num_completed_epochs,
                 'normalize_inputs': self.normalize_inputs,
                 'normalize_outputs': self.normalize_outputs,
                 "loaded_train_data":self._loaded_train_data
@@ -379,6 +379,7 @@ class Wraper():
 
                 normalization_stats = config_wrapper.get('normalization_stats', {})
                 self.model.num_complited_train_iterations = metadata.get('total_training_iterations', 0)
+                self.model.num_completed_epochs = metadata.get('total_epochs_iteratios',0)
                 
                 self._loaded_train_data = metadata.get("loaded_train_data",True)
                 if (self._loaded_train_data):

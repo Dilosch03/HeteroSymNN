@@ -15,6 +15,7 @@ class ConfigurableNN:
         self._CALCULATION_MANAGER = HW.be
         self._ASNUMPY = HW.asnumpy
         self.num_complited_train_iterations = 0
+        self.num_completed_epochs = 0
 
         if len(nodes_structure) < 2:
             raise ValueError("nodes_structure debe tener al menos 2 elementos (entrada y salida).")
@@ -258,6 +259,7 @@ class ConfigurableNN:
         
         num_samples = train_data.shape[1]
         for _ in range(num_iterations):
+            self.num_completed_epochs += 1
             iter_loss = self._CALCULATION_MANAGER.array(0.0, dtype=self._DEFAULT_FLOAT_TYPE)
             indices = self._CALCULATION_MANAGER.random.permutation(num_samples)
 
