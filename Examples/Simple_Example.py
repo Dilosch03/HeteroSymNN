@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Import from your new package structure
+
 from HeteroSymNN.Core.Nets.neural_nets import SimpleNN
-from HeteroSymNN.API.wrappers import Wraper # Assuming you moved Wraper here
+from HeteroSymNN.API.wrappers import Wraper
 
 def run_simple_demo():
     print("--- 1. Generating Data (Sine Wave) ---")
@@ -11,11 +11,12 @@ def run_simple_demo():
     y = np.sin(X)
 
     print("--- 2. Creating Model (The easy way) ---")
-    # SimpleNN automatically handles initialization, optimization (Adam), and layers
+
     model = SimpleNN(
         nodes_structure=[1, 64, 64, 1], 
         activation="relu", 
         output_activation="num", # Linear output
+        training_mode="mini-batch",
         batch_size=32
     )
 
@@ -35,6 +36,19 @@ def run_simple_demo():
     test_val = np.array([[1.5]]) # Roughly PI/2
     pred = trainer.predict(test_val)
     print(f"Sin(1.5) Real: {np.sin(1.5):.4f}, Pred: {pred[0,0]:.4f}")
+
+    # --- 5. Visualization (Optional) ---
+    print("--- 5. Plotting Results ---")
+    
+    # Predict on the whole range to see the curve
+    predictions = trainer.predict(X)
+    
+    plt.figure(figsize=(10, 6))
+    plt.scatter(X, y, s=1, label='True Data (Sin)', alpha=0.5)
+    plt.plot(X, predictions, color='red', label='Neural Net Prediction')
+    plt.title("HeteroSymNN: Sine Wave Regression")
+    plt.legend()
+    plt.show()
 
 if __name__ == "__main__":
     run_simple_demo()
