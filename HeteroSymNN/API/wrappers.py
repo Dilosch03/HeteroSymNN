@@ -1,4 +1,4 @@
-import pandas as pd
+import os
 import numpy as np
 import math as mth
 import itertools as iter
@@ -81,11 +81,11 @@ class Wraper():
         Y_raw = np.array(expected_results)
         
         if X_raw.ndim == 1:
-            warnings.warn("Los datos de entrada (X) eran 1D. Remodelando a (n_muestras, 1).", UserWarning)
+            warnings.warn("Los datos de entrada (X) eran 1D. Remodelando a (n_muestras, 1).")
             X_raw = X_raw.reshape(-1, 1)
             
         if Y_raw.ndim == 1:
-            warnings.warn("Los datos de salida (Y) eran 1D. Remodelando a (n_muestras, 1).", UserWarning)
+            warnings.warn("Los datos de salida (Y) eran 1D. Remodelando a (n_muestras, 1).")
             Y_raw = Y_raw.reshape(-1, 1)
         
         if (self._model != None):
@@ -105,9 +105,7 @@ class Wraper():
                 else:
                     raise ValueError(f"La forma de los datos de salida (Y) es {Y_raw.shape}, pero la capa final espera {expected_y_features} outputs (en la segunda dimensión).")
             
-        self.training_data = (training_data, expected_results)
-        X_raw = np.array(training_data)
-        Y_raw = np.array(expected_results)
+        self.training_data = (X_raw, Y_raw)
         
         if self.normalize_inputs:
             self.x_min = np.min(X_raw, axis=0)
@@ -270,9 +268,9 @@ class Wraper():
         
         return evaluations
     
-    def save_model(self, path: str, model_name: str = None, description: str = None):
+    def save_model(self, path: str, model_name: str, description: str = None):
         if not path.endswith(".npz"):
-            path = path + ".npz"
+            path = os.path.join(path,model_name + ".npz")
         
         try:
             self.model.change_device("CPU")

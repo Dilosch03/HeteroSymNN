@@ -1,7 +1,7 @@
 from setuptools import setup,find_packages
 
 setup(name="HeteroSymNN",
-      version="0.1",
+      version="0.1.3",
       packages=find_packages(),
       python_requires=">=3.9",
       author="Dilosch03",

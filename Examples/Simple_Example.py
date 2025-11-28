@@ -6,7 +6,6 @@ from HeteroSymNN.Core.Nets.neural_nets import SimpleNN
 from HeteroSymNN.API.wrappers import Wraper
 
 def run_simple_demo():
-    print("--- 1. Generating Data (Sine Wave) ---")
     X = np.linspace(0, 2 * np.pi, 1000).reshape(-1, 1)
     y = np.sin(X)
 

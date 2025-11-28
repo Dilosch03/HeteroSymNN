@@ -53,7 +53,7 @@ class ConfigurableNN:
 
         if (optimizer != None):
             self.UPDATE_METHOD = optimizer
-            if (self.UPDATE_METHOD.learning_rate == None):
+            if (self.UPDATE_METHOD.learning_rate != None):
                 self.UPDATE_METHOD.learning_rate = self._LEARNING_RATE
             else:
                 self._LEARNING_RATE = self.UPDATE_METHOD.learning_rate
@@ -275,6 +275,8 @@ class ConfigurableNN:
             avg_loss = self._ASNUMPY(iter_loss) / num_samples
             self.histogram_losses.append(avg_loss)
 
+        return self.histogram_losses
+    
     def get_parameters(self):
         self.change_device("CPU")
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self.layers)}
