@@ -1,4 +1,4 @@
-from typing import Optional,Literal
+from typing import Optional,Literal,Union
 import warnings
 import numpy as np
 
@@ -287,14 +287,15 @@ class ConfigurableNN:
         self.change_device("CPU")
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self.layers)}
 
-    def set_parameters(self, params):
+    def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]]):
         self.change_device("CPU")
-        for i, layer in enumerate(self.layers):
-            layer_params = params[f'layer_{i}']
-            if layer_params.ndim == 0:
-                layer.set_parameters(layer_params.item())
-            else:
-                layer.set_parameters(layer_params)
+        for key in params:
+            layer_params = params[key]
+            layer_params["weights"] = layer_params["weights"].T
+            layer_params["biases"] = layer_params["biases"].reshape(-1,1)
+            if (type(key) != int):
+                index = int(key.split("_")[-1])
+            self.layers[index].set_parameters(layer_params)
 
     def get_config(self):
         self.change_device("CPU")

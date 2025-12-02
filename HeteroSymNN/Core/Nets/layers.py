@@ -141,11 +141,24 @@ class Layer:
     
     def get_parameters(self):
         return {
-            'weights': self._ASNUMPY(self.weights),
-            'biases': self._ASNUMPY(self.biases)
+            'weights': self._ASNUMPY(self.weights).T,
+            'biases': self._ASNUMPY(self.biases).T
         }
 
-    def set_parameters(self, params):
+    def set_parameters(self, params:dict[str,np.ndarray]):
+        corret_weights = (params["weights"].shape == self.weights.shape)
+        correct_biases = (params["biases"].shape == self.biases.shape)
+        if not(correct_biases or corret_weights):
+            raise ValueError(f"""Pesos y biases nuevos no estan en las dimenciones correctas.Pesos esperaba {self.weights.T.shape} y 
+                             recibió {params["weights"].T.shape}. Biases esperaba {self.biases.T.shape} y recibió {params["biases"].T.shape}.""")
+        elif not(corret_weights):
+            raise ValueError(f"""Pesos nuevos no estan en las dimenciones correctas. 
+                             Pesos esperaba {self.weights.T.shape} y 
+                             recibió {params["weights"].T.shape}""")
+        elif not (correct_biases):
+            raise ValueError(f"""Biases nuevos no esta en la dimencion correcta.Biases esperaba 
+                             {self.biases.T.shape} y recibió {params["biases"].T.shape}.""")
+        
         self.weights = np.array(params['weights'], dtype=self._DEFAULT_FLOAT_TYPE)
         self.biases = np.array(params['biases'], dtype=self._DEFAULT_FLOAT_TYPE)
     
