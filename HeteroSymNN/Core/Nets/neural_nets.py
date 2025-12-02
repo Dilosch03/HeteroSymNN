@@ -290,9 +290,9 @@ class ConfigurableNN:
     def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]]):
         self.change_device("CPU")
         for key in params:
-            layer_params = params[key]
-            layer_params["weights"] = layer_params["weights"].T
-            layer_params["biases"] = layer_params["biases"].reshape(-1,1)
+            layer_params = {}
+            layer_params.update({"weights":params[key]["weights"].copy().T})
+            layer_params.update({"biases":params[key]["biases"].copy().reshape(-1,1)})
             if (type(key) != int):
                 index = int(key.split("_")[-1])
             self.layers[index].set_parameters(layer_params)
