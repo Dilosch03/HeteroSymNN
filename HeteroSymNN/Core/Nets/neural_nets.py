@@ -182,7 +182,7 @@ class ConfigurableNN:
     def _forward(self,input_values:list):
         current_a = input_values
         for layer in self.layers:
-            current_a = layer._forward(current_a)
+            current_a = layer.forward(current_a)
 
         return current_a
 
@@ -199,7 +199,7 @@ class ConfigurableNN:
         
         y_pred = self._forward(x_input)
         
-        loss = self.LOSS_FUNCTION._forward(y_pred, y_target)
+        loss = self.LOSS_FUNCTION.forward(y_pred, y_target)
         error_to_propagate = self.LOSS_FUNCTION.backward(y_pred, y_target)
 
         self.backward(error_to_propagate)

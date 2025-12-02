@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets import ConfigurableNN
+from HeteroSymNN.Core.Nets.neural_nets import ConfigurableNN
 from HeteroSymNN.Backend import hardware as HW
 from HeteroSymNN.Backend.tuner import estimate_batch_capacity # The tool we made
 
@@ -100,7 +100,7 @@ def run_symbolic_demo():
     
     print("-> Running Forward Pass...")
     # The framework will now execute the custom math on the device
-    y_pred = model.forward(x_input)
+    y_pred = model.predict(x_input)
     
     # Verify values (Just check the first neuron)
     y_sample = y_pred[0, 0] # Result of the first point (-5.0)

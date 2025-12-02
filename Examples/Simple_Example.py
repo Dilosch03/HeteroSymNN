@@ -28,7 +28,7 @@ def run_simple_demo():
     trainer.run_training(num_iterations=500)
 
     print("--- 4. Evaluation ---")
-    metrics = trainer.regreccion_test_accuracy(X, y, num_features=1)
+    metrics = trainer.regreccion_test_accuracy(X, y)
     print(f"R2 Score: {metrics['R2']:.4f}")
     
     # Optional: Predict
