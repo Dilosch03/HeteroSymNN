@@ -150,7 +150,7 @@ class Wraper():
         else:
             X_norm = X_raw
             
-        Y_pred_norm = self.model.forward(X_norm)
+        Y_pred_norm = self.model.predict(X_norm)
         
         if self.normalize_outputs:
             if self.y_min is None:
@@ -159,6 +159,17 @@ class Wraper():
             return Y_denorm
         else:
             return Y_pred_norm 
+
+    def test_accuracy(self,test_data:list,expected_results:list):
+        results = {}
+        if (self.work_type == "reg"):
+            results = self.regreccion_test_accuracy(test_data,expected_results)
+        elif(self.work_type == "class"):
+            results = self.classification_test_accuracy(test_data,expected_results)
+        else:
+            raise RuntimeError("Tipo de trabajo especificado no es valido.")
+        
+        return results
 
     def classification_test_accuracy(self, test_data: list, expected_results: list):
         predictions_raw = self.predict(test_data)

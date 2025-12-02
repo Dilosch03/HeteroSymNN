@@ -179,34 +179,10 @@ class ConfigurableNN:
         for layer in self.layers:
             layer._to(device)
 
-    def forward(self,input_values:list,to_cpu:bool = True):
-        self.change_device(self.COMPUTATIONAL_METHOD.split("_")[0])
-        if not isinstance(input_values, (np.ndarray, self._CALCULATION_MANAGER.ndarray)):
-            current_a = self._CALCULATION_MANAGER.array(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
-        else:
-            current_a = self._CALCULATION_MANAGER.asarray(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
-            
-        if current_a.ndim == 1:
-            current_a = current_a.reshape(-1, 1)
-        
-
-        if current_a.shape[0] == self.layers[0].num_inputs:
-            pass
-        elif current_a.shape[1] == self.layers[0].num_inputs:
-            current_a = current_a.T
-        else:
-            raise ValueError(
-                f"La forma de los datos de entrada {current_a.shape} es incorrecta. "
-                f"La Capa 0 esperaba {self.layers[0].num_inputs} características (features), "
-                f"pero ninguna dimensión ({current_a.shape[0]} o {current_a.shape[1]}) coincidió."
-            )
-            
-
+    def _forward(self,input_values:list):
+        current_a = input_values
         for layer in self.layers:
-            current_a = layer.forward(current_a)
-
-        if(to_cpu):
-            return self._ASNUMPY(current_a).T
+            current_a = layer._forward(current_a)
 
         return current_a
 
@@ -221,9 +197,9 @@ class ConfigurableNN:
         self.change_device(self.COMPUTATIONAL_METHOD.split("_")[0])
         self.num_complited_train_iterations += 1
         
-        y_pred = self.forward(x_input,False)
+        y_pred = self._forward(x_input)
         
-        loss = self.LOSS_FUNCTION.forward(y_pred, y_target)
+        loss = self.LOSS_FUNCTION._forward(y_pred, y_target)
         error_to_propagate = self.LOSS_FUNCTION.backward(y_pred, y_target)
 
         self.backward(error_to_propagate)
@@ -279,6 +255,34 @@ class ConfigurableNN:
 
         return self.histogram_losses
     
+    def predict(self,input_values:list,to_cpu:bool = True):
+        self.change_device(self.COMPUTATIONAL_METHOD.split("_")[0])
+        if not isinstance(input_values, (np.ndarray, self._CALCULATION_MANAGER.ndarray)):
+            current_a = self._CALCULATION_MANAGER.array(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
+        else:
+            current_a = self._CALCULATION_MANAGER.asarray(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
+            
+        if current_a.ndim == 1:
+            current_a = current_a.reshape(-1, 1)
+        
+
+        if current_a.shape[0] == self.layers[0].num_inputs:
+            pass
+        elif current_a.shape[1] == self.layers[0].num_inputs:
+            current_a = current_a.T
+        else:
+            raise ValueError(
+                f"La forma de los datos de entrada {current_a.shape} es incorrecta. "
+                f"La Capa 0 esperaba {self.layers[0].num_inputs} características (features), "
+                f"pero ninguna dimensión ({current_a.shape[0]} o {current_a.shape[1]}) coincidió."
+            )
+        
+        prediction = self._forward(current_a)
+        if(to_cpu):
+            return self._ASNUMPY(prediction).T
+        
+        return prediction
+
     def get_parameters(self):
         self.change_device("CPU")
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self.layers)}
