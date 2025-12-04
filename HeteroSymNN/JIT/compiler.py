@@ -95,8 +95,6 @@ class SymbolicJITCompiler:
 
         unique_funcs = {} 
         compiled_code = {} 
-        
-        self.func_ids_cpu = [] 
 
         for func_str, consts in configs:
             consts_key = frozenset(consts.items())
