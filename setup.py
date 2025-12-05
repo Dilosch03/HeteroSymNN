@@ -1,11 +1,11 @@
 from setuptools import setup,find_packages
 
 setup(name="HeteroSymNN",
-      version="0.1.7",
+      version="0.1.8",
       packages=find_packages(),
       python_requires=">=3.9",
       author="Dilosch03",
-      install_requires=["numpy~=2.2.0","sympy~=1.14.0"],
+      install_requires=["numpy~=2.2.0","sympy~=1.14.0","platformdirs~=4.5"],
       extras_require={
         "gpu": ["cupy~=13.6.0"]
         })

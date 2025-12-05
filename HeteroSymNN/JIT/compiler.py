@@ -44,7 +44,7 @@ class SymbolicJITCompiler:
             self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
             self.func_ids = self.func_ids_gpu
 
-        elif (calculation_method == "CPU_JIT"):
+        elif (calculation_method == "CPU_CPP"):
             self._compile_cpp_kernels(configs)
 
         elif ( calculation_method == "CPU_PYTHON"):
@@ -154,11 +154,11 @@ class SymbolicJITCompiler:
             fwd_cases = fwd_switch_cases.replace("num", "z_val")
             bwd_cases = bwd_switch_cases.replace("num", "z_val")
             
-            cpp_template = templates.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_switch_cases":fwd_cases,"bwd_switch_cases":bwd_cases})
+            cpp_template = templates.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
            
         else: # LOSS
             # SymPy usa 'y_pred' y 'y_true'
-            cpp_template = templates.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
+            cpp_template = templates.CPP_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
         
         # --- Compilación JIT (la parte complicada) ---
         try:
@@ -189,7 +189,7 @@ class SymbolicJITCompiler:
             else:
                 compile_cmd = [
                     HW.CPP_INSTALLED_COMPILER, '-O3', '-shared', '-fPIC', '-fopenmp',
-                    '-o',"-ffast-math", lib_path, src_path
+                    "-ffast-math", src_path, '-o', lib_path
                 ]
 
             # Si la librería ya existe, no la re-compilamos
@@ -287,7 +287,7 @@ class SymbolicJITCompiler:
                 full_warning = f"¡ERROR FATAL DE COMPILACIÓN C++ JIT! {e} "+"Causa probable: No se encontró un compilador C++ (g++ o cl.exe) en el PATH del sistema o falló OpenMP."
                 full_warning += " Usando el kernel de Python (lento) como fallback."
                 warnings.warn(full_warning)
-                self._change_device("CPU_PYTHON") # Fallback al modo lento
+                self._change_method("CPU_PYTHON") # Fallback al modo lento
 
     def _compile_py_kernels(self,configs:list[tuple[str, dict[str, float]]]):
         compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')

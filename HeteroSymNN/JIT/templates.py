@@ -67,37 +67,37 @@ COMMON_FORMULAS = {
 }
 
 CUDA_KERNEL_TEMPLATE_ACTIVATION = Template("""
-            __device__ float apply_fwd(int id, float z_val) {{ switch(id){{ $fwd_cases default: return z_val; }} }}
-            __device__ float apply_bwd(int id, float z_val) {{ switch(id){{ $bwd_cases default: return 1.0f; }} }}
+            __device__ float apply_fwd(int id, float z_val) { switch(id){ $fwd_cases default: return z_val; } }
+            __device__ float apply_bwd(int id, float z_val) { switch(id){ $bwd_cases default: return 1.0f; } }
             
-            extern "C" __global__ void forward_activation_kernel(float* z, float* a, int* ids, int n, int b, int tot) {{
+            extern "C" __global__ void forward_activation_kernel(float* z, float* a, int* ids, int n, int b, int tot) {
                 int i = threadIdx.x + blockIdx.x * blockDim.x;
-                if (i < tot) {{
+                if (i < tot) {
                     int node_idx = i / b;
                     a[i] = apply_fwd(ids[node_idx], z[i]);
-                }}
-            }}
-            extern "C" __global__ void backward_delta_kernel(float* z, float* err, float* d, int* ids, int n, int b, int tot) {{
+                }
+            }
+            extern "C" __global__ void backward_delta_kernel(float* z, float* err, float* d, int* ids, int n, int b, int tot) {
                 int i = threadIdx.x + blockIdx.x * blockDim.x;
-                if (i < tot) {{
+                if (i < tot) {
                     int node_idx = i / b;
                     d[i] = err[i] * apply_bwd(ids[node_idx], z[i]);
-                }}
-            }}
+                }
+            }
             """)
 
 CUDA_KERNEL_TEMPLATE_LOSS = Template("""
-            __device__ float loss_fwd(int id, float y_pred, float y_true) {{ switch(id){{ $fwd_switch_cases default: return 0.0f; }} }}
-            __device__ float loss_bwd(int id, float y_pred, float y_true) {{ switch(id){{ $bwd_switch_cases default: return 0.0f; }} }}
+            __device__ float loss_fwd(int id, float y_pred, float y_true) { switch(id){ $fwd_switch_cases default: return 0.0f; } }
+            __device__ float loss_bwd(int id, float y_pred, float y_true) { switch(id){ $bwd_switch_cases default: return 0.0f; } }
             
-            extern "C" __global__ void loss_kernel_fwd(float* yp, float* yt, float* res, int* ids, int n) {{
+            extern "C" __global__ void loss_kernel_fwd(float* yp, float* yt, float* res, int* ids, int n) {
                 int i = threadIdx.x + blockIdx.x * blockDim.x;
                 if (i < n) res[i] = loss_fwd(ids[0], yp[i], yt[i]);
-            }}
-            extern "C" __global__ void loss_kernel_bwd(float* yp, float* yt, float* grad, int* ids, int n) {{
+            }
+            extern "C" __global__ void loss_kernel_bwd(float* yp, float* yt, float* grad, int* ids, int n) {
                 int i = threadIdx.x + blockIdx.x * blockDim.x;
                 if (i < n) grad[i] = loss_bwd(ids[0], yp[i], yt[i]);
-            }}
+            }
             """)
 
 CPP_KERNEL_TEMPLATE_ACTIVATION = Template("""
@@ -105,24 +105,26 @@ CPP_KERNEL_TEMPLATE_ACTIVATION = Template("""
             #include <omp.h>
 
             // Helpers
-            inline float loss_fwd(int id, float y_pred, float y_true) {{ switch(id){{ $fwd_switch_cases default: return 0.0f; }} }}
-            inline float loss_bwd(int id, float y_pred, float y_true) {{ switch(id){{ $bwd_switch_cases default: return 0.0f; }} }}
+            inline float apply_fwd(int id, float z_val) { switch(id){ $fwd_cases default: return z_val; } }
+            inline float apply_bwd(int id, float z_val) { switch(id){ $bwd_cases default: return 1.0f; } }
 
-            extern "C" {{
-                void loss_kernel_fwd(float* yp, float* yt, float* res, int* ids, int n) {{
+            extern "C" {
+                void forward_activation_kernel(float* z_vec, float* a_vec, int* func_ids, int num_nodes, int batch_size, int total_elements) {
                     #pragma omp parallel for
-                    for (int i = 0; i < n; ++i) {{
-                        res[i] = loss_fwd(ids[0], yp[i], yt[i]);
-                    }}
-                }}
+                    for (int i = 0; i < total_elements; ++i) {
+                        int node_index = i / batch_size;
+                        a_vec[i] = apply_fwd(func_ids[node_index], z_vec[i]);
+                    }
+                }
                 
-                void loss_kernel_bwd(float* yp, float* yt, float* grad, int* ids, int n) {{
+                void backward_delta_kernel(float* z_vec, float* error_sum, float* delta_vec, int* func_ids, int num_nodes, int batch_size, int total_elements) {
                     #pragma omp parallel for
-                    for (int i = 0; i < n; ++i) {{
-                        grad[i] = loss_bwd(ids[0], yp[i], yt[i]);
-                    }}
-                }}
-            }}
+                    for (int i = 0; i < total_elements; ++i) {
+                        int node_index = i / batch_size;
+                        delta_vec[i] = error_sum[i] * apply_bwd(func_ids[node_index], z_vec[i]);
+                    }
+                }
+            }
             """)
 
 CPP_KERNEL_TEMPLATE_LOSS = Template("""
@@ -130,22 +132,22 @@ CPP_KERNEL_TEMPLATE_LOSS = Template("""
             #include <omp.h>
 
             // Helpers
-            inline float loss_fwd(int id, float y_pred, float y_true) {{ switch(id){{ $fwd_switch_cases default: return 0.0f; }} }}
-            inline float loss_bwd(int id, float y_pred, float y_true) {{ switch(id){{ $bwd_switch_cases default: return 0.0f; }} }}
+            inline float loss_fwd(int id, float y_pred, float y_true) { switch(id){ $fwd_switch_cases default: return 0.0f; } }
+            inline float loss_bwd(int id, float y_pred, float y_true) { switch(id){ $bwd_switch_cases default: return 0.0f; } }
 
-            extern "C" {{
-                void loss_kernel_fwd(float* yp, float* yt, float* res, int* ids, int n) {{
+            extern "C" {
+                void loss_kernel_fwd(float* yp, float* yt, float* res, int* ids, int n) {
                     #pragma omp parallel for
-                    for (int i = 0; i < n; ++i) {{
+                    for (int i = 0; i < n; ++i) {
                         res[i] = loss_fwd(ids[0], yp[i], yt[i]);
-                    }}
-                }}
+                    }
+                }
                 
-                void loss_kernel_bwd(float* yp, float* yt, float* grad, int* ids, int n) {{
+                void loss_kernel_bwd(float* yp, float* yt, float* grad, int* ids, int n) {
                     #pragma omp parallel for
-                    for (int i = 0; i < n; ++i) {{
+                    for (int i = 0; i < n; ++i) {
                         grad[i] = loss_bwd(ids[0], yp[i], yt[i]);
-                    }}
-                }}
-            }}
+                    }
+                }
+            }
             """)

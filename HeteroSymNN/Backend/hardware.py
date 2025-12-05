@@ -5,6 +5,8 @@ import warnings
 import os
 import shutil
 from typing import Literal
+from platformdirs import user_cache_dir
+from pathlib import Path
 
 GPU_ENABLED = False
 be = np
@@ -14,7 +16,7 @@ cp = None
 CPP_JIT_ENABLED = False
 WARNINGS_STRICT_MODE = False
 USE_KERNEL_CACHE =True
-CPU_CACHE_DIR = os.path.join("kernel_cache", "cpu")
+CPU_CACHE_DIR = Path(user_cache_dir("HeteroSymNN"),"CPU")
 KERNEL_CACHE = {}
 
 try: 
