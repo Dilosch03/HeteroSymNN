@@ -69,10 +69,10 @@ class SymbolicJITCompiler:
 
         for_subs = {}
 
-        if (func_str in templates.COMMON_FORMULAS):
-            sorted_constatanst = sorted(constants)
-            for id,key in enumerate(sorted_constatanst):
-                for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
+
+        sorted_constatanst = sorted(constants)
+        for id,key in enumerate(sorted_constatanst):
+            for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
 
         if (func_str in templates.COMMON_FORMULAS):
             func_str = templates.COMMON_FORMULAS[func_str]

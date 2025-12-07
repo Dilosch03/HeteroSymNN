@@ -47,10 +47,10 @@ class Layer:
             for constant in sorted_keys:
                 node_constant_dict.update({constant:constant_counter})
                 constant_counter += 1
-                temp.append(config[constant])
+                temp.append(config[1][constant])
             self.CONSTANT_DICT.update({i:node_constant_dict})
         
-        if (len(temp)>0):
+        if (len(temp)==0):
             return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self.num_nodes)
         return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets)
 
