@@ -23,6 +23,7 @@ class Layer:
         self.biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
         self.weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
         self.connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
+        self.funcs_constats = np.array([0]*self.num_nodes)
 
         self._reallocate_buffers(batch_size)
 

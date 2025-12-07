@@ -30,6 +30,7 @@ class FlexibleLoss(Loss):
         self.constants = constants or {}
         self.COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
         self.GPU_ID = gpu_id
+        self.constants = HW.be.array([0])
 
         if (computational_method != None):
             if ((computational_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
