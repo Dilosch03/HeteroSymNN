@@ -18,8 +18,7 @@ from ..types import NodeConfig
 
 class SymbolicJITCompiler:
     def __init__(self, configs: list[NodeConfig], calculation_method: Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],
-                 device_id:int,moded_array:np.ndarray,mode: Literal["activation", "loss"] = "activation"):
-                 device_id:int,moded_array:np.ndarray,mode: Literal["activation", "loss"] = "activation"):
+                 device_id:int,mode: Literal["activation", "loss"] = "activation"):
         
         self.calculation_method = calculation_method
         self.device_id = device_id
@@ -41,35 +40,26 @@ class SymbolicJITCompiler:
         if self.calculation_method == 'GPU_CUDA':
             if device_id >= HW.NUM_GPUS:
                 raise ValueError(f"ID de GPU {device_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
-            self._compile_cuda_kernels(configs,moded_array)
-            self._compile_cuda_kernels(configs,moded_array)
+            self._compile_cuda_kernels(configs)
+            self._compile_cuda_kernels(configs)
             
             self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
             self.func_ids = self.func_ids_gpu
 
-<<<<<<< Updated upstream
         elif (calculation_method == "CPU_CPP"):
             self._compile_cpp_kernels(configs)
-=======
-        elif (calculation_method == "CPU_JIT"):
-            self._compile_cpp_kernels(configs,moded_array)
-            self._compile_cpp_kernels(configs,moded_array)
->>>>>>> Stashed changes
 
         elif ( calculation_method == "CPU_PYTHON"):
-            self._compile_py_kernels(configs,moded_array)
-            self._compile_py_kernels(configs,moded_array)
+            self._compile_py_kernels(configs)
+
+        else:
+            raise ValueError("Calculation Method no es GPU_CUDA, CPU_CPP o CPU_PYTHON")
+
 
     def _get_ccode_from_config(self, func_str, constants):
         constants = constants or {}
         x_sym,z_sym = sp.symbols("x z")
-        x_sym,z_sym = sp.symbols("x z")
         local_dict = {'e': mth.e, 'pi': mth.pi, 'tau': mth.tau, 'phi': (1 + mth.sqrt(5)) / 2}
-        local_dict = local_dict
-        num_sym = sp.symbols("num")
-        if (self.mode == "activation"):
-            num_sym = self.main_vars[0]
-        local_dict = local_dict
         num_sym = sp.symbols("num")
         if (self.mode == "activation"):
             num_sym = self.main_vars[0]
@@ -78,16 +68,11 @@ class SymbolicJITCompiler:
             local_dict[str(var)] = var
 
         for_subs = {}
-        for_subs = {}
-        if constants:
-            sorted_constatanst = sorted(constants)
-            for id,key in enumerate(sorted_constatanst):
-                for_subs[sp.symbols(key)] = sp.symbols(f"param[{id}]")
 
         if (func_str in templates.COMMON_FORMULAS):
             sorted_constatanst = sorted(constants)
             for id,key in enumerate(sorted_constatanst):
-                for_subs[sp.symbols(key)] = sp.symbols(f"param[{id}]")
+                for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
 
         if (func_str in templates.COMMON_FORMULAS):
             func_str = templates.COMMON_FORMULAS[func_str]
@@ -118,46 +103,15 @@ class SymbolicJITCompiler:
         
         func_expr = func_expr.subs({x_sym:num_sym,z_sym:num_sym})
         if (callable(func_expr)):
-
-        temp = {}
-        for key in templates.COMMON_FORMULAS.keys():
-            temp[key] = sp.parse_expr(templates.COMMON_FORMULAS[key],local_dict=local_dict)
-        
-        local_dict = local_dict | temp
-
-        func_expr = sp.parse_expr(func_str,local_dict=local_dict,evaluate=False)
-        func_expr = func_expr.subs(for_subs)
-        free_symb = func_expr.free_symbols
-
-        main_vars_found = []
-        if (num_sym in free_symb):
-            main_vars_found.append(num_sym)
-        if ((x_sym in free_symb)and not("z" in constants.keys())):
-            main_vars_found.append(x_sym)
-        if ((z_sym in free_symb)and not("x" in constants.keys())):
-            main_vars_found.append(z_sym)
-
-        if (len(main_vars_found)>1):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise ValueError(f"Función {func_str} contiene {", ".join([str(x) for x in main_vars_found])} como variables primarias, por favor de solo elegir una.")
-            else:
-                warnings.warn(f"La función {func_str} tratará {", ".join([str(x) for x in main_vars_found])} como variables primarias.")
-        
-        func_expr = func_expr.subs({x_sym:num_sym,z_sym:num_sym})
-        if (callable(func_expr)):
             func_expr = func_expr(*self.main_vars)
 
         deriv_expr_subbed = sp.diff(func_expr, self.deriv_target)
-        deriv_expr_subbed = sp.diff(func_expr, self.deriv_target)
 
         return (func_expr, deriv_expr_subbed)
-        return (func_expr, deriv_expr_subbed)
+
     
     def _generate_kernel_artifacts(self, configs: list[tuple[str, dict[str, float]]], 
                                  target_key: Literal["CPP","PY","GPU"],mode: Literal['string', 'lambda'],
-                                 moded_array:np.ndarray,
-                                 user_funcs: dict = None, float_regex: re.Pattern = None):
-                                 moded_array:np.ndarray,
                                  user_funcs: dict = None, float_regex: re.Pattern = None):
 
         unique_funcs = {} 
@@ -191,9 +145,12 @@ class SymbolicJITCompiler:
                         compiled_code[new_id] = (ccode_fwd, ccode_bwd)
 
                     elif (mode == 'lambda'):
+                        p_sym = sp.symbols('params')
+                        off_sym = sp.symbols('offset')
                         # Convertir a funciones lambda de Python
-                        ccode_fwd = sp.lambdify(self.main_vars, func_expr, 'numpy')
-                        ccode_bwd = sp.lambdify(self.main_vars, deriv_expr, 'numpy')
+                        lambda_args = self.main_vars + [p_sym, off_sym]
+                        ccode_fwd = sp.lambdify(lambda_args, func_expr, 'numpy')
+                        ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
                         compiled_code[new_id] = (ccode_fwd, ccode_bwd)
                     
                     if (HW.USE_KERNEL_CACHE):
@@ -208,14 +165,12 @@ class SymbolicJITCompiler:
         
         return compiled_code
 
-    def _compile_cpp_kernels(self, configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
-    def _compile_cpp_kernels(self, configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
+    def _compile_cpp_kernels(self, configs:list[tuple[str, dict[str, float]]]):
 
         if (HW.CPP_INSTALLED_COMPILER == None):
                 raise Exception("CPP_JIT_ENABLED era True, pero CPP_COMPILER_NAME es None.")
               
-        fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=templates.CPP_USER_FUNCS,moded_array=mod_array)
-        fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=templates.CPP_USER_FUNCS,moded_array=mod_array)
+        fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=templates.CPP_USER_FUNCS)
 
         # Plantilla de código C++ con OpenMP para paralelización
         if self.mode == "activation":
@@ -303,47 +258,49 @@ class SymbolicJITCompiler:
             # Wrappers Python -> C
             if self.mode == "activation":
                 f_func = lib.forward_activation_kernel
-                f_func.argtypes = [P_FLOAT, P_FLOAT, P_INT, C_INT, C_INT, C_INT]
+                f_func.argtypes = [P_FLOAT, P_FLOAT, P_INT, P_FLOAT, P_INT,C_INT, C_INT, C_INT]
                 
                 b_func = lib.backward_delta_kernel
-                b_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, C_INT, C_INT, C_INT]
+                b_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, P_FLOAT, P_INT, C_INT, C_INT, C_INT]
 
-                def f_wrapper(z, a, n, b):
+                def f_wrapper(z, a, params, offset_list, n, b):
                     # z y a son arrays de numpy (float32)
                     f_func(
                         z.ctypes.data_as(P_FLOAT),
                         a.ctypes.data_as(P_FLOAT),
-                        func_ids_ptr, n, b, n * b
+                        func_ids_ptr, params.ctypes.data_as(P_FLOAT), 
+                        offset_list.ctypes.data_as(P_INT), n, b, n * b
                     )
 
-                def b_wrapper(z, err, d, n, b):
+                def b_wrapper(z, err, delta, params, offset_list, n, b):
                     b_func(
                         z.ctypes.data_as(P_FLOAT),
                         err.ctypes.data_as(P_FLOAT),
-                        d.ctypes.data_as(P_FLOAT),
-                        func_ids_ptr, n, b, n * b
+                        delta.ctypes.data_as(P_FLOAT),
+                        func_ids_ptr, params.ctypes.data_as(P_FLOAT), 
+                        offset_list.ctypes.data_as(P_INT), n, b, n * b
                     )
             else: # LOSS
                 f_func = lib.loss_kernel_fwd
-                f_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, C_INT]
+                f_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, P_FLOAT,C_INT]
                 
                 b_func = lib.loss_kernel_bwd
-                b_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, C_INT]
+                b_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, P_FLOAT,C_INT]
 
-                def f_wrapper(yp, yt, res):
+                def f_wrapper(yp, yt, res, params):
                     f_func(
                         yp.ctypes.data_as(P_FLOAT),
                         yt.ctypes.data_as(P_FLOAT),
                         res.ctypes.data_as(P_FLOAT),
-                        func_ids_ptr, yp.size
+                        func_ids_ptr,params.ctypes.data_as(P_FLOAT), yp.size
                     )
 
-                def b_wrapper(yp, yt, grad):
+                def b_wrapper(yp, yt, grad, params):
                     b_func(
                         yp.ctypes.data_as(P_FLOAT),
                         yt.ctypes.data_as(P_FLOAT),
                         grad.ctypes.data_as(P_FLOAT),
-                        func_ids_ptr, yp.size
+                        func_ids_ptr, params.ctypes.data_as(P_FLOAT),yp.size
                     )
 
             self.forward_kernel = f_wrapper
@@ -358,10 +315,8 @@ class SymbolicJITCompiler:
                 warnings.warn(full_warning)
                 self._change_method("CPU_PYTHON") # Fallback al modo lento
 
-    def _compile_py_kernels(self,configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
-        compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda',moded_array=mod_array)
-    def _compile_py_kernels(self,configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
-        compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda',moded_array=mod_array)
+    def _compile_py_kernels(self,configs:list[tuple[str, dict[str, float]]]):
+        compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')
             
         if self.mode == "activation":
             # Kernel vectorizado optimizado para activaciones
@@ -370,31 +325,44 @@ class SymbolicJITCompiler:
             
             if is_homogeneous:
                 func_fwd, func_bwd = compiled[first_id]
-                def f_kernel(z, a, n, b): a[:] = func_fwd(z)
-                def b_kernel(z, err, d, n, b): d[:] = err * func_bwd(z)
+                def f_kernel(z, a,params, offset_list, n, b): 
+                    num_params = len(params)
+                    if (len(offset_list)>1):
+                        num_params = offset_list[0]-offset_list[1]
+                    matrix_params = params.reshape(n,num_params)
+                    param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
+                    a[:] = func_fwd(z,param_cols,0)
+                def b_kernel(z, err, d,params, offset_list,n, b):
+                    num_params = len(params)
+                    if (len(offset_list)>1):
+                        num_params = offset_list[0]-offset_list[1]
+                    matrix_params = params.reshape(n,num_params)
+                    param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
+                    d[:] = err * func_bwd(z,param_cols,0)
             else:
-                def f_kernel(z, a, n, b):
-                    for j in range(n): a[j,:] = compiled[self.func_ids[j]][0](z[j,:])
-                def b_kernel(z, err, d, n, b):
-                    for j in range(n): d[j,:] = err[j,:] * compiled[self.func_ids[j]][1](z[j,:])
+                def f_kernel(z, a, params,offset_list, n, b):
+                    for j in range(n): 
+                        a[j,:] = compiled[self.func_ids[j]][0](z[j,:],params,offset_list[j])
+                def b_kernel(z, err, d, params,offset_list, n, b):
+                    for j in range(n): 
+                        d[j,:] = err[j,:] * compiled[self.func_ids[j]][1](z[j,:],params,offset_list[j])
         else:
 
             func_fwd, func_bwd = compiled[int(self.func_ids[0])]
-            def f_kernel(y_p, y_t, res_vec): res_vec[:] = func_fwd(y_p, y_t)
-            def b_kernel(y_p, y_t, grad_vec): grad_vec[:] = func_bwd(y_p, y_t)
+            def f_kernel(y_p, y_t, res_vec,params): res_vec[:] = func_fwd(y_p, y_t,params,0)
+            def b_kernel(y_p, y_t, grad_vec,params): grad_vec[:] = func_bwd(y_p, y_t,params,0)
 
         self.forward_kernel = f_kernel
         self.backward_kernel = b_kernel
 
 
-    def _compile_cuda_kernels(self, configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
-    def _compile_cuda_kernels(self, configs:list[tuple[str, dict[str, float]]],mod_array:np.ndarray):
+    def _compile_cuda_kernels(self, configs:list[tuple[str, dict[str, float]]]):
         float_regex = re.compile(r"(\d+\.\d*([eE][+-]?\d+)?)")
 
         fwd_switch_cases, bwd_switch_cases = self._generate_kernel_artifacts(configs, "GPU", mode='string', 
                                                              user_funcs=templates.CUDA_USER_FUNCS, 
-                                                             float_regex=float_regex,moded_array=mod_array)
-                                                             float_regex=float_regex,moded_array=mod_array)
+                                                             float_regex=float_regex)
+
         if self.mode == "activation":
             fwd_cases = fwd_switch_cases.replace("num", "z_val")
             bwd_cases = bwd_switch_cases.replace("num", "z_val")
@@ -426,25 +394,25 @@ class SymbolicJITCompiler:
 
         # Wrappers para invocación CUDA
         if self.mode == "activation":
-            def f_k_wrapper(z, a, n, b):
+            def f_k_wrapper(z, a, params, offset_list, n, b):
                 tot = n * b
                 grid, block = HW._get_cuda_dims(tot, self.device_id)
-                fwd_k(grid, block, (z, a, self.func_ids, n, b, tot))
+                fwd_k(grid, block, (z, a, self.func_ids, params, offset_list, n, b, tot))
             
-            def b_k_wrapper(z, err, d, n, b):
+            def b_k_wrapper(z, err, d,params,offset_list, n, b):
                 tot = n * b
                 grid, block = HW._get_cuda_dims(tot, self.device_id)
-                bwd_k(grid, block, (z, err, d, self.func_ids, n, b, tot))
+                bwd_k(grid, block, (z, err, d, self.func_ids,params,offset_list, n, b, tot))
         else:
-            def f_k_wrapper(yp, yt, res):
+            def f_k_wrapper(yp, yt, res,params):
                 n = yp.size
                 grid, block = HW._get_cuda_dims(n, self.device_id)
-                fwd_k(grid, block, (yp, yt, res, self.func_ids, n))
+                fwd_k(grid, block, (yp, yt, res, self.func_ids,params, n))
             
-            def b_k_wrapper(yp, yt, grad):
+            def b_k_wrapper(yp, yt, grad,params):
                 n = yp.size
                 grid, block = HW._get_cuda_dims(n, self.device_id)
-                bwd_k(grid, block, (yp, yt, grad, self.func_ids, n))
+                bwd_k(grid, block, (yp, yt, grad, self.func_ids,params, n))
 
         self.forward_kernel = f_k_wrapper
         self.backward_kernel = b_k_wrapper

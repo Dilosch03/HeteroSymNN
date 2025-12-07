@@ -37,7 +37,6 @@ class ConfigurableNN:
         self.COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
         self.num_treaning_iterations = num_treaning_iter
         self.NODE_STRUCTURE = nodes_structure
-        self.NODE_CONFIGS = detailed_activations
 
         if (initializer is None):
             self.INITIALIZER = InitC.HeNormal()
@@ -297,11 +296,19 @@ class ConfigurableNN:
                 index = int(key.split("_")[-1])
             self.layers[index].set_parameters(layer_params)
 
+    def change_constants(self,new_constants:dict[int,Union[list[tuple[int,str,float]],tuple[int,str,float]]]):
+        for num_layer in new_constants.keys():
+            self.layers[num_layer].change_constant(new_constants[num_layer])
+            
     def get_config(self):
         self.change_device("CPU")
+        node_configs = []
+        for layer in self.layers:
+            node_configs.append(layer.recunstruct_layer_config())
+
         config = {
             'nodes_structure': self.NODE_STRUCTURE,
-            'detailed_activations': self.NODE_CONFIGS,
+            'detailed_activations': node_configs,
             'learning_rate': self._LEARNING_RATE,
             'learning_mode': self._LEAR_MODE,
             'training_mode': self._TRAIN_MODE,

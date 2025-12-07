@@ -1,5 +1,4 @@
 import sys
-import os
 
 sys.path.insert(0, r"C:\Users\dilos\Documents\GitHub\HeteroSymNN")
 
