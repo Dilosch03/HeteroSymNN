@@ -15,6 +15,9 @@ extensions = [
     'sphinx_rtd_theme',        
 ]
 
+# Tell Sphinx to mock modules that are not available on Read the Docs
+autodoc_mock_imports = ["cupy", "matplotlib"]
+
 autosummary_generate = True
 
 templates_path = ['_templates']

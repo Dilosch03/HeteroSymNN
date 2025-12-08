@@ -180,5 +180,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-*.txt
+structure.txt
 *test.py
