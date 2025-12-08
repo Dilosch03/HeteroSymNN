@@ -296,7 +296,7 @@ class AdamOptimizer(Optimizer):
         return {'t': self.t, 'm': m_np, 'v': v_np}
 
     def set_state(self, state, be):
-        super().set_state()
+        super().set_state(state,be)
         self.t = state.get('t', 0)
         m_data = state.get('m')
         v_data = state.get('v')

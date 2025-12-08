@@ -312,9 +312,14 @@ class Wraper():
             }
 
             params = self.model.get_parameters()
-            
-            np.savez_compressed(path, config=config_to_save, **params)
-            
+
+            # Flatten the parameters to avoid saving nested dictionaries as object arrays
+            flat_params = {}
+            for layer_key, layer_params in params.items():
+                for param_key, param_value in layer_params.items():
+                    flat_params[f"{layer_key}_{param_key}"] = param_value
+
+            np.savez_compressed(path, config=config_to_save, **flat_params)
 
         except Exception as e:
             raise IOError(f"Error al guardar el modelo.") from e
@@ -377,7 +382,26 @@ class Wraper():
                 else:
                     raise IOError("Archivo de configuración no reconocido o dañado.")
 
-                params_dict = {k: v for k, v in data.items() if k != 'config'}
+                # Reconstruct the nested parameter dictionary from the flat structure
+                params_dict = {}
+                for k, v in data.items():
+                    if k == 'config':
+                        continue
+                    
+                    # k is like 'layer_0_weights'
+                    # Find the last underscore to split layer_key from param_key
+                    key_parts = k.rpartition('_')
+                    layer_key = key_parts[0]  # e.g., 'layer_0'
+                    param_key = key_parts[2]  # e.g., 'weights'
+
+                    if not layer_key or not param_key:
+                        warnings.warn(f"Skipping malformed parameter key '{k}' in model file.")
+                        continue
+
+                    if layer_key not in params_dict:
+                        params_dict[layer_key] = {}
+                    params_dict[layer_key][param_key] = v
+
                 self.model.set_parameters(params_dict)
                 
                 try:
