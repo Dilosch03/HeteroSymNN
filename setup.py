@@ -5,7 +5,7 @@ setup(name="HeteroSymNN",
       packages=find_packages(),
       python_requires=">=3.10",
       author="Dilosch03",
-      install_requires=["numpy~=2.2.0","sympy~=1.14.0","platformdirs~=4.5"],
+      install_requires=["numpy>=2.0,<2.3","sympy~=1.14","platformdirs~=4.5"],
       extras_require={
-        "gpu": ["cupy~=13.6.0"]
+        "gpu": ["cupy~=13.6"]
         })
