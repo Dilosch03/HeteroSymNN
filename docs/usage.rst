@@ -32,12 +32,3 @@ Basic Training Example
     # agent.load_training(X_train, y_train)
     # agent.run_training(num_iterations=100, batch_size=64)
 
-How It Works
-------------
-
-HeteroSymNN acts as a **Differentiable Compiler**:
-
-1. **Parse**: Accepts mathematical strings (e.g., ``"alpha * sin(x)"``) and parses them using SymPy.
-2. **Derive**: Automatically calculates the symbolic derivative for backpropagation.
-3. **Compile**: Generates C++ or CUDA code at runtime, creating a ``switch`` statement for distinct neuron instructions.
-4. **Fuse**: Fuses memory access into a single kernel launch.

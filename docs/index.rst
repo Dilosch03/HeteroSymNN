@@ -8,6 +8,16 @@ Unlike standard frameworks that optimize for homogeneous layers, HeteroSymNN use
 .. note::
    This project is tailored for Neuroevolution (NEAT), Control Systems, and Scientific Machine Learning.
 
+How It Works
+------------
+
+HeteroSymNN acts as a **Differentiable Compiler**:
+
+1. **Parse**: Accepts mathematical strings (e.g., ``"alpha * sin(x)"``) and parses them using SymPy.
+2. **Derive**: Automatically calculates the symbolic derivative for backpropagation.
+3. **Compile**: Generates C++ or CUDA code at runtime, creating a ``switch`` statement for distinct neuron instructions.
+4. **Fuse**: Fuses memory access into a single kernel launch.
+   
 .. toctree::
    :maxdepth: 2
    :caption: User Guide:
@@ -19,6 +29,7 @@ Unlike standard frameworks that optimize for homogeneous layers, HeteroSymNN use
    :maxdepth: 2
    :caption: API Reference:
 
+   modules/types
    modules/api
    modules/core
    modules/jit

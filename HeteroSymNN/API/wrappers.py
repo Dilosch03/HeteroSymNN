@@ -37,6 +37,19 @@ def _denormalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray)
 
 class Wraper():
     def __init__(self, model: ConfigurableNN,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
+        """
+        Model Wrapper class that simplifies training, evaluation saving and loading of neural networks.
+        
+        :param model: Created Model that would be used for training. If you want to load you can pass a None value.
+        :type model: ConfigurableNN
+        :param work_type:  Type of work the model would be used for, could be regressions or classifications.
+        :type work_type: Literal["class", "reg"]
+        :param normalize_inputs: Toggle if the inputs values would be internally normalized and denormalized.
+        :type normalize_inputs: bool
+        :param normalize_outputs: Toggle if the outputs values would be internally normalized and denormalized.
+        :type normalize_outputs: bool
+        """
+
         self._model:ConfigurableNN = None
         self.training_data = None
         self.training_data_norm = None

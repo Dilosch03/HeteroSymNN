@@ -22,7 +22,10 @@ To enable the high-performance CUDA backend using CuPy, install with the ``gpu``
 
 .. code-block:: bash
 
-    pip install "HeteroSymNN[gpu]"
+    pip install HeteroSymNN[gpu]
+
+.. note::
+    For CuPy to work you need the Cuda drivers installed.
 
 From Source
 -----------
