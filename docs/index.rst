@@ -10,11 +10,19 @@ Unlike standard frameworks that optimize for homogeneous layers, HeteroSymNN use
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: User Guide:
 
    installation
    usage
-   api
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference:
+
+   modules/api
+   modules/core
+   modules/jit
+   modules/backends
 
 Indices and tables
 ==================
