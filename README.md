@@ -72,7 +72,7 @@ HeteroNN acts as a Differentiable Compiler:
 5. Dynamic Constants (Zero-Recompile Tuning): You can pass a dictionary of constants (e.g., ```{'alpha': 0.5}```) to the JIT compiler. These are treated as kernel arguments, allowing you to update hyperparameters like ```alpha``` in real-time without triggering a slow recompilation.
 
 ## Documentation
-The documentation is hosted in [](https://heterosymnn.readthedocs.io/en/latest/index.html).
+The documentation is hosted in [Read the Docs](https://heterosymnn.readthedocs.io/en/latest/index.html).
 
 ## License
 Code released under the [MIT License](https://github.com/Dilosch03/HeteroSymNN/blob/main/LICENSE). 
