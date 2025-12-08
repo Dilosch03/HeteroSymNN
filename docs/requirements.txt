@@ -1,6 +1,2 @@
 sphinx
 sphinx-rtd-theme
-
-numpy~=2.2.0
-sympy~=1.14.0
-platformdirs~=4.5
