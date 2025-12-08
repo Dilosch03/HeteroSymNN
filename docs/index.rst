@@ -1,16 +1,20 @@
-.. HeteroSymNN documentation master file.
-
 Welcome to HeteroSymNN's documentation!
 =======================================
 
-This is the main documentation for the HeteroSymNN library, a flexible neural network framework with a focus on heterogeneous architectures and JIT compilation.
+**HeteroSymNN** is a symbolic JIT-Compiled Deep Learning framework for Heterogeneous Neural Networks.
+
+Unlike standard frameworks that optimize for homogeneous layers, HeteroSymNN uses a Symbolic JIT Compiler to generate fused kernels at runtime. This allows every single neuron in a layer to have a distinct, custom mathematical activation function (e.g., ``sin(x)``, ``tanh(x)``, ``alpha * x + beta``) with zero computational overhead.
+
+.. note::
+   This project is tailored for Neuroevolution (NEAT), Control Systems, and Scientific Machine Learning.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-   api/index
-
+   installation
+   usage
+   api
 
 Indices and tables
 ==================
