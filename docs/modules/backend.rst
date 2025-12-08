@@ -6,7 +6,7 @@ The **Backends** module handles hardware detection, memory management, and cachi
 Hardware Detection
 ------------------
 
-.. automodule:: HeteroSymNN.Backends.hardware
+.. automodule:: HeteroSymNN.Backend.hardware
    :members:
    :undoc-members:
    :show-inheritance:
@@ -20,7 +20,7 @@ Hardware Detection
 Utilities
 ---------
 
-.. autofunction:: HeteroSymNN.Backends.hardware.clear_kernel_cache
+.. autofunction:: HeteroSymNN.Backend.hardware.clear_kernel_cache
 
    Clears the compiled kernel cache to force recompilation.
 
