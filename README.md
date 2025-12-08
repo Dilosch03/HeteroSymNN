@@ -14,7 +14,7 @@ Good framework for Neuroevolution (NEAT) or Scientific ML projects but not excus
 -[Installation](#installation)  
 -[Quickstart](#quickstart)  
 -[How It Works](#how-it-works)  
--[Documentation]()  
+-[Documentation](https://heterosymnn.readthedocs.io/en/latest/index.html)  
 -[License](#license)  
 
 ## Installation
@@ -72,9 +72,9 @@ HeteroNN acts as a Differentiable Compiler:
 5. Dynamic Constants (Zero-Recompile Tuning): You can pass a dictionary of constants (e.g., ```{'alpha': 0.5}```) to the JIT compiler. These are treated as kernel arguments, allowing you to update hyperparameters like ```alpha``` in real-time without triggering a slow recompilation.
 
 ## Documentation
-The documentation is hosted in []().
+The documentation is hosted in [](https://heterosymnn.readthedocs.io/en/latest/index.html).
 
 ## License
-Code released under the [MIT License](). 
+Code released under the [MIT License](https://github.com/Dilosch03/HeteroSymNN/blob/main/LICENSE). 
 
 [Go to Top](#table-of-contents)
