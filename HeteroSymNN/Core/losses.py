@@ -48,7 +48,8 @@ class FlexibleLoss(Loss):
 
             self.COMPUTATIONAL_METHOD = computational_method
 
-        
+        self.set_constants(self.constants)
+
         self.compiler = SymbolicJITCompiler(
             configs=[(loss_expression, self.constants)],
             calculation_method=self.COMPUTATIONAL_METHOD,
@@ -63,6 +64,20 @@ class FlexibleLoss(Loss):
             return HW.cp
         return np
     
+    def set_constants(self,constants:dict[str,float]):
+        temp = []
+        for key in sorted(constants.keys()):
+            temp.append(constants[key])
+
+        if (len(temp) == 0):
+            temp.append(0.0)
+
+        if (self.COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+            with HW.be.cuda.Device(self.GPU_ID):
+                self.arr_constants = self._be.array(temp)
+        else:
+            self.arr_constants = self._be.array(temp)
+
     def set_gpu_id(self,new_id:int):
         if (new_id != self.GPU_ID):
             self.compiler.set_gpu_id(new_id)
@@ -98,21 +113,31 @@ class FlexibleLoss(Loss):
     def forward(self, y_pred, y_true):
         # Aseguramos buffers del tamaño correcto en el dispositivo correcto
         loss_vec = self._be.zeros_like(y_pred)
-        self.compiler.forward_kernel(y_pred, y_true, loss_vec)
+        self.compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
         return self._be.mean(loss_vec) 
 
     def backward(self, y_pred, y_true):
         grad_vec = self._be.zeros_like(y_pred)
-        self.compiler.backward_kernel(y_pred, y_true, grad_vec)
+        self.compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         # Normalización del gradiente para Mean reduction: (2 / N) o (1 / N) dependiendo de la convención.
         # Para MSE puro la derivada de sum((y-t)^2)/N es 2(y-t)/N.
         return grad_vec * (2.0 / y_pred.size) 
 
+    def get_constants(self)->dict[str,float]:
+        if (self.COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+            self.arr_constants = self._be.asnumpy(self.arr_constants)
+        
+        reconstructed_constants = {}
+        for i,key in enumerate(sorted(self.constants.keys())):
+            reconstructed_constants[key] = float(self.arr_constants[i])
+
+        return reconstructed_constants
+    
     def get_config(self):
         return {
             "class_name": "FlexibleLoss",
             "loss_expression": self.loss_expression,
-            "constants": self.constants
+            "constants": self.get_constants()
         }
 
 # --- Atajos Comunes ---

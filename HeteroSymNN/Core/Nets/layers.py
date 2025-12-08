@@ -1,9 +1,9 @@
 import numpy as np
-from typing import Literal
+from typing import Literal, Union
 import warnings
 
 from ...Backend import hardware as HW
-from ...types import LayerConstructionConfig
+from ...types import LayerConstructionConfig,NodeConfig
 from ...JIT.compiler import SymbolicJITCompiler
 
 class Layer:
@@ -18,16 +18,55 @@ class Layer:
 
         self.num_inputs = num_inputs
         self.num_nodes = len(layer_configuration[0])
+        self.layer_node_configs = layer_configuration[0]
 
         init_biases, init_weights, init_mask = layer_configuration[1]
         self.biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
         self.weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
         self.connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
 
+        if (self.COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+            with HW.be.cuda.Device(self._GPU_ID):
+                self._funcs_constats,self.param_offsets = self._generate_constant_array(layer_configuration[0])
+        else:
+            self._funcs_constats,self.param_offsets = self._generate_constant_array(layer_configuration[0])
+
         self._reallocate_buffers(batch_size)
 
         self._act_funcions_manager = SymbolicJITCompiler(layer_configuration[0],self.COMPUTATIONAL_METHOD,self._GPU_ID)
 
+    def _generate_constant_array(self,activation_functions:list[NodeConfig]):
+        temp = []
+        offsets = []
+        constant_counter = 0
+        self.CONSTANT_DICT:dict[int,dict[str,int]] = {}
+        for i,config in enumerate(activation_functions):
+            sorted_keys = sorted(config[1].keys())
+            offsets.append(constant_counter)
+            node_constant_dict = {}
+            for constant in sorted_keys:
+                node_constant_dict.update({constant:constant_counter})
+                constant_counter += 1
+                temp.append(config[1][constant])
+            self.CONSTANT_DICT.update({i:node_constant_dict})
+        
+        if (len(temp)==0):
+            return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self.num_nodes)
+        return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets)
+
+    def recunstruct_layer_config(self):
+        self._to("CPU")
+        new_layer_config = []
+        for i,node in enumerate(self.layer_node_configs):
+            node_constant_dict = {}
+            sorted_constants = sorted(node[1].keys())
+            for key in sorted_constants:
+                value = self._funcs_constats[self.CONSTANT_DICT[i][key]]
+                node_constant_dict[key] = float(value)
+
+            new_layer_config.append((node[0],node_constant_dict))
+        return new_layer_config
+    
     def set_gpu_id(self,new_id:int):
         if (new_id != self._GPU_ID):
             if (new_id >= HW.NUM_GPUS):
@@ -56,15 +95,19 @@ class Layer:
                 new_method = "CPU_PYTHON"
 
         if(new_method != self.COMPUTATIONAL_METHOD):
+            self.COMPUTATIONAL_METHOD = self._act_funcions_manager._change_method(new_method,self._GPU_ID)
+            self.param_offsets = self._ASNUMPY(self.param_offsets)
             self._GPU_ID = gpu_id
-            if ("CPU" in new_method):
+            if ("CPU" in self.COMPUTATIONAL_METHOD):
                 self._CALCULATION_MANAGER = np
                 self._ASNUMPY = np.array
-            elif ("GPU" in new_method):
+                self.param_offsets = self._CALCULATION_MANAGER.array(self.param_offsets)
+            elif ("GPU" in self.COMPUTATIONAL_METHOD):
                 self._CALCULATION_MANAGER = HW.cp
                 self._ASNUMPY = HW.cp.array
+                with HW.be.cuda.Device(self._GPU_ID):
+                    self.param_offsets = self._CALCULATION_MANAGER.array(self.param_offsets)
 
-            self.COMPUTATIONAL_METHOD = self._act_funcions_manager._change_method(new_method,self._GPU_ID)
             self.batch_size_change(self.z.shape[1])
         return self.COMPUTATIONAL_METHOD
 
@@ -97,10 +140,12 @@ class Layer:
                     self.weights = self.CURRENT_VECTOR_FORMAT(self.weights)
                     self.biases = self.CURRENT_VECTOR_FORMAT(self.biases)
                     self.connection_mask = self.CURRENT_VECTOR_FORMAT(self.connection_mask)
+                    self._funcs_constats = self.CURRENT_VECTOR_FORMAT(self._funcs_constats)
             else:
                 self.weights = self.CURRENT_VECTOR_FORMAT(self.weights)
                 self.biases = self.CURRENT_VECTOR_FORMAT(self.biases)
                 self.connection_mask = self.CURRENT_VECTOR_FORMAT(self.connection_mask)
+                self._funcs_constats = self.CURRENT_VECTOR_FORMAT(self._funcs_constats)
 
     def _reallocate_buffers(self, batch_size: int):
         expected_shape = (self.num_nodes, batch_size)
@@ -128,17 +173,25 @@ class Layer:
         effective_weights = self.weights * self.connection_mask
         self.z = self._CALCULATION_MANAGER.dot(effective_weights, input_values) + self.biases
 
-        self._act_funcions_manager.forward_kernel(self.z, self.a, self.num_nodes,batch_size)
+        self._act_funcions_manager.forward_kernel(self.z, self.a, self._funcs_constats, self.param_offsets, self.num_nodes,batch_size)
         return self.a
 
     def backward(self,error_values):
         batch_size = self.z.shape[1]
-        self._act_funcions_manager.backward_kernel(self.z, error_values, self.delta, self.num_nodes,batch_size)
+        self._act_funcions_manager.backward_kernel(self.z, error_values, self.delta, self._funcs_constats, self.param_offsets, self.num_nodes,batch_size)
         effective_weights = self.weights * self.connection_mask
         prev_layer_error_sum = self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta)
         
         return prev_layer_error_sum
     
+    def change_constant(self,new_values:Union[list[tuple[int,str,float]],tuple[int,str,float]]):
+        if (type(new_values[0]) == int):
+            new_values = [new_values]
+        
+        for value in new_values:
+            traductor = self.CONSTANT_DICT[value[0]]
+            self._funcs_constats[traductor[value[1]]] = value[2]
+
     def get_parameters(self):
         return {
             'weights': self._ASNUMPY(self.weights).T,
