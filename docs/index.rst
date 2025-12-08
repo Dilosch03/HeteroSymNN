@@ -33,7 +33,7 @@ HeteroSymNN acts as a **Differentiable Compiler**:
    modules/api
    modules/core
    modules/jit
-   modules/backends
+   modules/backend
 
 Indices and tables
 ==================

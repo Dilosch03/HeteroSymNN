@@ -97,9 +97,9 @@ class SymbolicJITCompiler:
 
         if (len(main_vars_found)>1):
             if (HW.WARNINGS_STRICT_MODE):
-                raise ValueError(f"Función {func_str} contiene {", ".join([str(x) for x in main_vars_found])} como variables primarias, por favor de solo elegir una.")
+                raise ValueError(f"Función {func_str} contiene {', '.join([str(x) for x in main_vars_found])} como variables primarias, por favor de solo elegir una.")
             else:
-                warnings.warn(f"La función {func_str} tratará {", ".join([str(x) for x in main_vars_found])} como variables primarias.")
+                warnings.warn(f"La función {func_str} tratará {', '.join([str(x) for x in main_vars_found])} como variables primarias.")
         
         func_expr = func_expr.subs({x_sym:num_sym,z_sym:num_sym})
         if (callable(func_expr)):
