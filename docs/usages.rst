@@ -29,6 +29,5 @@ Basic Training Example
     agent = Wraper(model, work_type="reg")
 
     # 3. Load data and train
-    # agent.load_training(X_train, y_train)
-    # agent.run_training(num_iterations=100, batch_size=64)
+    agent.fit(X_train, y_train)
 

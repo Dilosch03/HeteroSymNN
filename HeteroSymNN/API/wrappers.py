@@ -111,6 +111,36 @@ class Wraper():
             if Y_norm.ndim == 2 and Y_norm.shape[1] != expected_y:
                 raise ValueError(f"Error de Arquitectura: El nuevo modelo espera {expected_y} salidas, pero los datos cargados tienen {Y_norm.shape[1]} columnas (targets).")
 
+    def fit(self, training_data: list, expected_results: list, epochs: int = None,training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
+        """
+        Method like Scikit Learn for training the model.
+
+        Parameters
+        ----------
+        training_data : list or np.ndarray
+            Input features (X). Shape should be (n_samples, n_features).
+        expected_results : list or np.ndarray
+            Target labels/values (Y). Shape should be (n_samples, n_outputs).
+        epochs : int, optional
+            Number of epochs to train. If None, uses the model's configured default.
+        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
+            Training strategy. If None, uses the model's configured default.
+        batch_size : int, optional
+            Size of the batch for "mini-batch" mode. If not pass, uses the model's configured default.
+
+        Returns
+        -------
+        list[float]
+            A list of loss values recorded during training.
+        
+        Raises
+        ------
+        ValueError
+            If dimensions do not match the model's expected input/output size.
+        """
+        self.load_training(training_data, expected_results)
+        return self.run_training(epochs, training_mode, batch_size)
+
     def load_training(self, training_data: list, expected_results: list)->None:
         """
         Loads and prepares training data.
