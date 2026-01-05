@@ -1,28 +1,26 @@
 import os
 import sys
 from unittest.mock import MagicMock
-import sphinx_rtd_theme
+
+# Signal to the code that we are building documentation
+os.environ["SPHINX_BUILD"] = "True"
 
 # 1. Add the project root to the path
 sys.path.insert(0, os.path.abspath('..'))
 
-# 2. MOCK DEPENDENCIES
-# This tells Sphinx: "If you can't find these libraries, just pretend they exist."
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return MagicMock()
+# Mock platformdirs manually because pathlib.Path fails with standard MagicMock
+mock_platformdirs = MagicMock()
+mock_platformdirs.user_cache_dir.return_value = "/tmp/mock_cache"
+sys.modules['platformdirs'] = mock_platformdirs
 
-# Add every external library your project uses
-MOCK_MODULES = [
+# 2. MOCK DEPENDENCIES
+# Use autodoc_mock_imports to let Sphinx handle mocking gracefully
+autodoc_mock_imports = [
     'numpy',
     'sympy', 
     'cupy', 
-    'cupy.cuda', 
-    'platformdirs',
     'scipy'
 ]
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 # -- Project information -----------------------------------------------------
 
 project = 'HeteroSymNN'
@@ -45,3 +43,8 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+# Prevent Sphinx from expanding type aliases and defaults
+autodoc_preserve_defaults = True
+autodoc_typehints_format = "short"
+python_use_unqualified_type_names = True

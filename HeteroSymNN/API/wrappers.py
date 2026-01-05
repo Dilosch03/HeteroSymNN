@@ -2,7 +2,7 @@ import os
 import numpy as np
 import math as mth
 import itertools as iter
-from typing import Literal,Callable
+from typing import Literal,Callable,Union
 import datetime
 import warnings
 import inspect
@@ -14,6 +14,10 @@ from ..Core.Nets.neural_nets import ConfigurableNN
 from ..Core import losses, optimizers,initializers
 
 def _build_dynamic_map(module, base_class):
+    """
+    Internal helper to dynamically discover subclasses of a base class within a module.
+    Used to populate maps for Losses, Optimizers, and Initializers.
+    """
     new_map = {}
     for name, member in inspect.getmembers(module):
         if inspect.isclass(member) and \
@@ -28,28 +32,41 @@ OPTIMIZER_MAP:dict[str,optimizers.Optimizer] = _build_dynamic_map(optimizers, op
 INITIALIZER_MAP:dict[str, initializers.Initializer] = _build_dynamic_map(initializers, initializers.Initializer)
 
 def _normalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
+    """Internal helper for Min-Max normalization."""
     range_val = max_val - min_val
     range_val[range_val == 0] = 1.0
     return (vals - min_val) / range_val
 
 def _denormalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
+    """Internal helper for Min-Max denormalization."""
     return vals * (max_val - min_val) + min_val
 
 class Wraper():
-    def __init__(self, model: ConfigurableNN,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
-        """
-        Model Wrapper class that simplifies training, evaluation saving and loading of neural networks.
-        
-        :param model: Created Model that would be used for training. If you want to load you can pass a None value.
-        :type model: ConfigurableNN
-        :param work_type:  Type of work the model would be used for, could be regressions or classifications.
-        :type work_type: Literal["class", "reg"]
-        :param normalize_inputs: Toggle if the inputs values would be internally normalized and denormalized.
-        :type normalize_inputs: bool
-        :param normalize_outputs: Toggle if the outputs values would be internally normalized and denormalized.
-        :type normalize_outputs: bool
-        """
+    """
+    A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN`, :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` or :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`
 
+    This class simplifies common tasks such as:
+    
+    *   Data loading and normalization (Min-Max scaling).
+    *   Training execution and loss tracking.
+    *   Model evaluation (Classification metrics or Regression metrics).
+    *   Saving and loading the full model state (architecture, weights, optimizer state).
+
+    Parameters
+    ----------
+    model : :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN` or None
+        The neural network instance to wrap. Can be ``None`` if loading a model from disk later.
+    work_type : Literal["class", "reg"]
+        The type of problem the model solves:
+        
+        *   ``"class"``: Classification (calculates Accuracy, F1, etc.).
+        *   ``"reg"``: Regression (calculates MSE, R2, etc.).
+    normalize_inputs : bool, optional
+        If ``True``, input data (X) will be automatically normalized to [0, 1] based on training data statistics. Defaults to ``True``.
+    normalize_outputs : bool, optional
+        If ``True``, output data (Y) will be automatically normalized to [0, 1] during training and denormalized during prediction. Defaults to ``True``.
+    """
+    def __init__(self, model: ConfigurableNN,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
         self._model:ConfigurableNN = None
         self.training_data = None
         self.training_data_norm = None
@@ -65,7 +82,13 @@ class Wraper():
         self.model:ConfigurableNN = model
 
     @property
-    def model(self):
+    def model(self)->ConfigurableNN:
+        """
+        The underlying neural network instance.
+        
+        When setting this property, the wrapper validates that the new model's input/output dimensions 
+        match any previously loaded training data.
+        """
         return self._model
     
     @model.setter
@@ -88,7 +111,29 @@ class Wraper():
             if Y_norm.ndim == 2 and Y_norm.shape[1] != expected_y:
                 raise ValueError(f"Error de Arquitectura: El nuevo modelo espera {expected_y} salidas, pero los datos cargados tienen {Y_norm.shape[1]} columnas (targets).")
 
-    def load_training(self, training_data: list, expected_results: list):
+    def load_training(self, training_data: list, expected_results: list)->None:
+        """
+        Loads and prepares training data.
+
+        This method performs the following steps:
+        
+        1.  Converts inputs to NumPy arrays.
+        2.  Checks dimensions against the model architecture (if a model is set).
+        3.  Calculates normalization statistics (min/max) if normalization is enabled.
+        4.  Stores the normalized data for training.
+
+        Parameters
+        ----------
+        training_data : list or np.ndarray
+            Input features (X). Shape should be (n_samples, n_features).
+        expected_results : list or np.ndarray
+            Target labels/values (Y). Shape should be (n_samples, n_outputs).
+        
+        Raises
+        ------
+        ValueError
+            If dimensions do not match the model's expected input/output size.
+        """
         self._loaded_train_data = True
         X_raw = np.array(training_data)
         Y_raw = np.array(expected_results)
@@ -125,9 +170,9 @@ class Wraper():
             self.x_max = np.max(X_raw, axis=0)
             X_norm = _normalization(X_raw, self.x_min, self.x_max)
         else:
-            self.x_min = None # No se guardan estadísticas
+            self.x_min = None
             self.x_max = None
-            X_norm = X_raw # Usar los datos en crudo como entrada
+            X_norm = X_raw
 
         if self.normalize_outputs:
             self.y_min = np.min(Y_raw, axis=0)
@@ -136,11 +181,28 @@ class Wraper():
         else:
             self.y_min = None 
             self.y_max = None
-            Y_norm = Y_raw # Usar los datos en crudo como objetivo
+            Y_norm = Y_raw
         
         self.training_data_norm = (X_norm, Y_norm)
 
-    def run_training(self, num_iterations:int = None, training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None):
+    def run_training(self, num_iterations:int = None, training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
+        """
+        Executes the training loop on the loaded data.
+
+        Parameters
+        ----------
+        num_iterations : int, optional
+            Number of epochs to train. If None, uses the model's configured default.
+        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
+            Training strategy. If None, uses the model's configured default.
+        batch_size : int, optional
+            Size of the batch for "mini-batch" mode. If not pass, uses the model's configured default.
+
+        Returns
+        -------
+        list[float]
+            A list of loss values recorded during training.
+        """
         if self.training_data is None:
             raise ValueError("No hay datos de entrenamiento cargados. Usa load_training().")
         
@@ -153,7 +215,22 @@ class Wraper():
         )
         return losses
     
-    def predict(self, data: list):
+    def predict(self, data: list)->np.ndarray:
+        """
+        Generates predictions for new data.
+
+        Handles input normalization and output denormalization automatically if configured.
+
+        Parameters
+        ----------
+        data : list or np.ndarray
+            Input features to predict.
+
+        Returns
+        -------
+        np.ndarray
+            Predicted values (denormalized if ``normalize_outputs=True``).
+        """
         X_raw = np.array(data)
         
         if self.normalize_inputs:
@@ -173,7 +250,22 @@ class Wraper():
         else:
             return Y_pred_norm 
 
-    def test_accuracy(self,test_data:list,expected_results:list):
+    def test_accuracy(self,test_data:list,expected_results:list)->Union[dict[str, float], tuple[dict[str, float], dict[str, int]]]:
+        """
+        Evaluates the model on a test dataset.
+
+        Parameters
+        ----------
+        test_data : list
+            Input features for testing.
+        expected_results : list
+            Ground truth values.
+
+        Returns
+        -------
+        dict or tuple
+            Evaluation metrics depending on ``work_type``.
+        """
         results = {}
         if (self.work_type == "reg"):
             results = self.regreccion_test_accuracy(test_data,expected_results)
@@ -184,7 +276,20 @@ class Wraper():
         
         return results
 
-    def classification_test_accuracy(self, test_data: list, expected_results: list):
+    def classification_test_accuracy(self, test_data: list, expected_results: list)->tuple[dict[str, float], dict[str, int]]:
+        """
+        Calculates classification metrics (Accuracy, Precision, Recall/TPR, F1 Score).
+
+        Note: Currently assumes binary classification or multi-label where threshold is 0.5.
+
+        Returns
+        -------
+        tuple[dict[str, float], dict[str, int]]
+            A tuple containing:
+            
+            1.  Dictionary of metrics (Acur, Press, TPR, F1).
+            2.  Dictionary of raw counts (TP, TN, FP, FN).
+        """
         predictions_raw = self.predict(test_data)
         
         predictions = (predictions_raw > 0.5).astype(int).flatten()
@@ -224,7 +329,15 @@ class Wraper():
 
         return (evals, results_compare)
     
-    def regreccion_test_accuracy(self, test_data: list, expected_results: list):
+    def regreccion_test_accuracy(self, test_data: list, expected_results: list)->dict[str, float]:
+        """
+        Calculates regression metrics (R2, MSE, RMSE, MAE, MAPE, AIC, BIC).
+
+        Returns
+        -------
+        dict[str, float]
+            Dictionary containing the calculated metrics.
+        """
         predictions_raw = self.predict(test_data)
         
         if predictions_raw.ndim == 2 and predictions_raw.shape[1] == 1:
@@ -291,7 +404,21 @@ class Wraper():
         
         return evaluations
     
-    def save_model(self, path: str, model_name: str, description: str = None):
+    def save_model(self, path: str, model_name: str, description: str = None)->None:
+        """
+        Saves the model architecture, parameters, optimizer state, and wrapper configuration to a file.
+
+        The file is saved as a compressed NumPy archive (``.npz``).
+
+        Parameters
+        ----------
+        path : str
+            Directory path to save the file.
+        model_name : str
+            Name of the file (without extension).
+        description : str, optional
+            Optional description to store in metadata.
+        """
         if not path.endswith(".npz"):
             path = os.path.join(path,model_name + ".npz")
         
@@ -337,7 +464,23 @@ class Wraper():
         except Exception as e:
             raise IOError(f"Error al guardar el modelo.") from e
 
-    def load_model(self,path: str):
+    def load_model(self,path: str)->None:
+        """
+        Loads a model from a ``.npz`` file created by :meth:`save_model`.
+
+        Reconstructs the :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN`, restores weights, 
+        optimizer state, and normalization statistics.
+
+        Parameters
+        ----------
+        path : str
+            Path to the ``.npz`` file.
+        
+        Raises
+        ------
+        IOError
+            If the file cannot be loaded or has an invalid format.
+        """
         if not path.endswith(".npz"):
             path = path + ".npz"
         
@@ -448,6 +591,22 @@ class Wraper():
             raise IOError(f"Error al cargar el modelo desde {path}. El archivo no se pudo leer, está dañado o no es un modelo válido. Causa: {e}") from e
 
 class GridSearchWraper(Wraper):
+    """
+    A wrapper that extends :class:`Wraper` to perform Hyperparameter Grid Search.
+
+    Parameters
+    ----------
+    Model_class : Callable
+        The class constructor to use for creating models (e.g., :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`).
+    work_type : Literal["class", "reg"]
+        Type of problem (classification or regression).
+    validation_testing_split : float, optional
+        Fraction of data to use for validation during grid search (default 0.2).
+    normalize_inputs : bool, optional
+        Whether to normalize inputs.
+    normalize_outputs : bool, optional
+        Whether to normalize outputs.
+    """
     def __init__(self,Model_class:Callable,work_type:Literal["class","reg"],validation_testing_split = 0.2,
                  normalize_inputs: bool = True, normalize_outputs: bool = True):
         
@@ -469,10 +628,18 @@ class GridSearchWraper(Wraper):
         self.best_score: float = -np.inf
         self.grid_search_results: list[dict[str, any]] = []
 
-    def load_training(self, training_data: list, expected_results: list,shuffle:bool = True):
+    def load_training(self, training_data: list, expected_results: list,shuffle:bool = True)->None:
         """
-        Sobrescribe load_training para barajar y partir los datos en
-        conjuntos de entrenamiento y validación.
+        Loads data and splits it into Training and Validation sets.
+
+        Parameters
+        ----------
+        training_data : list
+            All available input data.
+        expected_results : list
+            All available target data.
+        shuffle : bool, optional
+            Whether to shuffle data before splitting (default True).
         """
         # 1. Convertir a numpy para barajar y partir fácilmente
         X_full = np.array(training_data)
@@ -506,16 +673,27 @@ class GridSearchWraper(Wraper):
         super().load_training(self._X_train, self._y_train)
 
     def _generate_param_combinations(self, param_grid: dict[str, list[any]]) -> list[dict[str, any]]:
+        """
+        Internal helper to generate all combinations of hyperparameters.
+        
+        Parameters
+        ----------
+        param_grid : dict[str, list[any]]
+            Dictionary of the name of the parameter and the posible values.
+
+        Returns
+        -------
+        list[dict[str, any]]
+            List of dictionarys comprising all combinations of hyperparameters.
+        """
         if not param_grid:
             return []
 
         param_keys = param_grid.keys()
         value_lists = param_grid.values()
 
-        # itertools.product hace todo el trabajo
-        combinations_list = list(iter.product(*value_lists))
 
-        # Convierte la lista de tuplas de vuelta a lista de diccionarios
+        combinations_list = list(iter.product(*value_lists))
         combinations_dict = [dict(zip(param_keys, combo)) for combo in combinations_list]
 
         return combinations_dict
@@ -524,7 +702,22 @@ class GridSearchWraper(Wraper):
                     static_params: dict[str, any],
                     param_grid: dict[str, list[any]],
                     metric_to_optimize: str = None,
-                    higher_is_better: bool = True):
+                    higher_is_better: bool = True)->tuple[ConfigurableNN, dict[str, any], list[dict[str, any]]]:
+        """
+        Internal method to execute the grid search loop.
+        
+        
+        Parameters
+        ----------
+        static_params : dict[str, any]
+            Dictionary of the parameters that will remain static during the grid search.
+        param_grid : dict[str, list[any]]
+            Dictionary of the name of the parameter and the posible values.
+        metric_to_optimize : str, optional
+            The metric name to use for selecting the best model.
+        higher_is_better : bool, optional
+            True if maximizing the metric, False if minimizing.
+        """
         
         if (metric_to_optimize == None):
             if (self.work_type == "reg"):
@@ -592,38 +785,56 @@ class GridSearchWraper(Wraper):
             except Exception as e:
                 self.grid_search_results.append({'params': readable_params, 'score': None, 'error': str(e)})
 
-        # Al final, asigna el mejor modelo al wrapper
         self.model = self.best_model
-        
-        # Imprime los mejores parámetros de forma legible
         return self.best_model, self.best_params, self.grid_search_results
 
-    # --- 2. NUEVA FUNCIÓN run_training (SOBRESCRITA) ---
     def run_training(self,
                      static_params: dict[str, any] = None,
                      param_grid: dict[str, list[any]] = None,
                      metric_to_optimize: str = 'R2',
                      higher_is_better: bool = True,
                      
-                     # --- Args para Entrenamiento Normal (de la clase base) ---
                      num_iterations: int = None, 
                      training_mode: Literal["batch", "mini-batch", "stochastic"] = None, 
-                     batch_size: int = None):
+                     batch_size: int = None)->Union[list[float], tuple[ConfigurableNN, dict[str, any], list[dict[str, any]]]]:
         """
-        Sobrescribe run_training para manejar dos casos:
-        1. Si se provee un 'param_grid', ejecuta un grid search.
-        2. Si no, y ya existe un modelo, lo entrena más (llama a super()).
-        """
+        Executes training. Can function in two modes:
+
+        1.  **Grid Search Mode:** If ``param_grid`` is provided. Iterates through all parameter combinations, 
+            trains a new model for each, evaluates on the validation set, and selects the best one.
+        2.  **Standard Training Mode:** If ``param_grid`` is None. Trains the currently active model (e.g., the best model found) 
+            for additional iterations.
+
+        Parameters
+        ----------
+        static_params : dict[str, any], optional
+            Parameters that remain constant across all grid search trials (e.g., input size).
+        param_grid : dict[str, list[any]], optional
+            Dictionary where keys are parameter names and values are lists of possibilities to try.
+        metric_to_optimize : str, optional
+            The metric name to use for selecting the best model (e.g., 'R2', 'Acur', 'MSE').
+        higher_is_better : bool, optional
+            True if maximizing the metric (ejem. for Accuracy or R2), False if minimizing (ejem. for MSE).
         
-        # --- Decidimos qué acción tomar ---
+        num_iterations : int, optional
+            Number of training iterations. If None, uses the model's configured default.
+        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
+            Training strategy. If None, uses the model's configured default.
+        batch_size : int, optional
+            Size of the batch when using "mini-batch" mode. If not pass, uses the model's configured default.
+        
+        Returns
+        -------
+        tuple or list
+            In Grid Search mode: Returns ``(best_model, best_params, all_results)``.
+            In Standard mode: Returns the loss history list.
+        """
         
         if param_grid is not None:
-            # --- Caso 1: El usuario quiere hacer un Grid Search ---
             print("Grid search detectado (param_grid no es None). Iniciando búsqueda...")
             if ((self._X_train is None) or (self._y_train is None) or (self._X_vali is None) or (self._y_vali is None) or (self.model_class is None) or (static_params is None)):
                 raise ValueError("Para grid search, debe proveer X_train, y_train, X_test, y_test, model_class, y static_params.")
             
-            # Llamamos a la lógica de grid search (la función renombrada)
             return self._run_grid_search(
                 static_params=static_params,
                 param_grid=param_grid,
@@ -632,10 +843,6 @@ class GridSearchWraper(Wraper):
             )
             
         elif self.model is not None and num_iterations is not None:
-            # --- Caso 2: El usuario quiere entrenar más el modelo existente ---
-            print(f"Entrenando modelo existente por {num_iterations} iteraciones más...")
-            
-            # Llamamos a la lógica de la clase base (Wraper)
             return super().run_training(
                 num_iterations=num_iterations,
                 training_mode=training_mode,
@@ -643,9 +850,7 @@ class GridSearchWraper(Wraper):
             )
         
         elif self.model is None and num_iterations is not None:
-            # --- Caso 3: Error - intentando entrenar un modelo que no existe ---
             raise ValueError("No se ha encontrado un modelo. Debe ejecutar run_training con un 'param_grid' primero para encontrar un modelo.")
         
         else:
-            # --- Caso 4: Error - no se proveyeron argumentos suficientes ---
             raise ValueError("Argumentos insuficientes. Debe proveer un 'param_grid' (para grid search) o 'num_iterations' (para un modelo existente).")

@@ -29,9 +29,9 @@ HeteroSymNN acts as a **Differentiable Compiler**:
    :maxdepth: 2
    :caption: API Reference:
 
-   modules/types
    modules/api
    modules/core
+   modules/types
    modules/jit
    modules/backend
 

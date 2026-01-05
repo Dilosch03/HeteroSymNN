@@ -31,7 +31,16 @@ try:
 except Exception:
     warnings.warn("Cupy not installed. Training would be done in the CPU")
 
-def _check_cpp_compiler():
+def _check_cpp_compiler()->bool:
+    """
+    Checks if there is a c++ compiler installed in the computer and can be access globaly.
+    For internal use, recomended calling it just for debugging or logging purposes.
+    
+    Returns
+    -------
+    bool
+        True if a c++ compiler is found, False otherwise.
+    """
     compilers = [['cl.exe', '/?'],['g++', '--version'], ['clang', '--version']] 
     global CPP_INSTALLED_COMPILER
     for args in compilers:
@@ -65,7 +74,19 @@ def _get_cuda_dims(n,device_id:int):
     return grid_dim, block_dim
 
 
-def clear_kernel_cache(cache_type: Literal["ALL","CPU","GPU"] = 'ALL'):   
+def clear_kernel_cache(cache_type: Literal["ALL","CPU","GPU"] = 'ALL')->None:
+    """
+    Clears the cache used by HeteroSymNN.
+    
+    Parameters
+    ----------
+    cache_type : Literal["ALL","CPU","GPU"], optional
+        Type of cache to clear. Options are:
+        - "ALL": Clears both CPU and GPU caches.
+        - "CPU": Clears only the CPU cache.
+        - "GPU": Clears only the GPU cache.
+        The default is 'ALL'.
+    """
     cache_type = cache_type.upper()
     
     def remove_dir(dir_path, name):

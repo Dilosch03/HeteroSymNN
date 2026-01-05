@@ -3,11 +3,6 @@ High-Level API
 
 The **API** module provides high-level wrappers to simplify the training, evaluation, and management of HeteroSymNN models.
 
-.. automodule:: HeteroSymNN.API.wrappers
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Model Wrapper
 -------------
 

@@ -1,70 +1,214 @@
+from __future__ import annotations
 import numpy as np
 from typing import Literal
 import warnings
 
 from ..Backend import hardware as HW
 from ..JIT.compiler import SymbolicJITCompiler
+from ..types import BackendArray
 
 class Loss:
+    """
+    Base class for all loss functions.
+
+    All methods that any loss class needs to have are defined here.
+    """
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
+        """
+        Internal method to change the computational backend.
+
+        This method must be implemented by subclasses to handle the transfer of internal data 
+        (e.g., constants) between GPU and CPU memory spaces when switching devices. It must also 
+        update the execution strategy (distinguishing between ``CPU_JIT`` and ``CPU_PYTHON``) 
+        to ensure the correct processing path is used.
+        """
         pass
     def set_gpu_id(self,new_id:int):
+        """
+        Sets the GPU ID for computation.
+
+        This method must be implemented by subclasses to update the GPU ID used for internal calculations.
+
+        Parameters
+        ----------
+        new_id : int
+            The new GPU ID.
+        """
         pass
-    def forward(self, y_pred, y_true):
+    def forward(self, y_pred:BackendArray, y_true:BackendArray)->BackendArray:
+        """
+        Computes the loss value.
+
+        This method must be implemented by subclasses to define the forward pass of the loss function.
+
+        Parameters
+        ----------
+        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+            The predicted values.
+        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+            The ground truth values.
+        
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            The loss value.
+        """
         raise NotImplementedError
 
-    def backward(self, y_pred, y_true):
+    def backward(self, y_pred:BackendArray, y_true:BackendArray)->BackendArray:
+        """
+        Computes the gradient of the loss.
+
+        This method must be implemented by subclasses to define the backward pass (gradient computation) of the loss function.
+
+        Parameters
+        ----------
+        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+            The predicted values.
+        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+            The ground truth values.
+
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            The gradient of the loss.
+        """
         raise NotImplementedError
 
     def get_config(self):
+        """
+        Returns the configuration of the loss instance.
+
+        This method should be implemented by subclasses to return a dictionary containing the parameters necessary 
+        to reconstruct the loss function and its internal state.
+        """
         return {"class_name": self.__class__.__name__}
 
 class FlexibleLoss(Loss):
     """
-    Función de pérdida JIT-compilada.
-    Acepta una expresión matemática (string) y constantes opcionales.
+    Base class for loss functions that use the JIT compiler.
+    
+    Parameters
+    ----------
+    loss_expression : str
+        The definition of the loss function. This can be:
+        
+        1. A valid mathematical Python expression using ``y_pred`` and ``y_true`` (e.g., ``"(y_pred - y_true)**2"``).
+        2. A case-insensitive key from the predefined ``COMMON_FORMULAS`` (e.g., ``"mse"``, ``"bce"``, ``"huber"``).
+
+    constants : dict[str, float], optional
+        Dictionary of the non-standard constants that are in the loss function if any, by default None.
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+
+    Examples
+    --------
+    >>> from HeteroSymNN.Core.losses import FlexibleLoss
+    >>> from HeteroSymNN.Core.Nets.neural_nets import SimpleNN
+    >>> net_structure = [4, 6, 3]
+    >>> loss_expression = "abs(y_pred - y_true)"
+    >>> example_net = SimpleNN(net_structure,"sigmoid",loss_function=FlexibleLoss(loss_expression))
     """
     def __init__(self, loss_expression: str = "(y_pred - y_true)**2", constants: dict[str, float] = None,
                  computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
-        self.loss_expression = loss_expression
-        self.constants = constants or {}
-        self.COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
-        self.GPU_ID = gpu_id
+        self._loss_expression = loss_expression
+        self._constants = constants or {}
+        self._COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
+        self._GPU_ID = gpu_id
 
         if (computational_method != None):
             if ((computational_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
                 if (HW.WARNINGS_STRICT_MODE):
                     raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
                 else:
-                    warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intantando con el metodo CPU_JIT")
+                    warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intentando con el metodo CPU_JIT")
                     computational_method = "CPU_JIT"
 
             if ((computational_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
                 if (HW.WARNINGS_STRICT_MODE):
                     raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
                 else:
-                    warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+                    warnings.warn("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
                     computational_method = "CPU_PYTHON"
 
-            self.COMPUTATIONAL_METHOD = computational_method
+            self._COMPUTATIONAL_METHOD = computational_method
 
-        self.set_constants(self.constants)
+        self.set_constants(self._constants)
 
-        self.compiler = SymbolicJITCompiler(
-            configs=[(loss_expression, self.constants)],
-            calculation_method=self.COMPUTATIONAL_METHOD,
-            device_id=self.GPU_ID, 
+        self._compiler = SymbolicJITCompiler(
+            configs=[(loss_expression, self._constants)],
+            calculation_method=self._COMPUTATIONAL_METHOD,
+            device_id=self._GPU_ID, 
             mode="loss"
         )
 
     @property
     def _be(self):
-        """Propiedad para obtener el backend de cálculo actual (numpy o cupy)"""
-        if (("GPU" in self.COMPUTATIONAL_METHOD) and HW.GPU_ENABLED):
+        """
+        Internal property to get the computational manager used (CuPy or Numpy).
+        
+        Returns
+        -------
+        CuPy or Numpy module
+        """
+        if (("GPU" in self._COMPUTATIONAL_METHOD) and HW.GPU_ENABLED):
             return HW.cp
         return np
     
-    def set_constants(self,constants:dict[str,float]):
+    @property
+    def LOSS_EXPRESSION(self)->str:
+        """
+        Expression or name of the loss function used.
+        
+        Returns
+        -------
+        str
+        """
+        return self._loss_expression
+    
+    @property
+    def COMPUTATIONAL_METHOD(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
+        """
+        Current computational method used.
+        
+        Returns
+        -------
+        Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
+        """
+        return self._COMPUTATIONAL_METHOD
+    
+    @property
+    def GPU_ID(self)->int:
+        """
+        Current GPU ID used.
+        
+        Returns
+        -------
+        int
+        """
+        return self._GPU_ID
+
+    @property
+    def COMPILER(self)->SymbolicJITCompiler:
+        """
+        Compiler class that is used for the symbolic loss function.
+        
+        Returns
+        -------
+        SymbolicJITCompiler
+        """
+        return self._compiler
+    
+    def set_constants(self,constants:dict[str,float])->None:
+        """
+        Method to set the constants of the loss function using a dictionary of the string of the constant and its new value.
+        
+        Parameters
+        ----------
+        constants : dict[str, float]
+        """
         temp = []
         for key in sorted(constants.keys()):
             temp.append(constants[key])
@@ -72,17 +216,49 @@ class FlexibleLoss(Loss):
         if (len(temp) == 0):
             temp.append(0.0)
 
-        if (self.COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            with HW.be.cuda.Device(self.GPU_ID):
+        if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+            with HW.be.cuda.Device(self._GPU_ID):
                 self.arr_constants = self._be.array(temp)
         else:
             self.arr_constants = self._be.array(temp)
 
-    def set_gpu_id(self,new_id:int):
-        if (new_id != self.GPU_ID):
-            self.compiler.set_gpu_id(new_id)
+    def set_gpu_id(self,new_id:int)->None:
+        """
+        Method to set a new GPU to do the computation.
 
-    def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
+        Parameters
+        ----------
+        new_id : int
+        """
+        if (new_id != self._GPU_ID):
+            self._compiler.set_gpu_id(new_id)
+            self._GPU_ID = new_id
+
+    def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
+        """
+        Method to change the computational method used.
+
+        This will force a kernel recompilation and the movement of the location of the constants.
+
+        Parameters
+        ----------
+        new_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
+            New computational method to set.
+        gpu_id : int, optional
+            GPU ID to use if the new method is "GPU_CUDA". If not provided, the current GPU ID of the network will be used., by default None.
+        
+        Raises
+        ------
+        ValueError
+            If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
+        RuntimeError
+            If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
+        
+        Returns
+        -------
+        Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
+            New computational method it was able to be set. In case that there was an error in the recompilation and `HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` is set to false the method that was requested will differ with the returned method.
+        """
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
             raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
         
@@ -93,72 +269,156 @@ class FlexibleLoss(Loss):
             if (HW.WARNINGS_STRICT_MODE):
                 raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
             else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intantando con el metodo CPU_JIT")
+                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intentando con el metodo CPU_JIT")
                 new_method = "CPU_JIT"
 
         if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
             if (HW.WARNINGS_STRICT_MODE):
                 raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
             else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+                warnings.warn("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
                 new_method = "CPU_PYTHON"
         
-        if (new_method != self.COMPUTATIONAL_METHOD):
-            self.COMPUTATIONAL_METHOD = new_method
-            self.GPU_ID = gpu_id
+        if (new_method != self._COMPUTATIONAL_METHOD):
+            self._COMPUTATIONAL_METHOD = new_method
+            self._GPU_ID = gpu_id
 
-            self.COMPUTATIONAL_METHOD = self.compiler._change_method(self.COMPUTATIONAL_METHOD,self.GPU_ID)
-        return self.COMPUTATIONAL_METHOD
+            self._COMPUTATIONAL_METHOD = self._compiler._change_method(self._COMPUTATIONAL_METHOD,self._GPU_ID)
+        return self._COMPUTATIONAL_METHOD
 
-    def forward(self, y_pred, y_true):
-        # Aseguramos buffers del tamaño correcto en el dispositivo correcto
+    def forward(self, y_pred:BackendArray, y_true:BackendArray):
+        """
+        Forward pass of the loss function.
+
+        Parameters
+        ----------
+        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+            Predicted values.
+        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+            True values.
+
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            Loss value.
+        """
         loss_vec = self._be.zeros_like(y_pred)
-        self.compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
+        self._compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
         return self._be.mean(loss_vec) 
 
-    def backward(self, y_pred, y_true):
+    def backward(self, y_pred:BackendArray, y_true:BackendArray):
+        """
+        Backward pass of the loss function.
+
+        Parameters
+        ----------
+        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+            Predicted values.
+        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+            True values.
+
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            Gradient of the loss with respect to the predicted values.
+        """
         grad_vec = self._be.zeros_like(y_pred)
-        self.compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
-        # Normalización del gradiente para Mean reduction: (2 / N) o (1 / N) dependiendo de la convención.
-        # Para MSE puro la derivada de sum((y-t)^2)/N es 2(y-t)/N.
+        self._compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         return grad_vec * (2.0 / y_pred.size) 
 
     def get_constants(self)->dict[str,float]:
-        if (self.COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            self.arr_constants = self._be.asnumpy(self.arr_constants)
+        """
+        Method to get the constants values of the loss function if it has any.
+        
+        Returns
+        -------
+        dict[str,float]
+        """
+        temp_array = self.arr_constants.copy()
+        if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+            temp_array = self._be.asnumpy(temp_array)
         
         reconstructed_constants = {}
-        for i,key in enumerate(sorted(self.constants.keys())):
-            reconstructed_constants[key] = float(self.arr_constants[i])
+        for i,key in enumerate(sorted(self._constants.keys())):
+            reconstructed_constants[key] = float(temp_array[i])
 
         return reconstructed_constants
     
     def get_config(self):
+        """
+        Returns the configuration of the loss instance.
+
+        This method returns a dictionary containing the parameters necessary 
+        to reconstruct the loss function and its internal state.
+        
+        Returns
+        -------
+        dict[str,any]
+            A dictionary containing the class name, loss expression, and constants.
+        """
         return {
             "class_name": "FlexibleLoss",
-            "loss_expression": self.loss_expression,
+            "loss_expression": self._loss_expression,
             "constants": self.get_constants()
         }
 
-# --- Atajos Comunes ---
 
 class MSELoss(FlexibleLoss):
+    """
+    High level class for calling for a MSE loss function.
+    
+    Parameters
+    ----------
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+    """
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("mse",computational_method=computational_method,gpu_id=gpu_id) 
 
 class MAELoss(FlexibleLoss):
-    def __init__(selfm,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
+    """
+    High level class for calling for a MAE loss function.
+    
+    Parameters
+    ----------
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+    """
+    def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("mae",computational_method=computational_method,gpu_id=gpu_id)
 
-# Ejemplo de Loss con Estado (Hiperparámetros)
+
 class HuberLoss(FlexibleLoss):
-    def __init__(self, delta=1.0,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
-        # Usamos la definición de Huber que está en COMMON_FORMULAS o la definimos aquí
-        # Nota: COMMON_FORMULAS['huber'] usa 1.0 hardcodeado. 
-        # Para usar el delta dinámico, reescribimos la fórmula usando la variable 'delta'
+    """
+    High level class for calling for a Huber loss function.
+    
+    Parameters
+    ----------
+    delta: float
+        Value of the constant Delta
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+    """
+    def __init__(self, delta:float=1.0,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         formula = "Piecewise((0.5 * (y_pred - y_true)**2, Abs(y_pred - y_true) <= delta), (delta * (Abs(y_pred - y_true) - 0.5 * delta), True))"
         super().__init__(formula, constants={"delta": delta},computational_method=computational_method,gpu_id=gpu_id)
 
 class BinaryCrossEntropy(FlexibleLoss):
+    """
+    High level class for calling for a Binary Cross Entropy loss function.
+    
+    Parameters
+    ----------
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+    """
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("bce",computational_method=computational_method,gpu_id=gpu_id)

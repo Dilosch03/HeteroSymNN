@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 from typing import Literal
 import warnings
@@ -5,6 +6,18 @@ import warnings
 from ..Backend import hardware as HW
 
 class Optimizer:
+    """
+    Base class for all optimizers.
+    
+    Parameters
+    ----------
+    learning_rate : float, optional
+        The learning rate for the optimizer.
+    computational_device : Literal["GPU", "CPU"], optional
+        The device where computations will be performed.
+    device_id : int, optional
+        The ID of the GPU to use if computational_device is "GPU".
+    """
     def __init__(self, learning_rate: float = None, computational_device:Literal["GPU", "CPU"]=None, device_id: int = None):
         self.learning_rate = learning_rate
         self.DEVICE_ID = device_id
@@ -32,12 +45,35 @@ class Optimizer:
         self._setup_kernels()
 
     def _refresh_parameters(self, vector_format):
+        """
+        Internal method to refresh internal parameters when changing devices or vector formats.
+
+        This method must be implemented by subclasses to ensure that all internal state tensors 
+        (e.g., momentum, velocity) are converted to the correct backend format (NumPy or CuPy) 
+        provided by ``vector_format``.
+        """
         raise NotImplementedError
 
     def _setup_kernels(self):
+        """
+        Internal method to setup CUDA kernels if needed.
+
+        This method should be implemented by subclasses to compile or define any custom CUDA kernels 
+        required for the optimizer when running on a GPU.
+        """
         pass
 
     def _change_COMPUTACIONAL_DEVICE(self, device:Literal["GPU","CPU"], device_id: int = None):
+        """
+        Internal method to change the computational device (CPU/GPU).
+        
+        Parameters
+        ----------
+        device : Literal["GPU", "CPU"]
+            The new device to use.
+        device_id : int, optional
+            The GPU ID to use if device is "GPU".
+        """
         if not(device in ["GPU","CPU"]):
             raise ValueError("Se paso como device algo que no es GPU o CPU.")
         
@@ -68,6 +104,14 @@ class Optimizer:
                 self.DEVICE_ID = device_id
 
     def set_gpu_id(self,new_id:int):
+        """
+        Sets the GPU ID for the optimizer.
+        
+        Parameters
+        ----------
+        new_id : int
+            The new GPU ID.
+        """
         if (new_id >= HW.NUM_GPUS):
             raise ValueError("")
 
@@ -78,6 +122,14 @@ class Optimizer:
                     self._refresh_parameters(HW.cp.array)
     
     def _to_device(self, device: Literal["GPU", "CPU"]):
+        """
+        Internal method to move optimizer state to a specific device.
+        
+        Parameters
+        ----------
+        device : Literal["GPU", "CPU"]
+            The target device.
+        """
         if not(device in ["GPU","CPU"]):
             raise ValueError("Se paso como device algo que no es GPU o CPU.")
         
@@ -98,22 +150,82 @@ class Optimizer:
                 self._refresh_parameters(self._ASNUMPY)
 
     def step(self, layers: list, inputs):
+        """
+        Performs a single optimization step.
+        
+        This method must be implemented by subclasses to define the specific optimization logic 
+        (e.g., SGD update, Adam update) applied to the layers.
+
+        Parameters
+        ----------
+        layers : list
+            List of layers to update.
+        inputs : Any
+            Input data (used by some optimizers for gradient calculation context if needed).
+        """
         raise NotImplementedError
 
     def get_state(self):
+        """
+        Returns the internal state of the optimizer.
+        
+        This method should be implemented by subclasses to return a dictionary containing 
+        the current internal state (e.g., iteration count, moving averages) for serialization.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the optimizer state.
+        """
         self._to_device("CPU")
         return {}
 
     def set_state(self, state, be):
+        """
+        Sets the internal state of the optimizer.
+        
+        This method should be implemented by subclasses to restore the internal state 
+        from a provided dictionary.
+
+        Parameters
+        ----------
+        state : dict
+            The state dictionary to load.
+        be : module
+            The backend module (numpy or cupy) to use for creating arrays.
+        """
         self._to_device("CPU")
         pass
 
     def get_config(self):
+        """
+        Returns the configuration of the optimizer.
+        
+        This method should be implemented by subclasses to return a dictionary containing 
+        the configuration parameters necessary to reconstruct the optimizer instance.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the configuration parameters.
+        """
         self._to_device("CPU")
         return {'class_name': self.__class__.__name__, 'learning_rate': self.learning_rate}
 
 
 class SgdOptimizer(Optimizer):
+    """
+    Stochastic Gradient Descent (SGD) optimizer.
+    
+    Parameters
+    ----------
+    learning_rate : float, optional
+        The learning rate. Defaults to 0.01.
+    computational_device : Literal["GPU", "CPU"], optional
+        The device where computations will be performed.
+    device_id : int, optional
+        The ID of the GPU to use if computational_device is "GPU".
+    """
     _kernel_weights = None
     _kernel_bias = None
 
@@ -143,6 +255,16 @@ class SgdOptimizer(Optimizer):
                 )
 
     def step(self, layers: list, inputs):
+        """
+        Performs a single optimization step using SGD.
+        
+        Parameters
+        ----------
+        layers : list
+            List of layers to update.
+        inputs : Any
+            Input data.
+        """
         self._to_device(self.COMPUTACIONAL_DEVICE)        
         prev_a = inputs
 
@@ -165,6 +287,24 @@ class SgdOptimizer(Optimizer):
 
 
 class AdamOptimizer(Optimizer):
+    """
+    Adam optimizer.
+    
+    Parameters
+    ----------
+    learning_rate : float, optional
+        The learning rate. Defaults to 0.001.
+    computational_device : Literal["GPU", "CPU"], optional
+        The device where computations will be performed.
+    device_id : int, optional
+        The ID of the GPU to use if computational_device is "GPU".
+    beta1 : float, optional
+        The exponential decay rate for the 1st moment estimates. Defaults to 0.9.
+    beta2 : float, optional
+        The exponential decay rate for the 2nd moment estimates. Defaults to 0.999.
+    epsilon : float, optional
+        A small constant for numerical stability. Defaults to 1e-8.
+    """
     _fused_kernel = None
     def __init__(self, learning_rate: float = None,computational_device:Literal["GPU", "CPU"]=None, device_id: int = None, beta1: float = 0.9, beta2: float = 0.999, epsilon: float = 1e-8):
         super().__init__(learning_rate,computational_device,device_id)
@@ -232,6 +372,16 @@ class AdamOptimizer(Optimizer):
         self.v = new_v
 
     def step(self, layers: list, inputs):
+        """
+        Performs a single optimization step using Adam.
+        
+        Parameters
+        ----------
+        layers : list
+            List of layers to update.
+        inputs : Any
+            Input data.
+        """
         self._to_device(self.COMPUTACIONAL_DEVICE)
         if self.learning_rate is None:
             self.learning_rate = 0.001

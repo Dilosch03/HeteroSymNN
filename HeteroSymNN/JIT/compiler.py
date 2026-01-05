@@ -17,8 +17,82 @@ from ..types import NodeConfig
 
 
 class SymbolicJITCompiler:
+    """
+    The **SymbolicJITCompiler** is the computational heart of HeteroSymNN. It is responsible for transforming 
+    high-level symbolic definitions of mathematical functions (activations and losses) into highly optimized, 
+    hardware-specific executable kernels at runtime.
+
+    This compiler bridges the gap between flexibility and performance by leveraging SymPy for symbolic 
+    differentiation and code generation, and then compiling that code into:
+    
+    *   **CUDA Kernels (GPU_CUDA):** For massive parallelism on NVIDIA GPUs using CuPy.
+    *   **C++ Shared Libraries (CPU_JIT):** For high-performance CPU execution using OpenMP and system compilers (MSVC/GCC).
+    *   **Python Lambdas (CPU_PYTHON):** As a fallback for maximum compatibility.
+
+    It handles the automatic differentiation of user-defined formulas, manages the compilation cache to avoid 
+    redundant work, and provides a unified interface (`forward_kernel`, `backward_kernel`) for the rest of the 
+    library to execute these functions without worrying about the underlying hardware implementation.
+
+    Parameters
+    ----------
+    configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+        A list of configurations defining the functions to compile. 
+        For 'activation' mode, this is a list of (function_name_or_expression, constants_dict) for each node.
+        For 'loss' mode, this is a list containing a single tuple with the loss expression and its constants.
+    calculation_method : Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
+        The target backend for compilation.
+    device_id : int
+        The ID of the GPU device to use if compiling for CUDA.
+    mode : Literal["activation", "loss"], optional
+        The type of function being compiled. Determines the kernel signature and symbolic variables used 
+        ('num' for activations, 'y_pred'/'y_true' for losses). Defaults to "activation".
+
+    Attributes
+    ----------
+    forward_kernel : Callable
+        The compiled executable function for the forward pass.
+    backward_kernel : Callable
+        The compiled executable function for the backward pass (gradient calculation).
+    calculation_method : str
+        The current active calculation method.
+    device_id : int
+        The current GPU ID.
+
+    Examples
+    --------
+    Although this class is primarily used internally, it can be instantiated for testing custom symbolic expressions.
+    
+    >>> import numpy as np
+    >>> from HeteroSymNN.JIT.compiler import SymbolicJITCompiler
+    >>> 
+    >>> configs = [("Max(0, num)", {})]
+    >>> method = "CPU_PYTHON"
+    >>> mode = "activation"
+    >>> 
+    >>> py_compiler = SymbolicJITCompiler(
+    ...     configs=configs,
+    ...     calculation_method=method,
+    ...     mode=mode
+    ... )
+    >>>
+    >>> configs_2 =[("d*y_pred-y_true", {"d": 2.0})]
+    >>> method_2 = "GPU_CUDA"
+    >>> mode_2 = "loss"
+    >>> device_id = 0
+    >>> 
+    >>> cuda_compiler = SymbolicJITCompiler(
+    ...     configs=configs_2,
+    ...     calculation_method=method_2,
+    ...     device_id=device_id,
+    ...     mode=mode_2
+    ... )
+    
+    """
     def __init__(self, configs: list[NodeConfig], calculation_method: Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],
                  device_id:int,mode: Literal["activation", "loss"] = "activation"):
+        """
+        Initializes the JIT compiler and compiles the kernels for the requested backend.
+        """
         
         self.calculation_method = calculation_method
         self.device_id = device_id
@@ -41,7 +115,6 @@ class SymbolicJITCompiler:
             if device_id >= HW.NUM_GPUS:
                 raise ValueError(f"ID de GPU {device_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
             self._compile_cuda_kernels(configs)
-            self._compile_cuda_kernels(configs)
             
             self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
             self.func_ids = self.func_ids_gpu
@@ -56,7 +129,23 @@ class SymbolicJITCompiler:
             raise ValueError("Calculation Method no es GPU_CUDA, CPU_CPP o CPU_PYTHON")
 
 
-    def _get_ccode_from_config(self, func_str, constants):
+    def _get_ccode_from_config(self, func_str:str, constants:dict[str, float]):
+        """
+        
+        Internal method that parses a string expression into SymPy expressions for the function and its derivative.
+
+        Parameters
+        ----------
+        func_str : str
+            The mathematical expression string (e.g., "Max(0, num)").
+        constants : dict[str, float]
+            Dictionary of constant values used in the expression.
+
+        Returns
+        -------
+        tuple[sympy.Expr, sympy.Expr]
+            A tuple containing the symbolic expression for the function and its derivative.
+        """
         constants = constants or {}
         x_sym,z_sym = sp.symbols("x z")
         local_dict = {'e': mth.e, 'pi': mth.pi, 'tau': mth.tau, 'phi': (1 + mth.sqrt(5)) / 2}
@@ -110,9 +199,34 @@ class SymbolicJITCompiler:
         return (func_expr, deriv_expr_subbed)
 
     
-    def _generate_kernel_artifacts(self, configs: list[tuple[str, dict[str, float]]], 
+    def _generate_kernel_artifacts(self, configs: list[NodeConfig], 
                                  target_key: Literal["CPP","PY","GPU"],mode: Literal['string', 'lambda'],
                                  user_funcs: dict = None, float_regex: re.Pattern = None):
+        """
+        Internal method that generates the core logic for the kernels, either as C++/CUDA code strings or Python lambdas.
+
+        This method handles the translation from SymPy expressions to the target language and manages 
+        the kernel cache to avoid re-parsing identical expressions.
+
+        Parameters
+        ----------
+        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+            List of function configurations.
+        target_key : Literal["CPP", "PY", "GPU"]
+            Key suffix for the cache to distinguish between backends.
+        mode : Literal['string', 'lambda']
+            Output format: 'string' for C++/CUDA code, 'lambda' for Python functions.
+        user_funcs : dict, optional
+            Dictionary mapping SymPy functions to target language functions (e.g., {'sin': 'sinf'}).
+        float_regex : re.Pattern, optional
+            Regex to enforce float literals (e.g., 1.0 -> 1.0f) for C++/CUDA.
+
+        Returns
+        -------
+        tuple[str, str] or dict
+            If mode is 'string', returns (forward_cases, backward_cases) strings for a switch statement.
+            If mode is 'lambda', returns a dictionary mapping IDs to (forward_func, backward_func).
+        """
 
         unique_funcs = {} 
         compiled_code = {} 
@@ -165,7 +279,23 @@ class SymbolicJITCompiler:
         
         return compiled_code
 
-    def _compile_cpp_kernels(self, configs:list[tuple[str, dict[str, float]]]):
+    def _compile_cpp_kernels(self, configs:list[NodeConfig]):
+        """
+        Internal method to compile the symbolic expressions into a C++ shared library (.dll/.so) and load it via ctypes.
+
+        This method generates C++ code with OpenMP pragmas for parallelism, compiles it using the 
+        system's C++ compiler (MSVC or GCC), and creates Python wrappers for the exported functions.
+
+        Parameters
+        ----------
+        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+            List of function configurations to compile.
+        
+        Raises
+        ------
+        Exception
+            If the C++ compiler is not found or compilation fails. If strict warnings mode is false will try with "CPU_PYTHON" backend.
+        """
 
         if (HW.CPP_INSTALLED_COMPILER == None):
                 raise Exception("CPP_JIT_ENABLED era True, pero CPP_COMPILER_NAME es None.")
@@ -315,7 +445,18 @@ class SymbolicJITCompiler:
                 warnings.warn(full_warning)
                 self._change_method("CPU_PYTHON") # Fallback al modo lento
 
-    def _compile_py_kernels(self,configs:list[tuple[str, dict[str, float]]]):
+    def _compile_py_kernels(self,configs:list[NodeConfig]):
+        """
+        Compiles the symbolic expressions into Python lambda functions using `sympy.lambdify`.
+
+        This serves as a fallback backend that works on any system with NumPy, though it is 
+        significantly slower than the compiled C++ or CUDA kernels.
+
+        Parameters
+        ----------
+        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+            List of function configurations to compile.
+        """
         compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')
             
         if self.mode == "activation":
@@ -356,7 +497,23 @@ class SymbolicJITCompiler:
         self.backward_kernel = b_kernel
 
 
-    def _compile_cuda_kernels(self, configs:list[tuple[str, dict[str, float]]]):
+    def _compile_cuda_kernels(self, configs:list[NodeConfig]):
+        """
+        Compiles the symbolic expressions into CUDA kernels using CuPy.
+
+        This method generates CUDA C code, compiles it into a CuPy RawKernel, and sets up 
+        grid/block dimensions for execution on the GPU.
+
+        Parameters
+        ----------
+        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+            List of function configurations to compile.
+        
+        Raises
+        ------
+        RuntimeError
+            If CUDA compilation fails and strict mode is enabled. If strict warnings mode is false will try with "CPU_JIT" backend.
+        """
         float_regex = re.compile(r"(\d+\.\d*([eE][+-]?\d+)?)")
 
         fwd_switch_cases, bwd_switch_cases = self._generate_kernel_artifacts(configs, "GPU", mode='string', 
@@ -371,7 +528,6 @@ class SymbolicJITCompiler:
             kernel_names = ["forward_activation_kernel", "backward_delta_kernel"]
             
         else: # LOSS
-            # SymPy usa 'y_pred' y 'y_true' que coinciden con los argumentos del switch
             template = templates.CUDA_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
             kernel_names = ["loss_kernel_fwd", "loss_kernel_bwd"]
 
@@ -392,7 +548,7 @@ class SymbolicJITCompiler:
                 self._change_method("CPU_JIT")
                 return 
 
-        # Wrappers para invocación CUDA
+        # Wrappers
         if self.mode == "activation":
             def f_k_wrapper(z, a, params, offset_list, n, b):
                 tot = n * b
@@ -420,6 +576,23 @@ class SymbolicJITCompiler:
         
 
     def _change_method(self,new_calculatuion_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int):
+        """
+        Internal method to change the calculation backend.
+
+        This triggers a recompilation of the kernels for the new backend.
+
+        Parameters
+        ----------
+        new_calculatuion_method : Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
+            The new backend to switch to.
+        gpu_id : int
+            The GPU ID to use if switching to CUDA.
+
+        Returns
+        -------
+        Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
+            The actual calculation method set (might differ from requested if fallback occurs).
+        """
         if(new_calculatuion_method != self.calculation_method):
             if ((new_calculatuion_method == "GPU_CUDA") and (HW.GPU_ENABLED)):
                 if (gpu_id >= HW.NUM_GPUS):
@@ -445,6 +618,14 @@ class SymbolicJITCompiler:
         return self.calculation_method
     
     def set_gpu_id(self,new_id:int):
+        """
+        Updates the active GPU ID and recompiles CUDA kernels if necessary.
+
+        Parameters
+        ----------
+        new_id : int
+            The new GPU device ID.
+        """
         if (new_id != self.device_id):
             self.device_id = new_id
             if (self.calculation_method == "GPU_CUDA"):

@@ -3,42 +3,25 @@ Core Components
 
 The **Core** module contains the building blocks of the neural networks.
 
-Neural Networks
----------------
+.. toctree::
+   :maxdepth: 1
+   :caption: Dense Neural Networks Classes:
 
-.. automodule:: HeteroSymNN.Core.Nets.neural_nets
-   :members: FlexibleNN, SimpleNN, ConfigurableNN
-   :undoc-members:
-   :show-inheritance:
+   nn_clases/simple
+   nn_clases/flexible
+   nn_clases/configurable
 
-Layers
-------
 
-.. automodule:: HeteroSymNN.Core.Nets.layers
-   :members: Layer
-   :undoc-members:
-   :show-inheritance:
+.. toctree::
+   :maxdepth: 1
+   :caption: Other objects used:
 
-Loss Functions
---------------
+   rest_core/initis
+   rest_core/losses
+   rest_core/optimizers
 
-.. automodule:: HeteroSymNN.Core.losses
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. toctree:: 
+   :maxdepth: 1
+   :caption: Layer Clases:
 
-Optimizers
-----------
-
-.. automodule:: HeteroSymNN.Core.optimizers
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Initializers
-------------
-
-.. automodule:: HeteroSymNN.Core.initializers
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   layer_classes/general_layer

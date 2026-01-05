@@ -3,11 +3,6 @@ JIT Compiler
 
 The **JIT** (Just-In-Time) module is the engine of HeteroSymNN. It handles the translation of symbolic math expressions into optimized machine code.
 
-.. automodule:: HeteroSymNN.JIT.compiler
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Symbolic Compiler
 -----------------
 
