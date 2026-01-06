@@ -1,5 +1,5 @@
 import numpy as np
-from HeteroSymNN.Core.Nets.neural_nets import ConfigurableNN
+from HeteroSymNN.Core.Nets.Dense import ConfigurableNN
 from HeteroSymNN.Backend import hardware as HW
 
 def run_mixed_activation_demo():

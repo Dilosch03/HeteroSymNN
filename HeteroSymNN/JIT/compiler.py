@@ -12,7 +12,7 @@ import shutil
 import json
 
 from ..Backend import hardware as HW
-from . import templates
+from . import codegen
 from ..types import NodeConfig
 
 
@@ -163,12 +163,12 @@ class SymbolicJITCompiler:
         for id,key in enumerate(sorted_constatanst):
             for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
 
-        if (func_str in templates.COMMON_FORMULAS):
-            func_str = templates.COMMON_FORMULAS[func_str]
+        if (func_str in codegen.COMMON_FORMULAS):
+            func_str = codegen.COMMON_FORMULAS[func_str]
 
         temp = {}
-        for key in templates.COMMON_FORMULAS.keys():
-            temp[key] = sp.parse_expr(templates.COMMON_FORMULAS[key],local_dict=local_dict)
+        for key in codegen.COMMON_FORMULAS.keys():
+            temp[key] = sp.parse_expr(codegen.COMMON_FORMULAS[key],local_dict=local_dict)
         
         local_dict = local_dict | temp
 
@@ -300,7 +300,7 @@ class SymbolicJITCompiler:
         if (HW.CPP_INSTALLED_COMPILER == None):
                 raise Exception("CPP_JIT_ENABLED era True, pero CPP_COMPILER_NAME es None.")
               
-        fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=templates.CPP_USER_FUNCS)
+        fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=codegen.CPP_USER_FUNCS)
 
         # Plantilla de código C++ con OpenMP para paralelización
         if self.mode == "activation":
@@ -308,11 +308,11 @@ class SymbolicJITCompiler:
             fwd_cases = fwd_switch_cases.replace("num", "z_val")
             bwd_cases = bwd_switch_cases.replace("num", "z_val")
             
-            cpp_template = templates.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
+            cpp_template = codegen.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
            
         else: # LOSS
             # SymPy usa 'y_pred' y 'y_true'
-            cpp_template = templates.CPP_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
+            cpp_template = codegen.CPP_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
         
         # --- Compilación JIT (la parte complicada) ---
         try:
@@ -517,18 +517,18 @@ class SymbolicJITCompiler:
         float_regex = re.compile(r"(\d+\.\d*([eE][+-]?\d+)?)")
 
         fwd_switch_cases, bwd_switch_cases = self._generate_kernel_artifacts(configs, "GPU", mode='string', 
-                                                             user_funcs=templates.CUDA_USER_FUNCS, 
+                                                             user_funcs=codegen.CUDA_USER_FUNCS, 
                                                              float_regex=float_regex)
 
         if self.mode == "activation":
             fwd_cases = fwd_switch_cases.replace("num", "z_val")
             bwd_cases = bwd_switch_cases.replace("num", "z_val")
             
-            template = templates.CUDA_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
+            template = codegen.CUDA_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
             kernel_names = ["forward_activation_kernel", "backward_delta_kernel"]
             
         else: # LOSS
-            template = templates.CUDA_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
+            template = codegen.CUDA_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
             kernel_names = ["loss_kernel_fwd", "loss_kernel_bwd"]
 
         try:

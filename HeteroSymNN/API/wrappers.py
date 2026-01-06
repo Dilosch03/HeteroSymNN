@@ -10,26 +10,9 @@ import time
 
 
 from ..Backend import hardware as HW
-from ..Core.Nets.neural_nets import ConfigurableNN
+from ..Core.Nets.dense import HeteroDense
 from ..Core import losses, optimizers,initializers
-
-def _build_dynamic_map(module, base_class):
-    """
-    Internal helper to dynamically discover subclasses of a base class within a module.
-    Used to populate maps for Losses, Optimizers, and Initializers.
-    """
-    new_map = {}
-    for name, member in inspect.getmembers(module):
-        if inspect.isclass(member) and \
-           issubclass(member, base_class) and \
-           member is not base_class:
-            
-            new_map[name] = member
-    return new_map
-
-LOSS_FN_MAP:dict[str,losses.Loss] = _build_dynamic_map(losses, losses.Loss)
-OPTIMIZER_MAP:dict[str,optimizers.Optimizer] = _build_dynamic_map(optimizers, optimizers.Optimizer)
-INITIALIZER_MAP:dict[str, initializers.Initializer] = _build_dynamic_map(initializers, initializers.Initializer)
+from . import registry
 
 def _normalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
     """Internal helper for Min-Max normalization."""
@@ -41,9 +24,9 @@ def _denormalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray)
     """Internal helper for Min-Max denormalization."""
     return vals * (max_val - min_val) + min_val
 
-class Wraper():
+class Wrapper():
     """
-    A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN`, :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` or :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`
+    A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense`, :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` or :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`
 
     This class simplifies common tasks such as:
     
@@ -54,7 +37,7 @@ class Wraper():
 
     Parameters
     ----------
-    model : :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN` or None
+    model : :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense` | :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN` or None
         The neural network instance to wrap. Can be ``None`` if loading a model from disk later.
     work_type : Literal["class", "reg"]
         The type of problem the model solves:
@@ -66,8 +49,8 @@ class Wraper():
     normalize_outputs : bool, optional
         If ``True``, output data (Y) will be automatically normalized to [0, 1] during training and denormalized during prediction. Defaults to ``True``.
     """
-    def __init__(self, model: ConfigurableNN,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
-        self._model:ConfigurableNN = None
+    def __init__(self, model: HeteroDense,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
+        self._model:HeteroDense = None
         self.training_data = None
         self.training_data_norm = None
         self.normalize_inputs = normalize_inputs 
@@ -79,10 +62,10 @@ class Wraper():
         self.y_max = None
         self._loaded_train_data = False
 
-        self.model:ConfigurableNN = model
+        self.model:HeteroDense = model
 
     @property
-    def model(self)->ConfigurableNN:
+    def model(self)->HeteroDense:
         """
         The underlying neural network instance.
         
@@ -498,7 +481,7 @@ class Wraper():
         """
         Loads a model from a ``.npz`` file created by :meth:`save_model`.
 
-        Reconstructs the :class:`~HeteroSymNN.Core.Nets.neural_nets.ConfigurableNN`, restores weights, 
+        Reconstructs the :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense`, restores weights, 
         optimizer state, and normalization statistics.
 
         Parameters
@@ -530,28 +513,28 @@ class Wraper():
 
                 loss_fn_config = architecture_config['loss_config']
                 loss_class_name:str = loss_fn_config.pop('class_name')
-                if loss_class_name not in LOSS_FN_MAP:
+                if loss_class_name not in registry.LOSS_FN_MAP:
                     raise IOError(f"Función de pérdida desconocida: {loss_class_name}.")
-                loss_fn = LOSS_FN_MAP[loss_class_name](**loss_fn_config) 
+                loss_fn = registry.LOSS_FN_MAP[loss_class_name](**loss_fn_config) 
                 
 
                 optimizer_config = architecture_config['optimizer_config']
                 opt_class_name:str = optimizer_config.pop('class_name')
-                if opt_class_name not in OPTIMIZER_MAP:
+                if opt_class_name not in registry.OPTIMIZER_MAP:
                     raise IOError(f"Optimizador desconocido: {opt_class_name}.")
-                optimizer = OPTIMIZER_MAP[opt_class_name](**optimizer_config)
+                optimizer = registry.OPTIMIZER_MAP[opt_class_name](**optimizer_config)
 
                 initializer = None
                 if 'initializer_config' in architecture_config:
                     init_config = architecture_config['initializer_config']
                     init_class_name = init_config.pop('class_name', None)
-                    if init_class_name and init_class_name in INITIALIZER_MAP:
+                    if init_class_name and init_class_name in registry.INITIALIZER_MAP:
                         # Instanciamos la clase de inicialización con sus parámetros guardados (si tuviera)
-                        initializer = INITIALIZER_MAP[init_class_name](**init_config)
+                        initializer = registry.INITIALIZER_MAP[init_class_name](**init_config)
                 
                 # 3. Recrear la arquitectura
                 if (('nodes_structure' in architecture_config) and ('detailed_activations' in architecture_config)):
-                    self.model = ConfigurableNN(
+                    self.model = HeteroDense(
                         nodes_structure=architecture_config['nodes_structure'],
                         detailed_activations=architecture_config['detailed_activations'],
                         initializer=initializer,
@@ -620,7 +603,7 @@ class Wraper():
         except Exception as e:
             raise IOError(f"Error al cargar el modelo desde {path}. El archivo no se pudo leer, está dañado o no es un modelo válido. Causa: {e}") from e
 
-class GridSearchWraper(Wraper):
+class GridSearchWrapper(Wrapper):
     """
     A wrapper that extends :class:`Wraper` to perform Hyperparameter Grid Search.
 
@@ -653,7 +636,7 @@ class GridSearchWraper(Wraper):
         self._y_train = None
         self._X_vali = None
         self._y_vali = None
-        self.best_model: ConfigurableNN = None
+        self.best_model: HeteroDense = None
         self.best_params: dict[str, any] = None
         self.best_score: float = -np.inf
         self.grid_search_results: list[dict[str, any]] = []
@@ -732,7 +715,7 @@ class GridSearchWraper(Wraper):
                     static_params: dict[str, any],
                     param_grid: dict[str, list[any]],
                     metric_to_optimize: str = None,
-                    higher_is_better: bool = True)->tuple[ConfigurableNN, dict[str, any], list[dict[str, any]]]:
+                    higher_is_better: bool = True)->tuple[HeteroDense, dict[str, any], list[dict[str, any]]]:
         """
         Internal method to execute the grid search loop.
         
@@ -826,7 +809,7 @@ class GridSearchWraper(Wraper):
                      
                      num_iterations: int = None, 
                      training_mode: Literal["batch", "mini-batch", "stochastic"] = None, 
-                     batch_size: int = None)->Union[list[float], tuple[ConfigurableNN, dict[str, any], list[dict[str, any]]]]:
+                     batch_size: int = None)->Union[list[float], tuple[HeteroDense, dict[str, any], list[dict[str, any]]]]:
         """
         Executes training. Can function in two modes:
 

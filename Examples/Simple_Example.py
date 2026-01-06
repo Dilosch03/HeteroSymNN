@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from HeteroSymNN.Core.Nets.neural_nets import SimpleNN
+from HeteroSymNN.Core.Nets.Dense import SimpleNN
 from HeteroSymNN.API.wrappers import Wraper
 
 def run_simple_demo():

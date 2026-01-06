@@ -1,4 +1,5 @@
-from . import layers
-from . import neural_nets
+from .dense import *
+from .evo import *
+from .funcional import *
 
-__all__ = ["layers","neural_nets"]
+__all__ = ["HeteroDense","Dense","MLP","EvoNet"]

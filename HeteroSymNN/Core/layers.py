@@ -3,9 +3,9 @@ import numpy as np
 from typing import Literal, Union
 import warnings
 
-from ...Backend import hardware as HW
-from ...types import LayerConstructionConfig,NodeConfig,BackendArray,ConstantToUpdate
-from ...JIT.compiler import SymbolicJITCompiler
+from ..Backend import hardware as HW
+from ..types import LayerConstructionConfig,NodeConfig,BackendArray,ConstantToUpdate
+from ..JIT.compiler import SymbolicJITCompiler
 
 class Layer:
     """

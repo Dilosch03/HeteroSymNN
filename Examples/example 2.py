@@ -1,5 +1,5 @@
 import numpy as np
-from HeteroSymNN.Core.Nets.neural_nets import FlexibleNN, ConfigurableNN
+from HeteroSymNN.Core.Nets.dense import FlexibleNN, ConfigurableNN
 from HeteroSymNN.Core import initializers as InitC
 from HeteroSymNN.API.wrappers import GridSearchWraper
 from HeteroSymNN.Core import optimizers as OptiC

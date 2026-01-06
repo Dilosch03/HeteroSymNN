@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets.neural_nets import ConfigurableNN
+from HeteroSymNN.Core.Nets.Dense import ConfigurableNN
 from HeteroSymNN.Backend import hardware as HW
 from HeteroSymNN.Backend.tuner import estimate_batch_capacity # The tool we made
 
