@@ -1,4 +1,3 @@
-
 import sympy as sp
 import numpy as np
 import math as mth
@@ -10,10 +9,13 @@ import ctypes
 import warnings
 import shutil 
 import json
+import hashlib
 
 from ..Backend import hardware as HW
 from . import codegen
 from ..types import NodeConfig
+from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,InvalidDeviceIDError
+from ..config import settings
 
 
 class SymbolicJITCompiler:
@@ -113,7 +115,7 @@ class SymbolicJITCompiler:
 
         if self.calculation_method == 'GPU_CUDA':
             if device_id >= HW.NUM_GPUS:
-                raise ValueError(f"ID de GPU {device_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
+                raise InvalidDeviceIDError(f"ID given ({device_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
             self._compile_cuda_kernels(configs)
             
             self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
@@ -185,10 +187,10 @@ class SymbolicJITCompiler:
             main_vars_found.append(z_sym)
 
         if (len(main_vars_found)>1):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise ValueError(f"Función {func_str} contiene {', '.join([str(x) for x in main_vars_found])} como variables primarias, por favor de solo elegir una.")
-            else:
-                warnings.warn(f"La función {func_str} tratará {', '.join([str(x) for x in main_vars_found])} como variables primarias.")
+            if (settings.warning_level == "error"):
+                raise FormulaParsingError(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables. Must have only one.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables.",CompilationWarning,stacklevel=4)
         
         func_expr = func_expr.subs({x_sym:num_sym,z_sym:num_sym})
         if (callable(func_expr)):
@@ -261,14 +263,16 @@ class SymbolicJITCompiler:
                     elif (mode == 'lambda'):
                         p_sym = sp.symbols('params')
                         off_sym = sp.symbols('offset')
-                        # Convertir a funciones lambda de Python
+
                         lambda_args = self.main_vars + [p_sym, off_sym]
                         ccode_fwd = sp.lambdify(lambda_args, func_expr, 'numpy')
                         ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
                         compiled_code[new_id] = (ccode_fwd, ccode_bwd)
                     
-                    if (HW.USE_KERNEL_CACHE):
-                        HW.KERNEL_CACHE[func_key] = compiled_code[new_id]
+                    if (settings.use_kernel_cache):
+                        #validar si funciona
+                        settings.kernel_cache[func_key] = compiled_code[new_id]
+
             
             self.func_ids_cpu.append(unique_funcs[func_key])
         
@@ -298,27 +302,22 @@ class SymbolicJITCompiler:
         """
 
         if (HW.CPP_INSTALLED_COMPILER == None):
-                raise Exception("CPP_JIT_ENABLED era True, pero CPP_COMPILER_NAME es None.")
+                raise RuntimeError("CPP_JIT_ENABLED is True, but CPP_COMPILER_NAME is None.")
               
         fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=codegen.CPP_USER_FUNCS)
 
-        # Plantilla de código C++ con OpenMP para paralelización
+
         if self.mode == "activation":
-            # SymPy usa 'num', lo cambiamos por el nombre del argumento C++
             fwd_cases = fwd_switch_cases.replace("num", "z_val")
             bwd_cases = bwd_switch_cases.replace("num", "z_val")
             
             cpp_template = codegen.CPP_KERNEL_TEMPLATE_ACTIVATION.substitute({"fwd_cases":fwd_cases,"bwd_cases":bwd_cases})
            
         else: # LOSS
-            # SymPy usa 'y_pred' y 'y_true'
             cpp_template = codegen.CPP_KERNEL_TEMPLATE_LOSS.substitute({"fwd_switch_cases":fwd_switch_cases,"bwd_switch_cases":bwd_switch_cases})
         
-        # --- Compilación JIT (la parte complicada) ---
+
         try:
-            # Nombres de archivos temporales
-            # Usamos un hash de la config para cachear la librería compilada
-            import hashlib
             config_hash = hashlib.md5(json.dumps(configs,sort_keys=True).encode()+self.mode.encode()).hexdigest()
             
             temp_dir = HW.CPU_CACHE_DIR
@@ -334,10 +333,10 @@ class SymbolicJITCompiler:
             lib_path = os.path.join(temp_dir, f"{lib_name}."+extencion)
             if (HW.CPP_INSTALLED_COMPILER == "cl.exe"):
                 compile_cmd = [
-                    'cl.exe', '/O2', '/LD', # Optimizar y crear DLL
-                    '/openmp', "/fp:fast",             # Habilitar OpenMP
-                    '/Fe' + lib_path,       # Archivo de salida
-                    '/EHsc',                # Manejo de excepciones
+                    'cl.exe', '/O2', '/LD',
+                    '/openmp', "/fp:fast",             
+                    '/Fe' + lib_path,       
+                    '/EHsc',                
                     src_path
                 ]
             else:
@@ -346,7 +345,6 @@ class SymbolicJITCompiler:
                     "-ffast-math", src_path, '-o', lib_path
                 ]
 
-            # Si la librería ya existe, no la re-compilamos
             if not (os.path.exists(lib_path)):
                 with open(src_path, 'w') as f:
                     f.write(cpp_template)
@@ -354,8 +352,8 @@ class SymbolicJITCompiler:
                 try:
                     compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
                     if compile_result.returncode != 0:
-                        raise Exception(f"Falló la compilación C++ JIT. {compile_result.stderr}")
-                except Exception:
+                        raise JITCompilationError(f"C++ JIT compilation failed. {compile_result.stderr}")
+                except JITCompilationError:
                     compiler_path = shutil.which(HW.CPP_INSTALLED_COMPILER)
                     try:
                         dlls_dir = os.path.dirname(compiler_path)
@@ -364,7 +362,7 @@ class SymbolicJITCompiler:
                         os.environ['PATH'] = dlls_dir + os.pathsep + os.environ['PATH']
                     compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
                     if compile_result.returncode != 0:
-                        raise Exception(f"Falló la compilación C++ JIT. {compile_result.stderr}")    
+                        raise JITCompilationError(f"C++ JIT compilation failed. {compile_result.stderr}") 
 
             try:
                 lib = ctypes.CDLL(lib_path)
@@ -385,7 +383,6 @@ class SymbolicJITCompiler:
             self.func_ids_array_np = np.array(self.func_ids_cpu, dtype=np.int32)
             func_ids_ptr = self.func_ids_array_np.ctypes.data_as(P_INT)
 
-            # Wrappers Python -> C
             if self.mode == "activation":
                 f_func = lib.forward_activation_kernel
                 f_func.argtypes = [P_FLOAT, P_FLOAT, P_INT, P_FLOAT, P_INT,C_INT, C_INT, C_INT]
@@ -394,7 +391,6 @@ class SymbolicJITCompiler:
                 b_func.argtypes = [P_FLOAT, P_FLOAT, P_FLOAT, P_INT, P_FLOAT, P_INT, C_INT, C_INT, C_INT]
 
                 def f_wrapper(z, a, params, offset_list, n, b):
-                    # z y a son arrays de numpy (float32)
                     f_func(
                         z.ctypes.data_as(P_FLOAT),
                         a.ctypes.data_as(P_FLOAT),
@@ -437,13 +433,13 @@ class SymbolicJITCompiler:
             self.backward_kernel = b_wrapper
 
         except Exception as e:
-            if (HW.WARNINGS_STRICT_MODE):
-                raise (f"¡ERROR FATAL DE COMPILACIÓN C++ JIT!") from e
-            else:
-                full_warning = f"¡ERROR FATAL DE COMPILACIÓN C++ JIT! {e} "+"Causa probable: No se encontró un compilador C++ (g++ o cl.exe) en el PATH del sistema o falló OpenMP."
-                full_warning += " Usando el kernel de Python (lento) como fallback."
-                warnings.warn(full_warning)
-                self._change_method("CPU_PYTHON") # Fallback al modo lento
+            if (settings.warning_level == "error"):
+                raise JITCompilationError("JIT compilation fatal error!") from e
+            elif (settings.warning_level == "warn"):
+                full_warning = f"JIT compilation fatal error! {e} "+"Check if compiler is in the PATH variable."
+                full_warning += " Using 'CPU_PYTHON' backend as fallback."
+                warnings.warn(full_warning,PerformanceWarning,stacklevel=4)
+                self._change_method("CPU_PYTHON") # Fallback
 
     def _compile_py_kernels(self,configs:list[NodeConfig]):
         """
@@ -460,7 +456,6 @@ class SymbolicJITCompiler:
         compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')
             
         if self.mode == "activation":
-            # Kernel vectorizado optimizado para activaciones
             first_id = int(self.func_ids[0])
             is_homogeneous = all(fid == first_id for fid in self.func_ids)
             
@@ -537,14 +532,14 @@ class SymbolicJITCompiler:
                 bwd_k = HW.be.RawKernel(template, kernel_names[1])
         
         except Exception as e:
-            error_message = f"¡ERROR FATAL DE COMPILACIÓN CUDA JIT! {e}"
-            if HW.WARNINGS_STRICT_MODE:
-                raise RuntimeError(error_message) from e
-            else:
+            error_message = "JIT compilation fatal error!"
+            if (settings.warning_level == "error"):
+                raise JITCompilationError(error_message) from e
+            elif (settings.warning_level == "warn"):
                 full_warning = (error_message + 
-                                " Causa probable: Error en la generación del kernel de CUDA o fallo de CuPy." +
-                                " Usando el kernel de CPU como fallback.")
-                warnings.warn(full_warning)  
+                                e +
+                                " Using the CPU as fallback.")
+                warnings.warn(full_warning,PerformanceWarning,stacklevel=4)  
                 self._change_method("CPU_JIT")
                 return 
 
@@ -593,10 +588,11 @@ class SymbolicJITCompiler:
         Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
             The actual calculation method set (might differ from requested if fallback occurs).
         """
+        new_calculatuion_method = new_calculatuion_method.upper()
         if(new_calculatuion_method != self.calculation_method):
             if ((new_calculatuion_method == "GPU_CUDA") and (HW.GPU_ENABLED)):
                 if (gpu_id >= HW.NUM_GPUS):
-                    raise ValueError(f"ID de GPU {gpu_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
+                    raise InvalidDeviceIDError(f"ID given ({gpu_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
                 self.device_id = gpu_id
                 self.func_ids_cpu = []
                 self.calculation_method = "GPU_CUDA"
@@ -615,17 +611,23 @@ class SymbolicJITCompiler:
                 self.calculation_method = "CPU_PYTHON"
                 self._compile_py_kernels(self.activation_funcs)
                 self.func_ids = self.func_ids_cpu
+            else:
+                raise ValueError("Calculation Method is not GPU_CUDA, CPU_JIT o CPU_PYTHON")
+
         return self.calculation_method
     
     def set_gpu_id(self,new_id:int):
         """
-        Updates the active GPU ID and recompiles CUDA kernels if necessary.
+        Updates the used GPU ID and recompiles CUDA kernels.
 
         Parameters
         ----------
         new_id : int
             The new GPU device ID.
         """
+        if (new_id >= HW.NUM_GPUS):
+            raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+        
         if (new_id != self.device_id):
             self.device_id = new_id
             if (self.calculation_method == "GPU_CUDA"):

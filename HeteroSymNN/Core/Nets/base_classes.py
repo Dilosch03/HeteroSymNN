@@ -1,12 +1,14 @@
 from __future__ import annotations
 import numpy as np
-from typing import Literal, Union, Optional, Any
+from typing import Literal, Union, Optional, Any, Sequence
 import warnings
 
 from ...Backend import hardware as HW
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
-from ..layers import Layer
-from ...types import LayerConstructionConfig,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
+from ..layers import BaseLayer
+from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
+from ...exceptions import NetworkStructureError, LayerConfigurationError, BackendNotAvailableError, PerformanceWarning, MethodMigrationError, HardwareWarning, ShapeMismatchError, InvalidDeviceIDError
+from ...config import settings
 
 class BaseNetwork:
     """
@@ -14,8 +16,10 @@ class BaseNetwork:
         
         Parameters
         ----------
-        nodes_structure : list[int]
-            List with the number of nodes per layer including input and output layers.
+        network_structure : list[int,type[BaseLayer]]
+            List with the number of nodes per layer and the type of layers that will be used including input and output layers.
+        extra_layer_parameters : list[dict[str,Any]]
+            list of dictionaris with the extra parameters that the layer need to work correctly.
         detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
         initial_values : Optional[list[:obj:`~HeteroSymNN.types.LayerValues`]], optional
@@ -34,12 +38,12 @@ class BaseNetwork:
             Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
         optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
             Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.,value by default is None.
-        num_treaning_iter : int, optional
+        num_epochs: int, optional
             Number of Epochs to use during training, by default 1000
 
         Attributes
         ----------
-        num_treaning_iterations : int, read-write
+        num_treaning_epochs : int, read-write
             Number of training iterations (epochs) for the network.
         learning_mode : str, read-write
             Learning mode of the network. Currently only "Static" is supported.
@@ -47,7 +51,7 @@ class BaseNetwork:
             Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
         batch_size : int, read-write
             Batch size to use during training.
-        histogram_losses : list[float], read-only
+        history_losses : list[float], read-only
             List of loss values recorded at each epoch during training.
         num_complited_train_iterations : int, read-only
             Number of completed training steps.
@@ -56,16 +60,18 @@ class BaseNetwork:
         
         Examples
         --------
-        >>> from HeteroSymNN.Core.Nets.neural_nets import ConfigurableNN
-        >>> CNN = ConfigurableNN(
-        ...     nodes_structure=[3, 5, 2],
-        ...     detailed_activations=[
-        ...         [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
-        ...         [("sigmoid", {}), ("sigmoid", {})]
-        ...     ],
-        ...     learning_rate=0.01,
-        ...     batch_size=16,
-        ...     training_mode="mini-batch"
+        >>> from HeteroSymNN.Core.Nets import BaseNetwork
+        >>> from HeteroSymNN.Core.layers import LinearLayer
+        >>> NN = BaseNetwork(
+        ... nodes_structure=[(3,None), (5,LinearLayer),(2,LinearLayer)],
+        ... extra_layer_parameters=[{},{}],
+        ... detailed_activations=[
+        ...    [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
+        ...    [("sigmoid", {}), ("sigmoid", {})]
+        ... ],
+        ... learning_rate=0.01,
+        ... batch_size=16,
+        ... training_mode="mini-batch"
         ... )
 
         
@@ -86,40 +92,48 @@ class BaseNetwork:
         ... )
         
     """
-    def __init__(self, nodes_structure: list[int], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializer: Optional[InitC.Initializer] = None,
+    def __init__(self, network_structure: list[tuple[int,type[BaseLayer]]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializers: Optional[list[InitC.Initializer]] = None,
                  learning_rate: float = 0.001, batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch", learning_mode: str = "Static",
-                 loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_treaning_iter: int = 1000):
+                 loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_epochs: int = 1000):
         
         self._CALCULATION_MANAGER = HW.be
         self._ASNUMPY = HW.asnumpy
         self.num_complited_train_iterations = 0
         self.num_completed_epochs = 0
 
-        if len(nodes_structure) < 2:
-            raise ValueError("nodes_structure debe tener al menos 2 elementos (entrada y salida).")
+        if len(network_structure) < 2:
+            raise NetworkStructureError("network_structure most have at least 2 layers (input and output).)")
         
-        num_layers = len(nodes_structure) - 1
+        num_layers = len(network_structure) - 1
         if (len(detailed_activations) != num_layers):
-            raise ValueError(f"La estructura de nodos define {num_layers} capas (conexiones), pero 'detailed_activations' tiene {len(detailed_activations)} elementos.")
+            raise NetworkStructureError(f"The structure is defined as {num_layers} layers, but 'detailed_activations' has {len(detailed_activations)} elements.")
+
+        if (len(extra_layer_parameters) != num_layers):
+            raise NetworkStructureError(f"The structure is defined as {num_layers} layers, but 'extra_layer_parameters' has {len(extra_layer_parameters)} elements.")
         
         if ((initial_values is not None) and (len(initial_values) != num_layers)):
-            raise ValueError(f"Se proporcionaron valores iniciales, pero su longitud ({len(initial_values)}) no coincide con el número de capas ({num_layers}).")
+            raise NetworkStructureError(f"Inical values were given, but the length ({len(initial_values)}) does not match the number of layers ({num_layers}).")
 
         self._LEARNING_RATE = learning_rate
         self._LEAR_MODE = learning_mode
         self.training_mode =training_mode
         self._BATCH_SIZE = batch_size
         self._GPU_ID = 0
-        self._DEFAULT_FLOAT_TYPE = self._CALCULATION_MANAGER.float32
+        self._DEFAULT_FLOAT_TYPE = settings.default_dtype
         self._CURRENT_DEVICE = "CPU"
-        self._COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
-        self.num_treaning_iterations = num_treaning_iter
-        self._NODE_STRUCTURE = nodes_structure
+        self._COMPUTATIONAL_METHOD = settings.default_compute_method
+        self.num_treaning_epochs = num_epochs
+        self._NETWORK_STRUCTURE = network_structure
+        self._init_density_of_mask = 1.0
+        self._initializers = []
 
-        if (initializer is None):
-            self._INITIALIZER = InitC.HeNormal()
-        else:
-            self._INITIALIZER = initializer
+
+        if (initializers is None):
+            for _ in range(num_layers):
+                self._initializers.append(InitC.HeNormal())
+        
+        if (len(initializers) != num_layers):
+            raise NetworkStructureError(f"There were given {len(initializers)} initializers, but the structure is defined as {num_layers} layers.")
 
         if (loss_function == None):
             self._LOSS_FUNCTION:lossC.Loss = lossC.MSELoss(self._COMPUTATIONAL_METHOD,self._GPU_ID)
@@ -127,7 +141,8 @@ class BaseNetwork:
             self._LOSS_FUNCTION = loss_function
             temp_result = self._LOSS_FUNCTION._change_COMPUTATIONAL_METHOD(self._COMPUTATIONAL_METHOD,self._GPU_ID)
             if (temp_result != self._COMPUTATIONAL_METHOD):
-                raise RuntimeError(f"Funcion de perdia no pudo sincronizar su metodo al de la red.Metodo de la red:{self._COMPUTATIONAL_METHOD}. Metodo de la funcion de perdida: {temp_result}")
+                raise RuntimeError(f"The loss function computational method ({temp_result}) couldn't be sync with the main network computational method ({self._COMPUTATIONAL_METHOD}).")
+                
 
         if (optimizer != None):
             self._UPDATE_METHOD = optimizer
@@ -141,32 +156,41 @@ class BaseNetwork:
         if self.training_mode == "stochastic":
             self._BATCH_SIZE = 1
         
-        self._LAYERS: list[Layer] = []
+        self._LAYERS: list[BaseLayer] = []
 
         for i in range(num_layers):
-            num_inputs = nodes_structure[i]
-            num_nodes = nodes_structure[i+1]
+            num_inputs = network_structure[i][0]
+            num_nodes = network_structure[i+1][0]
+            layer_class:type[BaseLayer] = network_structure[i+1][1]
+
+            if not(callable(layer_class)):
+                raise NetworkStructureError(f"Object given for the creation of layer {i} is not a callable class.")
+
+            if not(issubclass(layer_class,BaseLayer)):
+                raise NetworkStructureError(f"Class given for the creation of layer {i} is not a subclass of BaseLayer.")
             
             node_configs = detailed_activations[i]
+            extra_param = extra_layer_parameters[i]
             
             if (len(node_configs) != num_nodes):
-                raise ValueError(f"Error en Capa {i+1}: Se definieron {num_nodes} nodos en 'nodes_structure', pero hay {len(node_configs)} configuraciones de activación.")
+                raise LayerConfigurationError(f"Error in Layer {i}: {num_nodes} nodes defined in 'network_structure', but there are {len(node_configs)} activation configurations.")
 
-            # Determinar valores iniciales (Pasados o Generados)
-            if (initial_values is not None):
-                current_vals = initial_values[i]
-            else:
-                current_vals = self._INITIALIZER.generate(num_inputs, num_nodes)
+            layer_init = self._initializers[i]
 
-            # Crear la capa
-            layer_config: LayerConstructionConfig = (node_configs, current_vals)
-            self._LAYERS.append(Layer(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID))
+            layer_config: LayerConstruction = (node_configs, layer_init)
+            try:
+                self._LAYERS.append(layer_class(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID,**extra_param))
+            except TypeError as e:
+                if ("positional argument" in str(e)):
+                    temp_splice = str(e).split(":")
+                    num_missing = int(temp_splice[0].split("missing ")[1][0])
+                    missing = temp_splice[1]
+                    raise LayerConfigurationError(f"Layer {i} was not given {num_missing} required extra parameters, that are {missing}.")
 
-
-        self.histogram_losses = []    
+        self.history_losses = []    
     
     @property
-    def LAYERS(self)->list[Layer]:
+    def layers(self)->Sequence[BaseLayer]:
         """
         Property to get the layers of the network. Read-only.
         
@@ -177,18 +201,18 @@ class BaseNetwork:
         return self._LAYERS
     
     @property
-    def NODE_STRUCTURE(self)->list[int]:
+    def network_structure(self)->Sequence[int]:
         """
-        Property to get the number of nodes per layer of the network. Read-only.
+        Property to get the number of nodes and the callers for each layer in the network. Read-only.
         
         Returns
         -------
         list[int]
         """
-        return self._NODE_STRUCTURE
+        return self._NETWORK_STRUCTURE
     
     @property
-    def GPU_ID(self)->int:
+    def gpu_id(self)->int:
         """
         Property to get the current GPU ID being used by the network. Read-only.
         
@@ -201,7 +225,7 @@ class BaseNetwork:
         return self._GPU_ID
     
     @property
-    def BATCH_SIZE(self)->int:
+    def batch_size(self)->int:
         """
         Property to get the current batch size being used by the network in case of mini-batch training. Read-only.
         
@@ -212,7 +236,7 @@ class BaseNetwork:
         return self._BATCH_SIZE
     
     @property
-    def CURRENT_DEVICE(self)->Literal["CPU","GPU"]:
+    def current_device(self)->Literal["CPU","GPU"]:
         """
         Property to get the current device where the network parameters are located. Read-only.
 
@@ -225,7 +249,7 @@ class BaseNetwork:
         return self._CURRENT_DEVICE
     
     @property
-    def COMPUTATIONAL_METHOD(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
+    def computational_method(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Property to get the current computational method being used by the network. Read-only.
 
@@ -238,7 +262,7 @@ class BaseNetwork:
         return self._COMPUTATIONAL_METHOD
 
     @property
-    def OPTIMIZER(self)->OptiC.Optimizer:
+    def optimizer(self)->OptiC.Optimizer:
         """
         Property to get the current optimizer being used by the network. Read-only.
 
@@ -249,7 +273,7 @@ class BaseNetwork:
         return self._UPDATE_METHOD
 
     @property
-    def LOSS_FUNCTION(self)->lossC.Loss:
+    def loss_function(self)->lossC.Loss:
         """
         Property to get the current loss function being used by the network. Read-only.
 
@@ -260,7 +284,7 @@ class BaseNetwork:
         return self._LOSS_FUNCTION
     
     @property
-    def INICIALIZER(self)->InitC.Initializer:
+    def initializer(self)->InitC.Initializer:
         """
         Property to get the current initializer being used by the network. Read-only.
 
@@ -302,7 +326,7 @@ class BaseNetwork:
         """
         if (self._GPU_ID != new_id):
             if (new_id >= HW.NUM_GPUS):
-                raise ValueError(f"ID de GPU {new_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
+                raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
             self.change_device("CPU")
             self._GPU_ID = new_id
             self._LOSS_FUNCTION.set_gpu_id(self._GPU_ID)
@@ -333,23 +357,24 @@ class BaseNetwork:
         .. Warning::
             When changing computational methods it will force a kernel recompilation for all layers and reallocation of all parameters. Depending on the size of the network this could take a while.
         """
+        new_method = new_method.upper()
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
+            raise ValueError("Tried to change to a not suported method. Expected GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intantando con el metodo CPU_JIT")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
         if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
 
         if(new_method != self._COMPUTATIONAL_METHOD):
@@ -365,7 +390,7 @@ class BaseNetwork:
                 
                 temp_result = self._LOSS_FUNCTION._change_COMPUTATIONAL_METHOD(self._COMPUTATIONAL_METHOD,self._GPU_ID)
                 if (temp_result != self._COMPUTATIONAL_METHOD):
-                    raise RuntimeError(f"Funcion de perdia no pudo sincronizar su metodo al de la red.Metodo de la red:{self._COMPUTATIONAL_METHOD}. Metodo de la funcion de perdida: {temp_result}")
+                    raise MethodMigrationError (f"Loss function couldn't be synconized with the new computational method {self._COMPUTATIONAL_METHOD}. Loss function is stuck in {temp_result}")
                 self._UPDATE_METHOD._change_COMPUTATIONAL_DEVICE(self._COMPUTATIONAL_METHOD.split("_")[0])
                 laye_calc_method = []
                 for layer in self._LAYERS:
@@ -373,7 +398,7 @@ class BaseNetwork:
                 
                 expected = [new_method]*len(self._LAYERS)
                 if (laye_calc_method != expected):
-                    raise RuntimeError(f"Cambio de metodo no se pudo realizar. Uno o mas capas no estan en el nuevo metodo. Configuracion nueva de las capas: {laye_calc_method}")
+                    raise MethodMigrationError(f"Couldn't change the computational method due to one or more layers couldn't change. Layer methods list: {laye_calc_method}")
 
 
     def change_device(self, device:Literal["CPU","GPU"])->None:
@@ -385,21 +410,22 @@ class BaseNetwork:
         device : Literal["CPU","GPU"]
             Device to move the network parameters to.
         """
+        device = device.upper()
         if not(device in ["CPU","GPU"]):
-            raise ValueError("Se paso como device algo que no es GPU o CPU.")
+            raise ValueError("Specify device is not GPU or CPU.")
         
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al dispositivo GPU cuando no se tiene una gpu valida.")
-            else:
-                warnings.warn("Se intento cambiar al dispositivo GPU cuando no se tiene una gpu valida."+"Cambiando a CPU")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'GPU', but no GPU is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'GPU', but no GPU is available. Using CPU instead.",PerformanceWarning,stacklevel=2)
                 device = "CPU"
 
         if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al dispositivo GPU cuando se tiene definido la CPU como dispositivo computacional")
-            else:
-                warnings.warn("Se intento cambiar al dispositivo GPU cuando se tiene definido la CPU como dispositivo computacional."+"Ignorando peticion por seguridad.")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to chemge the devce to GPU when it was set as computational device the CPU.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to chemge the devce to GPU when it was set as computational device the CPU."+"Ignoring the recuest for security.",HardwareWarning,stacklevel=2)
                 device = "CPU"
         if(device != self._CURRENT_DEVICE):
                 self._CURRENT_DEVICE = device
@@ -410,6 +436,7 @@ class BaseNetwork:
         """
         Internal method to move the network parameters to the specified device.
         """
+        device = device.upper()
         self._UPDATE_METHOD._to_device(device)
         for layer in self._LAYERS:
             layer._to(device)
@@ -507,7 +534,7 @@ class BaseNetwork:
         training_targets : list[list[float]]
             List of target output samples for training. Shape should be (num_samples, num_outputs).
         num_iterations : int, optional
-            Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_treaning_iterations`., by default None
+            Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_treaning_epochs`., by default None
         training_mode : Literal["batch", "mini-batch", "stochastic"], optional
             Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". If not provided, uses the current value of the attribute :obj:`~training_mode`., by default None
         batch_size : int, optional
@@ -525,7 +552,7 @@ class BaseNetwork:
         mode = self.training_mode if training_mode is None else training_mode
         b_size = self._BATCH_SIZE if batch_size is None else batch_size
         if (num_iterations == None):
-            num_iterations = self.num_treaning_iterations
+            num_iterations = self.num_treaning_epochs
 
         self.training_mode = mode
         if (b_size != self._BATCH_SIZE):
@@ -556,9 +583,9 @@ class BaseNetwork:
                 iter_loss += loss * (end_idx - start_idx)
 
             avg_loss = self._ASNUMPY(iter_loss) / num_samples
-            self.histogram_losses.append(avg_loss)
+            self.history_losses.append(avg_loss)
 
-        return self.histogram_losses
+        return self.history_losses
     
     def predict(self,input_values:Union[list,list[list]],to_cpu:bool = True)->Union[np.ndarray,BackendArray]:
         """
@@ -590,13 +617,9 @@ class BaseNetwork:
             pass
         elif current_a.shape[1] == self._LAYERS[0].num_inputs:
             current_a = current_a.T
-        else:
-            raise ValueError(
-                f"La forma de los datos de entrada {current_a.shape} es incorrecta. "
-                f"La Capa 0 esperaba {self._LAYERS[0].num_inputs} características (features), "
-                f"pero ninguna dimensión ({current_a.shape[0]} o {current_a.shape[1]}) coincidió."
-            )
-        
+        else:  
+            raise ShapeMismatchError(f"Shape of the input is incorrect {current_a.shape}. Were expecting {self._LAYERS[0].num_inputs} features, but none dimention matched.")
+
         prediction = self._forward(current_a)
         if(to_cpu):
             return self._ASNUMPY(prediction).T
@@ -654,7 +677,7 @@ class BaseNetwork:
             Dictionary containing the configuration of the network.
 
             Parameters include:
-                * **"nodes_structure"** (*list[int]*): List of number of nodes per layer.
+                * **"network_structure"** (*list[int]*): List of number of nodes per layer and the type of layer.
                 * **"detailed_activations"** (*list[list[NodeConfig]*): Activation configuration for each node.
                 * **"learning_rate"** (*float*): Learning rate of the network.
                 * **"learning_mode"** (*str*): Learning mode of the network.
@@ -663,7 +686,7 @@ class BaseNetwork:
                 * **"initializer_config"** (*dict[str, Any]*): Configuration of the initializer.
                 * **"optimizer_config"** (*dict[str, Any]*): Configuration of the optimizer.
                 * **"loss_config"** (*dict[str, Any]*): Configuration of the loss function.
-                * **"num_treaning_iterations"** (*int*): Number of training iterations (epochs).
+                * **"num_treaning_epochs"** (*int*): Number of training iterations (epochs).
         """
         self.change_device("CPU")
         node_configs = []
@@ -671,7 +694,7 @@ class BaseNetwork:
             node_configs.append(layer.recunstruct_layer_config())
 
         config = {
-            'nodes_structure': self._NODE_STRUCTURE,
+            'network_structure': self._NETWORK_STRUCTURE,
             'detailed_activations': node_configs,
             'learning_rate': self._LEARNING_RATE,
             'learning_mode': self._LEAR_MODE,
@@ -682,5 +705,5 @@ class BaseNetwork:
         config.update({'initializer_config': self._INITIALIZER.get_config()})
         config['optimizer_config'] = self._UPDATE_METHOD.get_config()
         config["loss_config"] = self._LOSS_FUNCTION.get_config()
-        config['num_treaning_iterations'] = self.num_treaning_iterations
+        config['num_treaning_epochs'] = self.num_treaning_epochs
         return config

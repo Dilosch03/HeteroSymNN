@@ -1,9 +1,11 @@
 from __future__ import annotations
 import numpy as np
-from typing import Literal
+from typing import Literal,Optional
 import warnings
 
 from ..Backend import hardware as HW
+from ..exceptions import PerformanceWarning,BackendNotAvailableError,InvalidDeviceIDError
+from ..config import settings
 
 class Optimizer:
     """
@@ -18,21 +20,21 @@ class Optimizer:
     device_id : int, optional
         The ID of the GPU to use if computational_device is "GPU".
     """
-    def __init__(self, learning_rate: float = None, computational_device:Literal["GPU", "CPU"]=None, device_id: int = None):
+    def __init__(self, learning_rate: float = None, computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
         self.learning_rate = learning_rate
         self.DEVICE_ID = device_id
         self.CURRENT_DEVICE = "CPU"
-        self.COMPUTACIONAL_DEVICE = HW.DEFAULT_COMPUTE_METHOD.split("_")[0]
+        self.COMPUTACIONAL_DEVICE = settings.default_compute_method.split("_")[0]
         self.be = HW.be 
         self._ASNUMPY = HW.asnumpy
 
         if (computational_device != None):
             self.COMPUTACIONAL_DEVICE = computational_device
             if ((computational_device == "GPU") and not (HW.GPU_ENABLED)):
-                if (HW.WARNINGS_STRICT_MODE):
-                    raise ValueError("Intentando definir como dispositivo computacional la GPU cuando esta no esta disponible.")
-                else:
-                    warnings.warn("Intentando definir como dispositivo computacional la GPU cuando esta no esta disponible."+"Cambiando el dispositivo computacional a la CPU ")
+                if (settings.warning_level == "error"):
+                    raise BackendNotAvailableError("Trying to define the GPU as the computational device when there is no GPU available.")
+                elif (settings.warning_level == "warn"):
+                    warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
                     self.COMPUTACIONAL_DEVICE = "CPU"
 
             if (self.COMPUTACIONAL_DEVICE == "GPU"):
@@ -63,7 +65,7 @@ class Optimizer:
         """
         pass
 
-    def _change_COMPUTACIONAL_DEVICE(self, device:Literal["GPU","CPU"], device_id: int = None):
+    def _change_COMPUTACIONAL_DEVICE(self, device:Literal["GPU","CPU"], device_id: Optional[int] = None):
         """
         Internal method to change the computational device (CPU/GPU).
         
@@ -75,20 +77,13 @@ class Optimizer:
             The GPU ID to use if device is "GPU".
         """
         if not(device in ["GPU","CPU"]):
-            raise ValueError("Se paso como device algo que no es GPU o CPU.")
+            raise ValueError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU") and (not(HW.GPU_ENABLED))):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise ValueError("Intentando definir como dispositivo computacional la GPU cuando esta no esta disponible.")
-            else:
-                warnings.warn("Intentando definir como dispositivo computacional la GPU cuando esta no esta disponible."+"Cambiando el dispositivo computacional a la CPU ")
-                device = "CPU"
-
-        if ((device == "GPU")and(self.COMPUTACIONAL_DEVICE == "CPU")):
-            if(HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambar a la gpu cuando se tiene como dispositivo computacional la cpu.")
-            else:
-                warnings.warn("Se intento cambar a la gpu cuando se tiene como dispositivo computacional la cpu. Se ignoro la peticion por seguridad")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Trying to define the GPU as the computational device when there is no GPU available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
                 device = "CPU"
         
         if (self.COMPUTACIONAL_DEVICE != device):
@@ -113,7 +108,7 @@ class Optimizer:
             The new GPU ID.
         """
         if (new_id >= HW.NUM_GPUS):
-            raise ValueError("")
+            raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
 
         if (new_id != self.DEVICE_ID):
             self.DEVICE_ID = new_id
@@ -131,13 +126,13 @@ class Optimizer:
             The target device.
         """
         if not(device in ["GPU","CPU"]):
-            raise ValueError("Se paso como device algo que no es GPU o CPU.")
+            raise ValueError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU")and(self.COMPUTACIONAL_DEVICE == "CPU")):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise ValueError("Se intento cambiar a la GPU cuando se habia definido el dispositivo computacional como CPU")
-            else:
-                warnings.warn("Se intento cambiar a la GPU cuando se habia definido el dispositivo computacional como CPU."+"Ingorando peticion por seguridad.")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to send the paramters to the GPU when the CPU was set as the computational device.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to send the paramters to the GPU when the CPU was set as the computational device."+"Using the CPU as fallback for safety.",PerformanceWarning,stacklevel=3)
                 device = "CPU"
 
         if (device != self.CURRENT_DEVICE):
@@ -195,7 +190,6 @@ class Optimizer:
             The backend module (numpy or cupy) to use for creating arrays.
         """
         self._to_device("CPU")
-        pass
 
     def get_config(self):
         """
@@ -229,7 +223,7 @@ class SgdOptimizer(Optimizer):
     _kernel_weights = None
     _kernel_bias = None
 
-    def __init__(self, learning_rate: float = None,computational_device:Literal["GPU", "CPU"]=None, device_id: int = None):
+    def __init__(self, learning_rate: float = None,computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
         if (learning_rate is None):
             learning_rate = 0.01
         super().__init__(learning_rate,computational_device,device_id)

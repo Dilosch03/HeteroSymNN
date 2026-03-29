@@ -4,8 +4,8 @@ import warnings
 import numpy as np
 
 from ...Backend import hardware as HW
-from ...types import NodeConfig,LayerValues,LayerConstructionConfig,FlexibleNodeConfig,BackendArray,ConstantToUpdate
-from ..layers import Layer
+from ...types import NodeConfig,LayerValues,LayerConstruction,FlexibleNodeConfig,BackendArray,ConstantToUpdate
+from ..layers import LinearLayer,RecurrentLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 

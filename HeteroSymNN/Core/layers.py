@@ -1,60 +1,44 @@
 from __future__ import annotations
 import numpy as np
-from typing import Literal, Union
+from typing import Literal, Union, Sequence
 import warnings
 
 from ..Backend import hardware as HW
-from ..types import LayerConstructionConfig,NodeConfig,BackendArray,ConstantToUpdate
+from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
+from .initializers import Initializer
+from ..config import settings
+from ..exceptions import LayerConfigurationError,BackendNotAvailableError,PerformanceWarning,HardwareWarning, InvalidDeviceIDError
 
-class Layer:
+class BaseLayer:
     """
-        Base layer class mainly used for dense networks
+        Base layer class for all layer types.
         
         Parameters
         ----------
         _num_inputs : int
             Number of inputs the layer is going to receive.
-        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstructionConfig`
+        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstruction`
             Configuration of the layer including the node activation functions and their constants as well as the initial _weights, _biases and connection mask.
         batch_size : int, optional
             Initial batch size for the layer, by default 1.
-        Gpu_id : int, optional
+        gpu_id : int, optional
             Id of the GPU to use if available, by default 0.
-        
-        Examples
-        --------
-        Generaly one doesn't need to instanciate this class directly but if some want to do it, here is an example of how to do it.
-
-        >>> from HeteroSymNN.Core.Nets.layers import Layer
-        >>> from HeteroSymNN.Core.initializers import HeNormal
-        >>> num_inputs = 3
-        >>> num_nodes = 5
-        >>> inicial_params = HeNormal().generate(3,5)
-        >>> layer_config = [("relu", {}),("relu", {}),("sigmoid", {}),("relu", {}),("relu", {})]
-        >>> constuctor = (layer_config,inicial_params)
-        >>> layer = Layer(num_inputs,constuctor)
-        
-        
     """
-    def __init__(self,num_inputs:int,layer_configuration:LayerConstructionConfig,batch_size:int = 1,Gpu_id:int = 0):
+    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
         
         self._CALCULATION_MANAGER = HW.be
         self._ASNUMPY = HW.asnumpy
         self._GPU_ID = Gpu_id
         self._CURRENT_DEVICE = "CPU"
-        self._COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
+        self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._CURRENT_VECTOR_FORMAT = self._ASNUMPY
-        self._DEFAULT_FLOAT_TYPE = self._CALCULATION_MANAGER.float32
+        self._DEFAULT_FLOAT_TYPE = settings.default_dtype
 
         self._num_inputs = num_inputs
         self._num_nodes = len(layer_configuration[0])
         self._layer_node_configs = layer_configuration[0]
-
-        init_biases, init_weights, init_mask = layer_configuration[1]
-        self._biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
-        self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
-        self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
+        self._initializer = layer_configuration[1]
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
@@ -67,7 +51,18 @@ class Layer:
         self._act_funcions_manager = SymbolicJITCompiler(layer_configuration[0],self._COMPUTATIONAL_METHOD,self._GPU_ID)
 
     @property
-    def NUM_NODES(self)->int:
+    def initializer(self)->Initializer:
+        """
+        Iinititalizer used in the creation of the layer weights, biases and connection mask.
+        
+        Returns
+        -------
+        :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`
+        """
+        return self._initializer
+
+    @property
+    def num_nodes(self)->int:
         """
         Property to get the number of nodes in the layer.
 
@@ -79,7 +74,7 @@ class Layer:
         return self._num_nodes
 
     @property
-    def NUM_INPUTS(self)->int:
+    def num_inputs(self)->int:
         """
         Property to get the number of inputs to the layer.
 
@@ -91,7 +86,7 @@ class Layer:
         return self._num_inputs
 
     @property
-    def GPU_ID(self)->int:
+    def gpu_id(self)->int:
         """
         Property to get the current GPU ID being used for calculations.
 
@@ -105,7 +100,7 @@ class Layer:
         return self._GPU_ID
     
     @property
-    def COMPUTATIONAL_METHOD(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
+    def computational_method(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Property to get the current computational method being used for calculations.
 
@@ -117,7 +112,7 @@ class Layer:
         return self._COMPUTATIONAL_METHOD
     
     @property
-    def ACTIVATION_FUNCTION_CONSTANTS(self)->BackendArray:
+    def activation_function_constants(self)->BackendArray:
         """
         Property to get the current activation function constants array.
 
@@ -131,7 +126,7 @@ class Layer:
         return self._funcs_constats
     
     @property
-    def CURRENT_DEVICE(self)->Literal["CPU","GPU"]:
+    def current_device(self)->Literal["CPU","GPU"]:
         """
         Property to get the current device where the parameters like _weights, _biases and connection mask are located.
 
@@ -143,7 +138,7 @@ class Layer:
         return self._CURRENT_DEVICE
     
     @property
-    def INICIAL_LAYER_NODE_CONFIGS(self)->list[NodeConfig]:
+    def inicial_nodes_layer_configs(self)->Sequence[NodeConfig]:
         """
         Property to get the initial layer node configurations used during layer construction.
 
@@ -154,6 +149,23 @@ class Layer:
         """
         return self._layer_node_configs
     
+    def reset_parameters(self,reset_constants:bool = False)->None:
+        """
+        Method to reset the parameters of the layer to their initial values.
+
+        Parameters
+        ----------
+        reset_constants: bool, optional
+            Bool value if you want to also reset the activation function constants, by default False.
+        """
+        self.to("CPU")
+        if (reset_constants):
+            if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
+                with HW.be.cuda.Device(self._GPU_ID):
+                    self._funcs_constats,self.param_offsets = self._generate_constant_array(self._layer_node_configs)
+            else:
+                self._funcs_constats,self.param_offsets = self._generate_constant_array(self._layer_node_configs)
+
     def _generate_constant_array(self,activation_functions:list[NodeConfig])->tuple[np.ndarray,BackendArray]:
         """
         Internal function for generating the array for the constants used in the activation functions.
@@ -186,7 +198,7 @@ class Layer:
             return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self._num_nodes)
         return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets)
 
-    def recunstruct_layer_config(self)->list[NodeConfig]:
+    def recunstruct_layer_config(self)->Sequence[NodeConfig]:
         """
         Regenerates the list of NodeConfig with the updated activation funcion constants.
 
@@ -220,7 +232,7 @@ class Layer:
         """
         if (new_id != self._GPU_ID):
             if (new_id >= HW.NUM_GPUS):
-                raise ValueError(f"ID de GPU {new_id} no es válido. GPUs disponibles: {HW.NUM_GPUS}")
+                raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
             self._GPU_ID = new_id
             self._act_funcions_manager.set_gpu_id(self._GPU_ID)
                 
@@ -240,6 +252,7 @@ class Layer:
         Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
             The computational method that was set. This could be different from the requested one if the requested one is not available or encontered an error with out :obj:`~HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` been set to True.
         """
+        new_method = new_method.upper()
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
             raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
         
@@ -247,16 +260,16 @@ class Layer:
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intantando con el metodo CPU_JIT")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
         if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
 
         if(new_method != self._COMPUTATIONAL_METHOD):
@@ -285,24 +298,25 @@ class Layer:
         device : Literal["CPU", "GPU"]
             To which device to change the data of the layer.
         """
+        device = device.upper()
         if not(device in ["CPU","GPU"]):
-            raise ValueError("Se paso como device algo que no es GPU o CPU.")
+            raise ValueError("Device not recognized. Expecting CPU or GPU.")
         
         new_vector_format = self._CALCULATION_MANAGER.array
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al dispositivo GPU cuando no se tiene una gpu valida.")
-            else:
-                warnings.warn("Se intento cambiar al dispositivo GPU cuando no se tiene una gpu valida."+"Cambiando a CPU")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Trying to send the parameters to GPU but no GPU is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Trying to send the parameters to GPU but no GPU is available."+"Using CPU instead.",HardwareWarning,stacklevel=2)
         if (((device == "GPU") and not(HW.GPU_ENABLED)) or (device == "CPU")):
             new_vector_format = self._ASNUMPY
             device = "CPU"
 
         if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al dispositivo GPU cuando se tiene definido la CPU como dispositivo computacional")
-            else:
-                warnings.warn("Se intento cambiar al dispositivo GPU cuando se tiene definido la CPU como dispositivo computacional."+"Ignorando peticion por seguridad.")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to send the parameters to the GPU when the CPU was set as the computational device.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to send the parameters to the GPU when the CPU was set as the computational device."+"Ignoring the request for safety.",HardwareWarning,stacklevel=3)
                 device = "CPU"
 
         if(device != self._CURRENT_DEVICE):
@@ -310,14 +324,8 @@ class Layer:
             self._CURRENT_VECTOR_FORMAT = new_vector_format
             if (device == "GPU"):
                 with HW.be.cuda.Device(self._GPU_ID):
-                    self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
-                    self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
-                    self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
                     self._funcs_constats = self._CURRENT_VECTOR_FORMAT(self._funcs_constats)
             else:
-                self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
-                self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
-                self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
                 self._funcs_constats = self._CURRENT_VECTOR_FORMAT(self._funcs_constats)
 
     def batch_size_change(self, batch_size: int)->None:
@@ -341,6 +349,182 @@ class Layer:
                 self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.a = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.delta = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
+
+    def forward(self,input_values:BackendArray)->BackendArray:
+        """
+        Method to perform the forward pass of the layer.
+        
+        Parameters
+        ----------
+        input_values : :obj:`~HeteroSymNN.types.BackendArray`
+            Input values to the layer.
+
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            Output values of the layer after applying the activation functions.
+        """
+        raise NotImplementedError
+
+    def backward(self,error_values:BackendArray)->BackendArray:
+        """
+        Method to perform the backward pass of the layer.
+        
+        Parameters
+        ----------
+        error_values : :obj:`~HeteroSymNN.types.BackendArray`
+            Error values from the next layer.
+
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray`
+            Error values to be passed to the previous layer.
+        """
+        raise NotImplementedError
+    
+    def change_constant(self,new_values:Union[list[ConstantToUpdate],ConstantToUpdate])-> None:
+        """
+        Method to change the value of a activation function constant of a node or list of nodes.
+        
+        Parameters
+        ----------
+        new_values: Union[list[:obj:`~HeteroSymNN.types.ConstantToUpdate`], :obj:`~HeteroSymNN.types.ConstantToUpdate`]
+            New value or list of new values to set. Each value is a tuple containing the node index, the constant name, and the new value.
+        """
+        if (type(new_values[0]) == int):
+            new_values = [new_values]
+        
+        for value in new_values:
+            traductor = self.CONSTANT_DICT[value[0]]
+            self._funcs_constats[traductor[value[1]]] = value[2]
+
+    def get_parameters(self)->dict[str,np.ndarray]:
+        #see if the mask is geting saved
+        """
+        Method to get the parameters of the layer.
+        
+        :return: Dictionary of the parameters by string.
+        :rtype: dict[str, ndarray]
+        """
+        raise NotImplementedError
+        
+    def set_parameters(self, params:dict[str,np.ndarray])->None:
+        """
+        Method to set the parameters of the layer.
+
+        Parameters
+        ----------
+        params : dict[str, np.ndarray]
+            Dictionary containing the new parameters with keys 'weights' and 'biases'.
+        """
+        raise NotImplementedError
+
+class LinearLayer(BaseLayer):
+    """
+        Linear layer class
+        
+        Parameters
+        ----------
+        _num_inputs : int
+            Number of inputs the layer is going to receive.
+        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstructionConfig`
+            Configuration of the layer including the node activation functions and their constants as well as the initial _weights, _biases and connection mask.
+        batch_size : int, optional
+            Initial batch size for the layer, by default 1.
+        Gpu_id : int, optional
+            Id of the GPU to use if available, by default 0.
+        
+        Examples
+        --------
+        Generaly one doesn't need to instanciate this class directly but if some want to do it, here is an example of how to do it.
+
+        >>> from HeteroSymNN.Core.Nets.layers import LinearLayer
+        >>> from HeteroSymNN.Core.initializers import HeNormal
+        >>> num_inputs = 3
+        >>> num_nodes = 5
+        >>> inicial_params = HeNormal().generate(3,5)
+        >>> layer_config = [("relu", {}),("relu", {}),("sigmoid", {}),("relu", {}),("relu", {})]
+        >>> constuctor = (layer_config,inicial_params)
+        >>> layer = LinearLayer(num_inputs,constuctor)
+        
+        
+    """
+    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
+        
+        init_biases, init_weights, init_mask = self._initializer.generate(num_inputs, self._num_nodes)
+        self._biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
+        self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
+        self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
+
+        super().__init__(num_inputs,layer_configuration,batch_size,Gpu_id)
+    
+    #quitar la propiedad para no romper los optimizadores
+    @property
+    def biases(self)->np.ndarray:
+        """
+        Property to get the biases of the layer.
+
+        Returns
+        -------
+        np.ndarray
+            Biases of the layer.
+        """
+        return self._ASNUMPY(self._biases)
+    
+    #quitar la propiedad para no romper los optimizadores
+    @property
+    def weights(self)->np.ndarray:
+        """
+        Property to get the weights of the layer.
+
+        Returns
+        -------
+        np.ndarray
+            Weights of the layer.
+        """
+        return self._ASNUMPY(self._weights*self._connection_mask)
+    
+  
+    def reset_parameters(self,reset_constants:bool = False,reset_mask:bool = False)->None:
+        """
+        Method to reset the parameters of the layer to their initial values.
+
+        Parameters
+        ----------
+        reset_constants: bool, optional
+            Bool value if you want to also reset the activation function constants, by default False.
+        """
+        super().reset_parameters(reset_constants)
+        init_biases, init_weights, init_mask = self._initializer.generate(self._num_inputs, self._num_nodes)
+        self._biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
+        self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
+        if (reset_mask):
+            self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_T)
+
+
+    def to(self,device:Literal["CPU","GPU"])->None:
+        """
+        Change the location of the waights, biases, connection mask and activation function constants from CPU to GPU or GPU to CPU.
+
+        Parameters
+        ----------
+        device : Literal["CPU", "GPU"]
+            To which device to change the data of the layer.
+        """
+        device = device.upper()
+        same = (device == self._CURRENT_DEVICE)
+        super().to(device)
+        if((device == self._CURRENT_DEVICE)and not (same)):
+            if (device == "GPU"):
+                with HW.be.cuda.Device(self._GPU_ID):
+                    self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
+                    self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
+                    self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
+            else:
+                self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
+                self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
+                self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
+
 
     def forward(self,input_values:BackendArray)->BackendArray:
         """
@@ -384,22 +568,6 @@ class Layer:
         prev_layer_error_sum = self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta)
         
         return prev_layer_error_sum
-    
-    def change_constant(self,new_values:Union[list[ConstantToUpdate],ConstantToUpdate])-> None:
-        """
-        Method to change the value of a activation function constant of a node or list of nodes.
-        
-        Parameters
-        ----------
-        new_values: Union[list[:obj:`~HeteroSymNN.types.ConstantToUpdate`], :obj:`~HeteroSymNN.types.ConstantToUpdate`]
-            New value or list of new values to set. Each value is a tuple containing the node index, the constant name, and the new value.
-        """
-        if (type(new_values[0]) == int):
-            new_values = [new_values]
-        
-        for value in new_values:
-            traductor = self.CONSTANT_DICT[value[0]]
-            self._funcs_constats[traductor[value[1]]] = value[2]
 
     def get_parameters(self)->dict[str,np.ndarray]:
         #see if the mask is geting saved
@@ -426,15 +594,20 @@ class Layer:
         corret_weights = (params["_weights"].shape == self._weights.shape)
         correct_biases = (params["_biases"].shape == self._biases.shape)
         if not(correct_biases or corret_weights):
-            raise ValueError(f"""Pesos y _biases nuevos no estan en las dimenciones correctas.Pesos esperaba {self._weights.T.shape} y 
-                             recibió {params["_weights"].T.shape}. Biases esperaba {self._biases.T.shape} y recibió {params["_biases"].T.shape}.""")
+            raise LayerConfigurationError(f"""
+                Weights and biases are not in the correct dimentions. Expected {self._weights.T.shape} for the weights and {self._biases.T.shape} for the biases.
+                Received {params["_weights"].T.shape} for the weights and {params["_biases"].T.shape} for the biases.
+                 """)
         elif not(corret_weights):
-            raise ValueError(f"""Pesos nuevos no estan en las dimenciones correctas. 
-                             Pesos esperaba {self._weights.T.shape} y 
-                             recibió {params["_weights"].T.shape}""")
+            raise LayerConfigurationError(f"""
+                Weights are not in the correct dimentions. Expected {self._weights.T.shape} for the weights.
+                Received {params["_weights"].T.shape} for the weights.
+                """)
         elif not (correct_biases):
-            raise ValueError(f"""Biases nuevos no esta en la dimencion correcta.Biases esperaba 
-                             {self._biases.T.shape} y recibió {params["_biases"].T.shape}.""")
+            raise LayerConfigurationError(f"""
+                Biases are not in the correct dimentions. Expected {self._biases.T.shape} for the biases.
+                Received {params["_biases"].T.shape} for the biases.
+                """)
         
         self._weights = np.array(params['_weights'], dtype=self._DEFAULT_FLOAT_TYPE)
         self._biases = np.array(params['_biases'], dtype=self._DEFAULT_FLOAT_TYPE)
@@ -452,3 +625,12 @@ class Layer:
             self._connection_mask = self._CALCULATION_MANAGER.array(connection_mask,dtype=self._CALCULATION_MANAGER.float32)
         else:
             self._connection_mask = connection_mask.astype(self._DEFAULT_FLOAT_TYPE)
+
+class RecurrentLayer(BaseLayer):
+    """
+        Recurrent layer class.
+    """
+    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
+        
+        raise NotImplementedError
+        super().__init__(num_inputs,layer_configuration,batch_size,Gpu_id)

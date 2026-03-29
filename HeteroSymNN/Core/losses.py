@@ -6,6 +6,8 @@ import warnings
 from ..Backend import hardware as HW
 from ..JIT.compiler import SymbolicJITCompiler
 from ..types import BackendArray
+from ..config import settings
+from ..exceptions import InvalidDeviceIDError
 
 class Loss:
     """
@@ -115,21 +117,21 @@ class FlexibleLoss(Loss):
                  computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         self._loss_expression = loss_expression
         self._constants = constants or {}
-        self._COMPUTATIONAL_METHOD = HW.DEFAULT_COMPUTE_METHOD
+        self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._GPU_ID = gpu_id
 
         if (computational_method != None):
             if ((computational_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
-                if (HW.WARNINGS_STRICT_MODE):
+                if (settings.warning_level == "error"):
                     raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
-                else:
+                elif (settings.warning_level == "warn"):
                     warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intentando con el metodo CPU_JIT")
                     computational_method = "CPU_JIT"
 
             if ((computational_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
-                if (HW.WARNINGS_STRICT_MODE):
+                if (settings.warning_level == "error"):
                     raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
-                else:
+                elif (settings.warning_level == "warn"):
                     warnings.warn("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
                     computational_method = "CPU_PYTHON"
 
@@ -259,6 +261,7 @@ class FlexibleLoss(Loss):
         Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
             New computational method it was able to be set. In case that there was an error in the recompilation and `HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` is set to false the method that was requested will differ with the returned method.
         """
+        new_method = new_method.upper()
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
             raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
         

@@ -1,6 +1,9 @@
 import numpy as np
+import os
 import subprocess
 import warnings
+
+from ..exceptions import HardwareWarning
 
 GPU_ENABLED = False
 be = np
@@ -8,6 +11,7 @@ asnumpy = np.array
 NUM_GPUS = 0
 cp = None
 CPP_JIT_ENABLED = False
+NUM_CPU_THREADS = os.cpu_count()
 
 try: 
     import cupy
@@ -40,7 +44,7 @@ def _check_cpp_compiler()->bool:
             return True
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
             continue
-    warnings.warn("No c++ compatilbe compiler found. Training would be done using numpy")
+    warnings.warn("No c++ compatilbe compiler found. Training would be done using numpy",HardwareWarning,stacklevel=2)
     return False 
 
 CPP_JIT_ENABLED = _check_cpp_compiler()

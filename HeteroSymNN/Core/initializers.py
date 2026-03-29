@@ -1,10 +1,11 @@
 import numpy as np
-
-from ..types import LayerValues
+from typing import Any
 
 class Initializer:
     """
     Base class for all initializers.
+    
+    Should act as a shape-filling utility for Layers. The Layer dictates the shape.
     """
     def __init__(self):
         """
@@ -12,27 +13,73 @@ class Initializer:
         """
         pass
         
-    def generate(self, fan_in: int, fan_out: int) -> LayerValues:
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values for a layer.
+        Fills a tensor of `shape` with initial values based on statistical distributions.
 
         This method must be implemented by subclasses to define the specific initialization logic.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         raise NotImplementedError
 
-    def get_config(self):
+    def generate_constant(self, shape:list[int], value:float=0.0) -> np.ndarray:
+        """
+        Fills a tensor of `shape` with a constant value (zeros by default).
+
+        This method must be implemented by subclasses to define the specific initialization logic.
+
+        Parameters
+        ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
+        value : float, optional
+            The constant value to fill the array with. Default is 0.0.
+
+
+        Returns
+        -------
+        `np.ndarray`
+            numpy array populated with the specified constant value.
+        """
+        raise NotImplementedError
+
+    def generate_binary_mask(self, shape:list[int])-> np.ndarray:
+        """
+        Generates a binary dropout/sparsity mask of `shape` based on density.
+
+        This method must be implemented by subclasses to define the specific initialization logic.
+
+        Parameters
+        ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+
+
+        Returns
+        -------
+        `np.ndarray`
+            numpy array populated with binary values (1.0 or 0.0) representing the sparsity mask.
+        """
+        raise NotImplementedError
+
+    def get_config(self)->dict[str,Any]:
         """
         Returns the configuration of the initializer.
 
@@ -41,26 +88,72 @@ class Initializer:
 
         Returns
         -------
-        dict
+        dict[str, Any]
             Dictionary containing the configuration parameters.
         """
         return {"class_name": self.__class__.__name__}
 
 class BaseInitializer(Initializer):
     """
-    Base class for initializers that provides a helper method to create the return structure.
+    Base class for initializers that provides generic definitions of how the `generate_constant` and `generate_binary_mask` for general methods.
+    
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
     """
-    def _create_matrices(self, fan_in: int, fan_out: int, weights: np.ndarray):
+    def __init__(self,connection_density:float=None):
+        self._seted_connection_density = connection_density
+        if (connection_density is None):
+            connection_density = 1.0
+        self.connection_density = np.clip(connection_density, 0.0, 1.0)
+    
+    def generate_constant(self, shape:list[int], value:float = 0.0) -> np.ndarray:
         """
-        Internal helper to format the generated weights into the expected LayerValues structure.
+        Fills a tensor of `shape` with a constant value (zeros by default).
+
+        Parameters
+        ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
+        value : float, optional
+            The constant value to fill the array with. Default is 0.0.
+
+
+        Returns
+        -------
+        `np.ndarray`
+            numpy array populated with the specified constant value.
         """
-        biases = [0.0] * fan_out
-        connection_mask = np.ones((fan_out, fan_in))
-        return (biases, weights.tolist(), connection_mask.tolist())
+        return np.full(shape, value, dtype=np.float32)
+
+    def generate_binary_mask(self, shape:list[int])-> np.ndarray:
+        """
+        Generates a binary dropout/sparsity mask of `shape` based on density.
+
+        Parameters
+        ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+
+
+        Returns
+        -------
+        `np.ndarray`
+            numpy array populated with binary values (1.0 or 0.0) representing the sparsity mask.
+        """
+        if (self.connection_density) >= 1.0:
+            return np.ones(shape, dtype=np.float32)
+        return (np.random.rand(*shape) < self.connection_density).astype(np.float32)
+
+    def get_config(self)->dict[str,Any]:
+        return {"class_name": self.__class__.__name__, "connection_density": self.connection_density}
 
 class RandomNormal(BaseInitializer):
     """
     Initializer that generates tensors with a normal distribution.
+    
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    
+    Recommended for generic, custom, or un-normalized layers where bounded noise is needed.
 
     Parameters
     ----------
@@ -69,36 +162,47 @@ class RandomNormal(BaseInitializer):
     stddev : float, optional
         Standard deviation of the random values to generate. Defaults to 0.05.
     """
-    def __init__(self, mean=0.0, stddev=0.05):
+    def __init__(self, mean:float=0.0, stddev:float=0.05, connection_density:float=None):
+        super().__init__(connection_density)
         self.mean = mean
         self.stddev = stddev
-
-    def generate(self, fan_in: int, fan_out: int):
+    
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a normal distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
-        weights = np.random.normal(self.mean, self.stddev, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.normal(self.mean, self.stddev, shape).astype(np.float32)
     
-    def get_config(self):
-        return {"class_name": self.__class__.__name__, "mean": self.mean, "stddev": self.stddev}
+    def get_config(self)->dict[str,Any]:
+        params = {"stddev": self.stddev, "mean": self.mean}
+        params.update(super().get_config())
+        return params
 
 
 class RandomUniform(BaseInitializer):
     """
     Initializer that generates tensors with a uniform distribution.
+    
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    
+    Recommended for generic, custom, or un-normalized layers where strictly bounded noise is needed.
 
     Parameters
     ----------
@@ -107,196 +211,254 @@ class RandomUniform(BaseInitializer):
     max_val : float, optional
         Upper bound of the range of random values to generate. Defaults to 0.05.
     """
-    def __init__(self, min_val=-0.05, max_val=0.05):
+    def __init__(self, min_val:float=-0.05, max_val:float=0.05,connection_density:float=None):
+        super().__init__(connection_density)
         self.min_val = min_val
         self.max_val = max_val
-
-    def generate(self, fan_in: int, fan_out: int):
+    
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a uniform distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
-        weights = np.random.uniform(self.min_val, self.max_val, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.uniform(self.min_val, self.max_val, shape).astype(np.float32)
 
-    def get_config(self):
-        return {"class_name": self.__class__.__name__, "min_val": self.min_val, "max_val": self.max_val}
+    def get_config(self)->dict[str,Any]:
+        params = {"min_val": self.min_val, "max_val": self.max_val}
+        params.update(super().get_config())
+        return params
 
 class XavierUniform(BaseInitializer):
     """
     Xavier (Glorot) uniform initializer.
     
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    
+    Recommended if using Sigmoid, Tanh, or Softmax activation functions.
+    
     Draws samples from a uniform distribution within [-limit, limit] where `limit` is `sqrt(6 / (fan_in + fan_out))`.
     """
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a Unifrom Xavier distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         limit = np.sqrt(6 / (fan_in + fan_out))
-        weights = np.random.uniform(-limit, limit, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.uniform(-limit, limit, shape).astype(np.float32)
 
 class XavierNormal(BaseInitializer):
     """
     Xavier (Glorot) normal initializer.
     
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    
+    Recommended if using Sigmoid, Tanh, or Softmax activation functions.
+    
     Draws samples from a normal distribution centered on 0 with `stddev = sqrt(2 / (fan_in + fan_out))`.
     """
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a Normal Xavier distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(2 / (fan_in + fan_out))
-        weights = np.random.normal(0, stddev, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.normal(0, stddev, shape).astype(np.float32)
 
 class HeUniform(BaseInitializer):
     """
     He uniform variance scaling initializer.
     
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    
+    Recommended if using ReLU, LeakyReLU, and ELU activation functions.
+    
     Draws samples from a uniform distribution within [-limit, limit] where `limit` is `sqrt(6 / fan_in)`.
     """
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a Unifrom He distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         limit = np.sqrt(6 / fan_in)
-        weights = np.random.uniform(-limit, limit, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.uniform(-limit, limit, shape).astype(np.float32)
 
 class HeNormal(BaseInitializer):
     """
     He normal initializer.
     
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+
+    Recommended if using ReLU, LeakyReLU, and ELU activation functions.
+    
     Draws samples from a normal distribution centered on 0 with `stddev = sqrt(2 / fan_in)`.
     """
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a Normal He distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(2 / fan_in)
-        weights = np.random.normal(0, stddev, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.normal(0, stddev, shape).astype(np.float32)
 
 class LecunNormal(BaseInitializer):
     """
     LeCun normal initializer.
     
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+
+    Recommended if using SELU activations or for heterogeneous/mixed activation layers.
+    
     Draws samples from a normal distribution centered on 0 with `stddev = sqrt(1 / fan_in)`.
     """
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with initial values using a Normal LeCun distribution.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(1 / fan_in)
-        weights = np.random.normal(0, stddev, (fan_out, fan_in))
-        return self._create_matrices(fan_in, fan_out, weights)
+        return np.random.normal(0, stddev, shape).astype(np.float32)
 
 class Orthogonal(BaseInitializer):
     """
     Initializer that generates an orthogonal matrix.
+    
+    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+
+    Recommended for Recurrent Neural Networks (RNNs) or using heterogeneous layers.
     
     Parameters
     ----------
     gain : float, optional
         Multiplicative factor to apply to the orthogonal matrix. Defaults to 1.0.
     """
-    def __init__(self, gain=1.0):
+    def __init__(self, gain:float=1.0,connection_density:float=None):
+        super().__init__(connection_density)
         self.gain = gain
 
-    def generate(self, fan_in: int, fan_out: int):
+    def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
-        Generates the initial values.
+        Fills a tensor of `shape` with an orthogonal matrix scaled by a gain factor.
 
         Parameters
         ----------
+        shape : list[int]
+            Shape of the numpy array that will be generated.
+        
         fan_in : int
             Number of input units.
+
         fan_out : int
             Number of output units.
 
+
         Returns
         -------
-        :obj:`~HeteroSymNN.types.LayerValues`
-            Tuple containing biases, weights, and connection mask.
+        `np.ndarray`
+            numpy array populated with values forming an orthogonal matrix.
         """
-        flat_shape = (fan_out, fan_in)
+        flat_shape = (shape[0], int(np.prod(shape[1:]))) if len(shape) > 1 else (shape[0], 1)
         a = np.random.normal(0.0, 1.0, flat_shape)
         u, _, v = np.linalg.svd(a, full_matrices=False)
         q = u if u.shape == flat_shape else v
-        weights = self.gain * q.reshape(flat_shape)
-        return self._create_matrices(fan_in, fan_out, weights)
+        return (self.gain * q).reshape(shape).astype(np.float32)
 
-    def get_config(self):
-        return {"class_name": self.__class__.__name__, "gain": self.gain}
+    def get_config(self)->dict[str,Any]:
+        params = {"gain": self.gain}
+        params.update(super().get_config())
+        return params

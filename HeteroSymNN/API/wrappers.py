@@ -13,6 +13,8 @@ from ..Backend import hardware as HW
 from ..Core.Nets.dense import HeteroDense
 from ..Core import losses, optimizers,initializers
 from . import registry
+from ..exceptions import PathError,PathWarning,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,LoadingWarning,WrapperError
+from ..config import settings
 
 def _normalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
     """Internal helper for Min-Max normalization."""
@@ -76,23 +78,18 @@ class Wrapper():
     
     @model.setter
     def model(self, new_model):
-        # 1. Asignar el modelo
         self._model = new_model
         
-        # 2. Validación Automática: Si hay datos cargados y el modelo no es None, verificar compatibilidad
         if ((new_model != None) and (self._loaded_train_data)):
             X_norm, Y_norm = self.training_data_norm
             
-            # Verificar dimensiones de entrada
             expected_x = new_model.layers[0].num_inputs
-            # Asumimos que X_norm tiene forma (n_muestras, n_features) tras load_training
             if X_norm.ndim == 2 and X_norm.shape[1] != expected_x:
-                raise ValueError(f"Error de Arquitectura: El nuevo modelo espera {expected_x} entradas, pero los datos cargados tienen {X_norm.shape[1]} columnas (features).")
+                raise ShapeMismatchError(f"The model was expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.")
             
-            # Verificar dimensiones de salida
             expected_y = new_model.layers[-1].num_nodes
             if Y_norm.ndim == 2 and Y_norm.shape[1] != expected_y:
-                raise ValueError(f"Error de Arquitectura: El nuevo modelo espera {expected_y} salidas, pero los datos cargados tienen {Y_norm.shape[1]} columnas (targets).")
+                raise ShapeMismatchError(f"The model was expecting {expected_y} outputs, but the loaded data has {Y_norm.shape[1]} targets.")
 
     def fit(self, training_data: list, expected_results: list, epochs: int = None,training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
         """
@@ -152,29 +149,41 @@ class Wrapper():
         Y_raw = np.array(expected_results)
         
         if X_raw.ndim == 1:
-            warnings.warn("Los datos de entrada (X) eran 1D. Remodelando a (n_muestras, 1).")
-            X_raw = X_raw.reshape(-1, 1)
+            if (settings.warning_level=="error"):
+                raise ShapeMismatchError("The shape of the inputs are 1D.")
+            elif(settings.warning_level == "warn"):
+                warnings.warn("The shape of the inputs are 1D. Resheaping it to (num features, 1).",ShapeWarning,stacklevel=2)
+                X_raw = X_raw.reshape(-1, 1)
             
         if Y_raw.ndim == 1:
-            warnings.warn("Los datos de salida (Y) eran 1D. Remodelando a (n_muestras, 1).")
-            Y_raw = Y_raw.reshape(-1, 1)
+            if (settings.warning_level=="error"):
+                raise ShapeMismatchError("The shape of the outputs are 1D.")
+            elif(settings.warning_level == "warn"):
+                warnings.warn("The shape of the outputs are 1D. Resheaping it to (num targets, 1).",ShapeWarning,stacklevel=2)
+                Y_raw = Y_raw.reshape(-1, 1)
         
         if (self._model != None):
             expected_x_features = self.model.layers[0].num_inputs
             if X_raw.ndim == 2 and X_raw.shape[1] != expected_x_features:
                 if X_raw.shape[0] == expected_x_features:
-                    warnings.warn(f"Los datos de entrada (X) parecían estar en formato (n_features, n_muestras). Transponiendo a (n_muestras, n_features).", UserWarning)
-                    X_raw = X_raw.T
+                    if (settings.warning_level=="error"):
+                        raise ShapeMismatchError(f"The input data looks to be in the format (features, samples).")
+                    elif(settings.warning_level == "warn"):
+                        warnings.warn("The input data looks to be in the format (features, samples).Transposing to (samples, features).",ShapeWarning,stacklevel=2)
+                        X_raw = X_raw.T
                 else:
-                    raise ValueError(f"La forma de los datos de entrada (X) es {X_raw.shape}, pero la capa 0 espera {expected_x_features} features (en la segunda dimensión).")
+                    raise ShapeMismatchError(f"The shape of the inputs are {X_raw.shape}, but the model expects {expected_x_features} features.")
 
             expected_y_features = self.model.layers[-1].num_nodes      
             if Y_raw.ndim == 2 and Y_raw.shape[1] != expected_y_features:
                 if Y_raw.shape[0] == expected_y_features:
-                    warnings.warn(f"Los datos de salida (Y) parecían estar en formato (n_outputs, n_muestras). Transponiendo a (n_muestras, n_outputs).", UserWarning)
-                    Y_raw = Y_raw.T 
+                    if (settings.warning_level=="error"):
+                        raise ShapeMismatchError("The output data looks to be in the format (outputs, samples).")
+                    elif(settings.warning_level == "warn"):
+                        warnings.warn("The output data looks to be in the format (outputs, samples).Transposing to (samples, outputs).",ShapeWarning,stacklevel=2)
+                        Y_raw = Y_raw.T 
                 else:
-                    raise ValueError(f"La forma de los datos de salida (Y) es {Y_raw.shape}, pero la capa final espera {expected_y_features} outputs (en la segunda dimensión).")
+                    raise ShapeMismatchError(f"The shape of the outputs are {Y_raw.shape}, but the model expects {expected_y_features} outputs.")
             
         self.training_data = (X_raw, Y_raw)
         
@@ -217,10 +226,10 @@ class Wrapper():
             A list of loss values recorded during training.
         """
         if self.training_data is None:
-            raise ValueError("No hay datos de entrenamiento cargados. Usa load_training().")
+            raise TrainingError("No Training data loaded. Use load_training() first.")
         
         losses = self.model.train(
-            self.training_data_norm[0], # X_norm
+            self.training_data_norm[0],
             self.training_data_norm[1],
             num_iterations=num_iterations,
             training_mode=training_mode,
@@ -248,7 +257,7 @@ class Wrapper():
         
         if self.normalize_inputs:
             if self.x_min is None:
-                 raise ValueError("El modelo fue entrenado con normalize_inputs=True pero no se encontraron estadísticas (x_min). ¿Fue cargado correctamente?")
+                 raise WrapperError("The model was trained with the inputs normalized but the data scaler parameters are None.")
             X_norm = _normalization(X_raw, self.x_min, self.x_max)
         else:
             X_norm = X_raw
@@ -257,7 +266,7 @@ class Wrapper():
         
         if self.normalize_outputs:
             if self.y_min is None:
-                raise ValueError("El modelo fue entrenado con normalize_outputs=True pero no se encontraron estadísticas (y_min). ¿Fue cargado correctamente?")
+                raise WrapperError("The model was trained with the outputs normalized but the data scaler parameters are None.")
             Y_denorm = _denormalization(Y_pred_norm, self.y_min, self.y_max)
             return Y_denorm
         else:
@@ -285,7 +294,7 @@ class Wrapper():
         elif(self.work_type == "class"):
             results = self.classification_test_accuracy(test_data,expected_results)
         else:
-            raise RuntimeError("Tipo de trabajo especificado no es valido.")
+            raise WrapperError("Work type was not specified.")
         
         return results
 
@@ -360,8 +369,8 @@ class Wrapper():
             
         expected_results = np.array(expected_results).flatten()
         
-        if results.shape != expected_results.shape:
-            raise ValueError(f"Las formas de las predicciones {results.shape} y los resultados esperados {expected_results.shape} no coinciden.")
+        if (results.shape != expected_results.shape):
+            raise ShapeMismatchError(f"The expected results are not in the expected shape, Resived {expected_results.shape} and expected {results.shape}.")
 
         mean = np.mean(expected_results)
         rss = 0
@@ -494,8 +503,11 @@ class Wrapper():
         IOError
             If the file cannot be loaded or has an invalid format.
         """
-        if not path.endswith(".npz"):
+        if not (path.endswith(".npz")):
             path = path + ".npz"
+
+        if not(os.path.exists(path)):
+            raise PathError(f"No file found. {path}")
         
         try:
             with np.load(path,allow_pickle=True) as data:         
@@ -514,14 +526,14 @@ class Wrapper():
                 loss_fn_config = architecture_config['loss_config']
                 loss_class_name:str = loss_fn_config.pop('class_name')
                 if loss_class_name not in registry.LOSS_FN_MAP:
-                    raise IOError(f"Función de pérdida desconocida: {loss_class_name}.")
+                    raise LoadingError(f"Unknown loss function: {loss_class_name}.")
                 loss_fn = registry.LOSS_FN_MAP[loss_class_name](**loss_fn_config) 
                 
 
                 optimizer_config = architecture_config['optimizer_config']
                 opt_class_name:str = optimizer_config.pop('class_name')
                 if opt_class_name not in registry.OPTIMIZER_MAP:
-                    raise IOError(f"Optimizador desconocido: {opt_class_name}.")
+                    raise LoadingError(f"Unknown optimizer: {opt_class_name}.")
                 optimizer = registry.OPTIMIZER_MAP[opt_class_name](**optimizer_config)
 
                 initializer = None
@@ -547,11 +559,10 @@ class Wrapper():
                         num_treaning_iter=architecture_config.get('num_treaning_iterations', 100)
                     )
                 elif architecture_config.get('layers_configuration'):
-                    raise IOError("Formato de archivo obsoleto. El modelo usa 'layers_configuration' pero la clase espera 'nodes_structure'.")
+                    raise LoadingError("Save format in old format not supported.")
                 else:
-                    raise IOError("Archivo de configuración no reconocido o dañado.")
+                    raise LoadingError("Damaged file or configuration not recognized.")
 
-                # Reconstruct the nested parameter dictionary from the flat structure
                 params_dict = {}
                 for k, v in data.items():
                     if k == 'config':
@@ -564,8 +575,11 @@ class Wrapper():
                     param_key = key_parts[2]  # e.g., 'weights'
 
                     if not layer_key or not param_key:
-                        warnings.warn(f"Skipping malformed parameter key '{k}' in model file.")
-                        continue
+                        if (settings.warning_level=="error"):
+                            raise LoadingError(f"Malformed parameter key '{k}' in model file.")
+                        elif (settings.warning_level=="warn"):
+                            warnings.warn(f"Skipping malformed parameter key '{k}' in model file.",LoadingWarning,stacklevel=2)
+                            continue
 
                     if layer_key not in params_dict:
                         params_dict[layer_key] = {}

@@ -1,13 +1,12 @@
 from __future__ import annotations
-from typing import Optional,Literal,Union,Any
-import warnings
-import numpy as np
+from typing import Optional,Literal
+import itertools as iter
 
-from ...Backend import hardware as HW
-from ...types import NodeConfig,LayerValues,LayerConstructionConfig,FlexibleNodeConfig,BackendArray,ConstantToUpdate
-from ..layers import Layer
+from ...types import NodeConfig,LayerValues,FlexibleNodeConfig,LayerConstruction,NodeConfig
+from ..layers import LinearLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
+from ...exceptions import NetworkStructureError
 
 class HeteroDense(BaseNetwork):
     """
@@ -88,8 +87,14 @@ class HeteroDense(BaseNetwork):
         ... )
         
     """
-    def __init__(self, nodes_structure, detailed_activations, initial_values = None, initializer = None, learning_rate = 0.001, batch_size = 32, training_mode = "mini-batch", learning_mode = "Static", loss_function = None, optimizer = None, num_treaning_iter = 1000):
-        super().__init__(nodes_structure, detailed_activations, initial_values, initializer, learning_rate, batch_size, training_mode, learning_mode, loss_function, optimizer, num_treaning_iter)
+    def __init__(self, nodes_structure:list[int], detailed_activations:list[list[NodeConfig]], initial_values: Optional[list[LayerValues]]= None, 
+                 initializer: Optional[InitC.Initializer]= None, learning_rate:float = 0.001, batch_size:int = 32, training_mode:str = "mini-batch", 
+                 learning_mode:str = "Static", loss_function: Optional[lossC.Loss]= None, optimizer: Optional[OptiC.Optimizer]= None, num_treaning_iter:int = 1000):
+        layer_types = [LinearLayer] * (len(nodes_structure)-1)
+        network_structure = list(zip(nodes_structure[1:], layer_types))
+        network_structure = [(nodes_structure[0], None)] + network_structure
+        extra_parameters = [{}]*len(detailed_activations)
+        super().__init__(network_structure, extra_parameters, detailed_activations, initial_values, initializer, learning_rate, batch_size, training_mode, learning_mode, loss_function, optimizer, num_treaning_iter)
 
 
 
@@ -161,10 +166,10 @@ class Dense(HeteroDense):
         num_layers = len(nodes_structure) - 1
         
         if not isinstance(activation_config, list):
-             raise ValueError(f"activation_config debe ser una lista con un elemento por capa. Se recibió: {type(activation_config)}")
+             raise ValueError(f"activation_config must be a list but received: {type(activation_config)}")
         
         if len(activation_config) != num_layers:
-             raise ValueError(f"La lista de activaciones tiene {len(activation_config)} elementos, pero hay {num_layers} capas en nodes_structure.")
+             raise NetworkStructureError(f"The list of the activation functions have {len(activation_config)} elements, but was set {num_layers} layers in nodes_structure.")
 
         detailed_activations = self._expand_to_detailed(num_layers, nodes_structure[1:], activation_config)
 
@@ -200,12 +205,8 @@ class Dense(HeteroDense):
         elif ((isinstance(config_item, tuple)) and (len(config_item) == 2)):
             return config_item
         else:
-            raise ValueError(
-                f"Formato inválido para la activación: {config_item}.\n"+
-                f"Se esperaba 'str' o 'tuple[str, dict[str, float]]'.\n"+
-                "Ejemplos: 'relu', ('mish', {'beta': 1.0})"
-            )
-        
+            raise ValueError(f"Invalid activation configuration: {config_item}.'str' or 'tuple[str, dict[str, float]]' was expected.")
+
     def _expand_to_detailed(self, num_layers: int, nodes_per_layer: list[int], layer_configs: list[FlexibleNodeConfig]) -> list[list[NodeConfig]]:
         """
         Internal method to expand flexible layer configurations into detailed node configurations for each layer.
@@ -301,7 +302,7 @@ class MLP(Dense):
                  batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_treaning_iter: int = 1000):
 
         if len(nodes_structure) < 2:
-            raise ValueError("nodes_structure debe tener al menos 2 elementos (entrada y salida)")
+            raise NetworkStructureError("node_structure must have at least 2 elements (input layer and output layer).")
 
         num_hidden_layers = len(nodes_structure) - 2 
         
