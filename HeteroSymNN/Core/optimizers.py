@@ -1,11 +1,13 @@
 from __future__ import annotations
 import numpy as np
-from typing import Literal,Optional
+from typing import Literal,Optional,Union
 import warnings
+import concurrent.futures
 
 from ..Backend import hardware as HW
 from ..exceptions import PerformanceWarning,BackendNotAvailableError,InvalidDeviceIDError
 from ..config import settings
+from ..types import BackendArray
 
 class Optimizer:
     """
@@ -27,6 +29,7 @@ class Optimizer:
         self.COMPUTACIONAL_DEVICE = settings.default_compute_method.split("_")[0]
         self.be = HW.be 
         self._ASNUMPY = HW.asnumpy
+        self._thread_pool = None
 
         if (computational_device != None):
             self.COMPUTACIONAL_DEVICE = computational_device
@@ -144,21 +147,64 @@ class Optimizer:
             else:
                 self._refresh_parameters(self._ASNUMPY)
 
-    def step(self, layers: list, inputs):
+    def _single_update(self, layer, param_name: str, param: BackendArray, grad: BackendArray, mask: Union[float, BackendArray] = 1.0):
+        """
+            Internal method to update a single parameter of a layer.
+
+            This method must be implemented by subclasses to define the specific optimization logic 
+                (e.g., SGD update, Adam update) applied to the layers.
+            
+            Parameter
+            ---------
+            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+                The layer to update.
+            param_name : str
+                The name of the parameter to update.
+            param : :obj:`~HeteroSymNN.types.BackendArray`
+                The current values of the parameter.
+            grad : :obj:`~HeteroSymNN.types.BackendArray`
+                The gradient of the parameter.
+        """
+        raise NotImplementedError
+
+        
+    def step(self, layers: list):
         """
         Performs a single optimization step.
-        
-        This method must be implemented by subclasses to define the specific optimization logic 
-        (e.g., SGD update, Adam update) applied to the layers.
+
+        Universal routing loop. Iterates over layers and their working dictionaries.
 
         Parameters
         ----------
         layers : list
             List of layers to update.
-        inputs : Any
-            Input data (used by some optimizers for gradient calculation context if needed).
         """
-        raise NotImplementedError
+        self._to_device(self.COMPUTACIONAL_DEVICE)
+        
+        if self.CURRENT_DEVICE == "GPU":
+            for layer in layers:
+                self._route_layer(layer)
+        else:
+            # The "Lazy Trapdoor": Creates the persistent pool exactly once.
+            if self._thread_pool is None:
+                self._thread_pool = concurrent.futures.ThreadPoolExecutor()
+            
+            # The "Hot Path": Dispatch work to awake threads.
+            # list() acts as a barrier, forcing the main thread to wait for all parallel updates to finish.
+            list(self._thread_pool.map(self._route_layer, layers))
+
+    def _route_layer(self, layer):
+        """Helper method to isolate the logic for a single thread/loop pass."""
+        params = layer.working_parameters
+        grads = layer.working_gradients
+        masks = getattr(layer, 'working_masks', {}) 
+
+        for param_name in params:
+            p = params[param_name]
+            g = grads[param_name]
+            m = masks.get(param_name, 1.0)
+            
+            self._single_update(layer, param_name, p, g, m)
 
     def get_state(self):
         """
@@ -233,22 +279,36 @@ class SgdOptimizer(Optimizer):
     
     def _setup_kernels(self):
         if (HW.GPU_ENABLED):
-            if (SgdOptimizer._kernel_weights is None):
-                SgdOptimizer._kernel_weights = HW.cp.ElementwiseKernel(
+            if (SgdOptimizer._kernel is None):
+                SgdOptimizer._kernel = HW.cp.ElementwiseKernel(
                     'T grad, T lr, T mask',
                     'T param',
                     'param -= lr * grad * mask',
-                    'sgd_weights_kernel'
-                )
-            if (SgdOptimizer._kernel_bias is None):
-                SgdOptimizer._kernel_bias = HW.cp.ElementwiseKernel(
-                    'T grad, T lr',
-                    'T param',
-                    'param -= lr * grad',
-                    'sgd_bias_kernel'
+                    'sgd_universal_kernel'
                 )
 
-    def step(self, layers: list, inputs):
+    def _single_update(self, layer, param_name: str, param: BackendArray, grad: BackendArray, mask: Union[float, BackendArray] = 1.0):
+        """
+            Internal method to update a single parameter of a layer using SGD.
+            
+            Parameter
+            ---------
+            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+                The layer to update.
+            param_name : str
+                The name of the parameter to update.
+            param : :obj:`~HeteroSymNN.types.BackendArray`
+                The current values of the parameter.
+            grad : :obj:`~HeteroSymNN.types.BackendArray`
+                The gradient of the parameter.
+        """
+        if (self.CURRENT_DEVICE == "GPU"):
+            SgdOptimizer._kernel_weights(grad, float(self.learning_rate), mask, param)
+        else:
+            param -= self.learning_rate * grad * mask
+
+
+    def step(self, layers: list):
         """
         Performs a single optimization step using SGD.
         
@@ -259,26 +319,7 @@ class SgdOptimizer(Optimizer):
         inputs : Any
             Input data.
         """
-        self._to_device(self.COMPUTACIONAL_DEVICE)        
-        prev_a = inputs
-
-        for layer in layers:
-            batch_size = layer.delta.shape[1]
-            grad_b = self.be.mean(layer.delta, axis=1, keepdims=True)
-            grad_w = self.be.dot(layer.delta, prev_a.T) / batch_size
-
-            grad_w_masked = grad_w * layer.connection_mask
-
-            if (self.CURRENT_DEVICE == "GPU"):
-                SgdOptimizer._kernel_weights(grad_w, float(self.learning_rate), layer.connection_mask, layer.weights)
-                SgdOptimizer._kernel_bias(grad_b, float(self.learning_rate), layer.biases)
-            else:
-                grad_w_masked = grad_w * layer.connection_mask
-                layer.weights -= self.learning_rate * grad_w_masked
-                layer.biases -= self.learning_rate * grad_b
-
-            prev_a = layer.a
-
+        super().step(layers)
 
 class AdamOptimizer(Optimizer):
     """
@@ -330,42 +371,100 @@ class AdamOptimizer(Optimizer):
         if self.learning_rate is None:
             self.learning_rate = 0.001
             
-        self.m = []
-        self.v = []
-        for layer in layers:
+        self.m = {}
+        self.v = {}
+        # Track the structural order of layers for saving later
+        self._layer_order = [] 
 
-            m_w = self.be.zeros_like(layer.weights)
-            v_w = self.be.zeros_like(layer.weights)
+        for i, layer in enumerate(layers):
+            layer_id = id(layer)
+            self._layer_order.append(layer_id)
             
-            m_b = self.be.zeros_like(layer.biases)
-            v_b = self.be.zeros_like(layer.biases)
-            
-            self.m.append({'w': m_w, 'b': m_b})
-            self.v.append({'w': v_w, 'b': v_b})
+            # Check the Staging Area: Did we load state from disk?
+            if hasattr(self, '_loaded_m') and self._loaded_m is not None:
+                # Pull the saved parameters for this specific layer index
+                saved_m = self._loaded_m[i]
+                saved_v = self._loaded_v[i]
+                
+                # Dynamically load whatever keys exist ('weights', 'biases') and push to hardware
+                self.m[layer_id] = {k: self.be.array(v) for k, v in saved_m.items()}
+                self.v[layer_id] = {k: self.be.array(v) for k, v in saved_v.items()}
+            else:
+                # Standard initialization with zeros
+                self.m[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
+                self.v[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
+
+        # Clean up the staging area so it doesn't re-trigger
+        if hasattr(self, '_loaded_m'):
+            self._loaded_m = None
+            self._loaded_v = None
 
     def _refresh_parameters(self, vector_format):
-        if self.m is None or self.v is None:
+        if ((getattr(self, 'm', None) is None) or (getattr(self, 'v', None) is None)):
             return
 
-        new_m = []
-        new_v = []
+        new_m = {}
+        new_v = {}
         
-        for i in range(len(self.m)):
-            new_m_layer = {
-                'w': vector_format(self.m[i]['w']),
-                'b': vector_format(self.m[i]['b'])
+
+        for layer_id, layer_m in self.m.items():
+            new_m[layer_id] = {
+                param_name: vector_format(tensor) 
+                for param_name, tensor in layer_m.items()
             }
-            new_v_layer = {
-                'w': vector_format(self.v[i]['w']),
-                'b': vector_format(self.v[i]['b'])
+            
+        for layer_id, layer_v in self.v.items():
+            new_v[layer_id] = {
+                param_name: vector_format(tensor) 
+                for param_name, tensor in layer_v.items()
             }
-            new_m.append(new_m_layer)
-            new_v.append(new_v_layer)
             
         self.m = new_m
         self.v = new_v
+    
+    def _single_update(self, layer, param_name: str, param: BackendArray, grad: BackendArray, mask: Union[float, BackendArray] = 1.0):
+        """
+            Internal method to update a single parameter of a layer using Adam.
+            
+            Parameter
+            ---------
+            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+                The layer to update.
+            param_name : str
+                The name of the parameter to update.
+            param : :obj:`~HeteroSymNN.types.BackendArray`
+                The current values of the parameter.
+            grad : :obj:`~HeteroSymNN.types.BackendArray`
+                The gradient of the parameter.
+        """
+        m_t = self.m[id(layer)][param_name]
+        v_t = self.v[id(layer)][param_name]
 
-    def step(self, layers: list, inputs):
+        if (self.CURRENT_DEVICE == "GPU"):
+            AdamOptimizer._fused_kernel(
+                grad, float(self.learning_rate), float(self.beta1), float(self.beta2), float(self.epsilon), 
+                float(self.t_pow_beta1), float(self.t_pow_beta2), mask,
+                param, m_t, v_t
+            )
+        else:
+            grad_masked = grad * mask
+
+            # Update momentums
+            m_t = self.beta1 * m_t + (1 - self.beta1) * grad_masked
+            v_t = self.beta2 * v_t + (1 - self.beta2) * (grad_masked ** 2)
+            
+            # Save updated states back to dictionaries
+            self.m[id(layer)][param_name] = m_t
+            self.v[id(layer)][param_name] = v_t
+            
+            # Bias correction
+            m_hat = m_t / (1 - self.t_pow_beta1)
+            v_hat = v_t / (1 - self.t_pow_beta2)
+            
+            # Apply gradients
+            param -= self.learning_rate * m_hat / (self.be.sqrt(v_hat) + self.epsilon)
+
+    def step(self, layers: list):
         """
         Performs a single optimization step using Adam.
         
@@ -373,10 +472,7 @@ class AdamOptimizer(Optimizer):
         ----------
         layers : list
             List of layers to update.
-        inputs : Any
-            Input data.
         """
-        self._to_device(self.COMPUTACIONAL_DEVICE)
         if self.learning_rate is None:
             self.learning_rate = 0.001
 
@@ -384,63 +480,33 @@ class AdamOptimizer(Optimizer):
             self._initialize_state(layers)
 
         self.t += 1
-        prev_a = inputs
+        
+        self.t_pow_beta1 = self.beta1 ** self.t
+        self.t_pow_beta2 = self.beta2 ** self.t
 
-        t_pow_beta1 = self.beta1 ** self.t
-        t_pow_beta2 = self.beta2 ** self.t
-
-        for i, layer in enumerate(layers):
-            batch_size = layer.delta.shape[1]
-
-            grad_b = self.be.mean(layer.delta, axis=1, keepdims=True)
-            grad_w = self.be.dot(layer.delta, prev_a.T) / batch_size
-
-            m_t = self.m[i]
-            v_t = self.v[i]
-
-            if (self.CURRENT_DEVICE == "GPU"):
-                # Weights
-                AdamOptimizer._fused_kernel(
-                    grad_w, float(self.learning_rate), float(self.beta1), float(self.beta2), float(self.epsilon), 
-                    float(t_pow_beta1), float(t_pow_beta2), layer.connection_mask,
-                    layer.weights, m_t['w'], v_t['w'])
-                # Biases
-                AdamOptimizer._fused_kernel(
-                    grad_b, float(self.learning_rate), float(self.beta1), float(self.beta2), float(self.epsilon),
-                    float(t_pow_beta1), float(t_pow_beta2), 1.0,
-                    layer.biases, m_t['b'], v_t['b']
-                )
-
-            else:
-                grad_w_masked = grad_w * layer.connection_mask
-
-                m_t['w'] = self.beta1 * m_t['w'] + (1 - self.beta1) * grad_w_masked
-                v_t['w'] = self.beta2 * v_t['w'] + (1 - self.beta2) * (grad_w_masked ** 2)
-                m_w_hat = m_t['w'] / (1 - t_pow_beta1)
-                v_w_hat = v_t['w'] / (1 - t_pow_beta2)
-                layer.weights -= self.learning_rate * m_w_hat / (self.be.sqrt(v_w_hat) + self.epsilon)
-
-                m_t['b'] = self.beta1 * m_t['b'] + (1 - self.beta1) * grad_b
-                v_t['b'] = self.beta2 * v_t['b'] + (1 - self.beta2) * (grad_b ** 2)
-                m_b_hat = m_t['b'] / (1 - t_pow_beta1)
-                v_b_hat = v_t['b'] / (1 - t_pow_beta2)
-                layer.biases -= self.learning_rate * m_b_hat / (self.be.sqrt(v_b_hat) + self.epsilon)
-
-
-            prev_a = layer.a
-
+        super().step(layers)
+    
     def get_state(self):
         super().get_state()
-        if self.m is None:
-            return {'t': self.t, 'm': None, 'v': None}
+        if not hasattr(self, 'm') or self.m is None:
+            return {'t': getattr(self, 't', 0), 'm': None, 'v': None}
         
-        m_np = [{'w': self._ASNUMPY(lay['w']), 'b': self._ASNUMPY(lay['b'])} for lay in self.m]
-        v_np = [{'w': self._ASNUMPY(lay['w']), 'b': self._ASNUMPY(lay['b'])} for lay in self.v]
+        m_list = []
+        v_list = []
+        
+        # Use the structural order to guarantee alignment during load
+        for layer_id in self._layer_order:
+            layer_m = self.m[layer_id]
+            layer_v = self.v[layer_id]
+            
+            # Dynamically convert all parameters back to pure NumPy for serialization
+            m_list.append({k: self._ASNUMPY(v) for k, v in layer_m.items()})
+            v_list.append({k: self._ASNUMPY(v) for k, v in layer_v.items()})
 
-        return {'t': self.t, 'm': m_np, 'v': v_np}
+        return {'t': self.t, 'm': m_list, 'v': v_list}
 
     def set_state(self, state, be):
-        super().set_state(state,be)
+        super().set_state(state, be)
         self.t = state.get('t', 0)
         m_data = state.get('m')
         v_data = state.get('v')
@@ -450,8 +516,8 @@ class AdamOptimizer(Optimizer):
             self.v = None
             return
 
-        self.m = [{'w': be.array(lay['w']), 'b': be.array(lay['b'])} for lay in m_data]
-        self.v = [{'w': be.array(lay['w']), 'b': be.array(lay['b'])} for lay in v_data]
+        self._loaded_m = m_data
+        self._loaded_v = v_data
 
     def get_config(self):
         config = super().get_config()

@@ -134,6 +134,8 @@ class BaseNetwork:
         
         if (len(initializers) != num_layers):
             raise NetworkStructureError(f"There were given {len(initializers)} initializers, but the structure is defined as {num_layers} layers.")
+        else:
+            self._initializers = initializers
 
         if (loss_function == None):
             self._LOSS_FUNCTION:lossC.Loss = lossC.MSELoss(self._COMPUTATIONAL_METHOD,self._GPU_ID)
@@ -439,7 +441,7 @@ class BaseNetwork:
         device = device.upper()
         self._UPDATE_METHOD._to_device(device)
         for layer in self._LAYERS:
-            layer._to(device)
+            layer.to(device)
 
     def _forward(self,input_values:BackendArray)->BackendArray:
         """
@@ -520,7 +522,7 @@ class BaseNetwork:
             Input values used for the parameter update.
         """
         self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
-        self._UPDATE_METHOD.step(self._LAYERS,inputs) 
+        self._UPDATE_METHOD.step(self._LAYERS) 
 
     def train(self,training_inputs: list[list[float]], training_targets: list[list[float]],num_iterations = None,
               training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:

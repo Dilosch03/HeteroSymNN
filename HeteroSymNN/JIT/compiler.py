@@ -241,7 +241,7 @@ class SymbolicJITCompiler:
                 new_id = len(unique_funcs)
                 unique_funcs[func_key] = new_id
                 
-                if ((HW.USE_KERNEL_CACHE) and (func_key in HW.KERNEL_CACHE)):
+                if ((settings.use_kernel_cache) and (func_key in settings.kernel_cache)):
                     compiled_code[new_id] = HW.KERNEL_CACHE[func_key]
                 else:
                     # Generar código base
@@ -461,19 +461,20 @@ class SymbolicJITCompiler:
             
             if is_homogeneous:
                 func_fwd, func_bwd = compiled[first_id]
+                num_params = len(self.activation_funcs[0][1])
                 def f_kernel(z, a,params, offset_list, n, b): 
-                    num_params = len(params)
-                    if (len(offset_list)>1):
-                        num_params = offset_list[0]-offset_list[1]
-                    matrix_params = params.reshape(n,num_params)
-                    param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
+                    if (num_params == 0):
+                        param_cols = []
+                    else:
+                        matrix_params = params.reshape(n, num_params)
+                        param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
                     a[:] = func_fwd(z,param_cols,0)
                 def b_kernel(z, err, d,params, offset_list,n, b):
-                    num_params = len(params)
-                    if (len(offset_list)>1):
-                        num_params = offset_list[0]-offset_list[1]
-                    matrix_params = params.reshape(n,num_params)
-                    param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
+                    if (num_params == 0):
+                        param_cols = []
+                    else:
+                        matrix_params = params.reshape(n, num_params)
+                        param_cols = [matrix_params[:, i].reshape(-1, 1) for i in range(num_params)]
                     d[:] = err * func_bwd(z,param_cols,0)
             else:
                 def f_kernel(z, a, params,offset_list, n, b):

@@ -37,6 +37,12 @@ class WrapperError(HeteroSymNNError):
     """
     pass
 
+class RuntimeStateError(HeteroSymNNError):
+    """
+    Exception raised when a method is called in an invalid execution state or order 
+    (e.g., calling a backward pass before a forward pass).
+    """
+
 
 class MethodMigrationError(BackendError):
     """
@@ -69,6 +75,19 @@ class InvalidDeviceIDError(BackendError):
     def __init__(self, message):
         super().__init__(message)
         self.message = message
+
+class ResourceAllocationError(BackendError):
+    """
+    Exception raised when the hardware (specifically GPU VRAM) runs out of memory. 
+    Usually indicates the batch size is too large or the network is too deep for the current device.
+    """
+
+class BackendDataTypeError(BackendError):
+    """
+    Exception raised when a tensor's data type (e.g., float64, int32) is incompatible 
+    with the current backend's expected precision (e.g., float32), 
+    preventing C++ JIT or CUDA kernel execution.
+    """
 
 class JITCompilationError(JITError):
     """

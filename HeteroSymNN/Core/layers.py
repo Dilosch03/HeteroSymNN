@@ -8,7 +8,7 @@ from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
 from .initializers import Initializer
 from ..config import settings
-from ..exceptions import LayerConfigurationError,BackendNotAvailableError,PerformanceWarning,HardwareWarning, InvalidDeviceIDError
+from ..exceptions import LayerConfigurationError,BackendNotAvailableError,PerformanceWarning,HardwareWarning, InvalidDeviceIDError, RuntimeStateError
 
 class BaseLayer:
     """
@@ -39,6 +39,9 @@ class BaseLayer:
         self._num_nodes = len(layer_configuration[0])
         self._layer_node_configs = layer_configuration[0]
         self._initializer = layer_configuration[1]
+        self.delta = None
+        self.a = None
+        self.z = None
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
@@ -276,6 +279,10 @@ class BaseLayer:
             self._COMPUTATIONAL_METHOD = self._act_funcions_manager._change_method(new_method,self._GPU_ID)
             self.param_offsets = self._ASNUMPY(self.param_offsets)
             self._GPU_ID = gpu_id
+            batch_size = self.z.shape[1]
+            self.z = None
+            self.a = None
+            self.delta = None
             if ("CPU" in self._COMPUTATIONAL_METHOD):
                 self._CALCULATION_MANAGER = np
                 self._ASNUMPY = np.array
@@ -286,7 +293,7 @@ class BaseLayer:
                 with HW.be.cuda.Device(self._GPU_ID):
                     self.param_offsets = self._CALCULATION_MANAGER.array(self.param_offsets)
 
-            self.batch_size_change(self.z.shape[1])
+            self.batch_size_change(batch_size)
         return self._COMPUTATIONAL_METHOD
 
     def to(self,device:Literal["CPU","GPU"])->None:
@@ -339,7 +346,7 @@ class BaseLayer:
         """
         expected_shape = (self._num_nodes, batch_size)
 
-        if (self.z.shape != expected_shape):
+        if  ((self.z is None)or(self.z.shape != expected_shape)):
             if ("GPU" in self._COMPUTATIONAL_METHOD):
                 with HW.be.cuda.Device(self._GPU_ID):
                     self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
@@ -349,6 +356,45 @@ class BaseLayer:
                 self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.a = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.delta = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
+
+    @property
+    def working_parameters(self) -> dict[str, BackendArray]:
+        """Returns the live parameter arrays on the active computational device.
+
+            The implementation detiles would be the responsability of the subclasses.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the parameters by name.
+        """
+        return {}
+
+    @property
+    def working_gradients(self) -> dict[str, BackendArray]:
+        """Returns the live gradient arrays on the active computational device.
+
+            The implementation detiles would be the responsability of the subclasses.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the parameters gradients by name.
+        """
+        return {}
+        
+    @property
+    def working_masks(self) -> dict[str, BackendArray]:
+        """Returns the live sparsity masks on the active computational device.
+
+            The implementation detiles would be the responsability of the subclasses.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the masks of the parameters by name.
+        """
+        return {}
 
     def forward(self,input_values:BackendArray)->BackendArray:
         """
@@ -376,7 +422,7 @@ class BaseLayer:
             Error values from the next layer.
 
         Returns
-        -------
+        ------- 
         :obj:`~HeteroSymNN.types.BackendArray`
             Error values to be passed to the previous layer.
         """
@@ -403,6 +449,8 @@ class BaseLayer:
         """
         Method to get the parameters of the layer.
         
+        This method must be implemented by the subclasses.
+
         :return: Dictionary of the parameters by string.
         :rtype: dict[str, ndarray]
         """
@@ -411,6 +459,8 @@ class BaseLayer:
     def set_parameters(self, params:dict[str,np.ndarray])->None:
         """
         Method to set the parameters of the layer.
+        
+        This method must be implemented by the subclasses.
 
         Parameters
         ----------
@@ -450,15 +500,18 @@ class LinearLayer(BaseLayer):
         
     """
     def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
-        
-        init_biases, init_weights, init_mask = self._initializer.generate(num_inputs, self._num_nodes)
-        self._biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
+        super().__init__(num_inputs,layer_configuration,batch_size,Gpu_id)
+
+        init_biases = self._initializer.generate_constant([self._num_nodes,1])
+        init_weights = self._initializer.generate_from_distribution([self._num_nodes,self._num_inputs],self._num_inputs,self._num_nodes)
+        init_mask = self._initializer.generate_binary_mask([self._num_nodes,self._num_inputs])
+        self._biases = np.array(init_biases).astype(self._DEFAULT_FLOAT_TYPE)
         self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
         self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
+        self._grad_weights = np.zeros_like(self._weights)
+        self._grad_biases = np.zeros_like(self._biases)
+        self._cached_input:BackendArray = None
 
-        super().__init__(num_inputs,layer_configuration,batch_size,Gpu_id)
-    
-    #quitar la propiedad para no romper los optimizadores
     @property
     def biases(self)->np.ndarray:
         """
@@ -471,7 +524,6 @@ class LinearLayer(BaseLayer):
         """
         return self._ASNUMPY(self._biases)
     
-    #quitar la propiedad para no romper los optimizadores
     @property
     def weights(self)->np.ndarray:
         """
@@ -484,6 +536,55 @@ class LinearLayer(BaseLayer):
         """
         return self._ASNUMPY(self._weights*self._connection_mask)
     
+    @property
+    def working_parameters(self) -> dict[str, BackendArray]:
+        """Returns the live parameter arrays on the active computational device.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the parameters by name.
+
+                "weights": :obj:`~HeteroSymNN.types.BackendArray`
+                "biases": :obj:`~HeteroSymNN.types.BackendArray`
+        """
+        return {
+            "weights": self._weights,
+            "biases": self._biases
+        }
+
+    @property
+    def working_gradients(self) -> dict[str, BackendArray]:
+        """Returns the live gradient arrays on the active computational device.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the parameters gradients by name.
+
+                "weights": :obj:`~HeteroSymNN.types.BackendArray`
+                "biases": :obj:`~HeteroSymNN.types.BackendArray`
+        """
+        return {
+            "weights": self._grad_weights,
+            "biases": self._grad_biases
+        }
+        
+    @property
+    def working_masks(self) -> dict[str, BackendArray]:
+        """Returns the live sparsity masks on the active computational device.
+
+            Return
+            ------
+            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+                Dictionary of the masks of the parameters by name.
+
+                'weights': :obj:`~HeteroSymNN.types.BackendArray`
+        """
+        return {
+            "weights": self._connection_mask
+        }
+    
   
     def reset_parameters(self,reset_constants:bool = False,reset_mask:bool = False)->None:
         """
@@ -495,11 +596,14 @@ class LinearLayer(BaseLayer):
             Bool value if you want to also reset the activation function constants, by default False.
         """
         super().reset_parameters(reset_constants)
-        init_biases, init_weights, init_mask = self._initializer.generate(self._num_inputs, self._num_nodes)
-        self._biases = np.array(init_biases).reshape(-1,1).astype(self._DEFAULT_FLOAT_TYPE)
+        init_biases = self._initializer.generate_constant([self._num_nodes,1])
+        init_weights = self._initializer.generate_from_distribution([self._num_nodes,self._num_inputs],self._num_inputs,self._num_nodes)
+        init_mask = self._initializer.generate_binary_mask([self._num_nodes,self._num_inputs])
+
+        self._biases = np.array(init_biases).astype(self._DEFAULT_FLOAT_TYPE)
         self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
         if (reset_mask):
-            self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_T)
+            self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
 
 
     def to(self,device:Literal["CPU","GPU"])->None:
@@ -520,10 +624,14 @@ class LinearLayer(BaseLayer):
                     self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
                     self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
                     self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
+                    self._grad_weights = self._CURRENT_VECTOR_FORMAT(self._grad_weights)
+                    self._grad_biases = self._CURRENT_VECTOR_FORMAT(self._grad_biases)
             else:
                 self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
                 self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)
                 self._connection_mask = self._CURRENT_VECTOR_FORMAT(self._connection_mask)
+                self._grad_weights = self._CURRENT_VECTOR_FORMAT(self._grad_weights)
+                self._grad_biases = self._CURRENT_VECTOR_FORMAT(self._grad_biases)
 
 
     def forward(self,input_values:BackendArray)->BackendArray:
@@ -540,6 +648,7 @@ class LinearLayer(BaseLayer):
         :obj:`~HeteroSymNN.types.BackendArray`
             Output values of the layer after applying the activation functions.
         """
+        self._cached_input = input_values
         batch_size = input_values.shape[1]
         self.batch_size_change(batch_size)
         effective_weights = self._weights * self._connection_mask
@@ -562,8 +671,12 @@ class LinearLayer(BaseLayer):
         :obj:`~HeteroSymNN.types.BackendArray`
             Error values to be passed to the previous layer.
         """
+        if (self._cached_input is None):
+            raise RuntimeStateError("Can't calculate the backward pass if a forward pass has not been done yet.")
         batch_size = self.z.shape[1]
         self._act_funcions_manager.backward_kernel(self.z, error_values, self.delta, self._funcs_constats, self.param_offsets, self._num_nodes,batch_size)
+        self._grad_biases = self._CALCULATION_MANAGER.mean(self.delta, axis=1, keepdims=True)
+        self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T) / batch_size
         effective_weights = self._weights * self._connection_mask
         prev_layer_error_sum = self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta)
         
