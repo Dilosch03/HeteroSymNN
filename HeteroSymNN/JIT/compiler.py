@@ -242,7 +242,7 @@ class SymbolicJITCompiler:
                 unique_funcs[func_key] = new_id
                 
                 if ((settings.use_kernel_cache) and (func_key in settings.kernel_cache)):
-                    compiled_code[new_id] = HW.KERNEL_CACHE[func_key]
+                    compiled_code[new_id] = settings.kernel_cache[func_key]
                 else:
                     # Generar código base
                     func_expr, deriv_expr = self._get_ccode_from_config(func_str, consts)
@@ -320,7 +320,7 @@ class SymbolicJITCompiler:
         try:
             config_hash = hashlib.md5(json.dumps(configs,sort_keys=True).encode()+self.mode.encode()).hexdigest()
             
-            temp_dir = HW.CPU_CACHE_DIR
+            temp_dir = settings.cpu_cache_dir
             os.makedirs(temp_dir, exist_ok=True)
             
             lib_name = f"kernel_{self.mode}_{config_hash}"

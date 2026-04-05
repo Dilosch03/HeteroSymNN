@@ -206,20 +206,29 @@ class Optimizer:
             
             self._single_update(layer, param_name, p, g, m)
 
-    def get_state(self):
+    def get_state(self)->tuple[dict[str,any],list[dict[str,any]]]:
         """
-        Returns the internal state of the optimizer.
+        Extracts the internal mathematical memory of the optimizer for serialization.
         
-        This method should be implemented by subclasses to return a dictionary containing 
-        the current internal state (e.g., iteration count, moving averages) for serialization.
+        This method must be implemented by subclasses to return the dynamic state 
+        (e.g., iteration counts, moving averages) required to resume training. 
+        The state is strictly separated into global variables and layer-specific 
+        variables to ensure deterministic reconstruction by the Wrapper.
 
         Returns
         -------
-        dict
-            Dictionary containing the optimizer state.
+        tuple[dict[str, Any], list[dict[str, Any]]]
+            A two-element tuple representing the topological state:
+            
+            * index 0 (Global State): A dictionary of values that are not tied 
+              to any specific layer (e.g., the time step 't' for Adam).
+            * index 1 (Layer States): A list of dictionaries, where the list index 
+              corresponds perfectly to the network's layer index. Each dictionary 
+              contains the localized matrices for that layer (e.g., the momentum 
+              matrix 'm' for Adam).
         """
         self._to_device("CPU")
-        return {}
+        return ({},{})
 
     def set_state(self, state, be):
         """
@@ -251,6 +260,22 @@ class Optimizer:
         """
         self._to_device("CPU")
         return {'class_name': self.__class__.__name__, 'learning_rate': self.learning_rate}
+    
+    def _initialize_state(self, layers: list):
+        """
+        Internal method to initialize the optimizer state.
+
+        Could be form creation or form loading a model.
+
+        if the method requires to create per layer states this method is recomended to be implemented in the subclasses to do the linking with the layers.
+
+        Parameters
+        ----------
+        layers : list
+            List of layers in order.
+        """
+        pass
+
 
 
 class SgdOptimizer(Optimizer):
@@ -486,40 +511,64 @@ class AdamOptimizer(Optimizer):
 
         super().step(layers)
     
-    def get_state(self):
+    def get_state(self)->tuple[dict[str,any],list[dict[str,any]]]:
+        """
+        Extracts the internal mathematical memory of the optimizer for serialization.
+
+        Returns
+        -------
+        tuple[dict[str, Any], list[dict[str, Any]]]
+            A two-element tuple representing the topological state:
+            
+            * index 0 (Global State): "t":time step
+            
+            * index 1 (Layer States): "m":momentum matrix, "v":velocity matrix for each layer.
+        """
         super().get_state()
-        if not hasattr(self, 'm') or self.m is None:
-            return {'t': getattr(self, 't', 0), 'm': None, 'v': None}
+        if getattr(self, 'm', None) is None:
+            return ({'t': getattr(self, 't', 0)}, [])
         
-        m_list = []
-        v_list = []
+        layer_states = []
         
-        # Use the structural order to guarantee alignment during load
         for layer_id in self._layer_order:
             layer_m = self.m[layer_id]
             layer_v = self.v[layer_id]
             
-            # Dynamically convert all parameters back to pure NumPy for serialization
-            m_list.append({k: self._ASNUMPY(v) for k, v in layer_m.items()})
-            v_list.append({k: self._ASNUMPY(v) for k, v in layer_v.items()})
+            # The Prefix Strategy: Flatten the momentum and velocity into a single dict safely
+            layer_state = {}
+            for k, v in layer_m.items():
+                layer_state[f"m_{k}"] = self._ASNUMPY(v)
+            for k, v in layer_v.items():
+                layer_state[f"v_{k}"] = self._ASNUMPY(v)
+                
+            layer_states.append(layer_state)
 
-        return {'t': self.t, 'm': m_list, 'v': v_list}
+        return ({'t': self.t}, layer_states)
 
-    def set_state(self, state, be):
+    def set_state(self, state: dict, be) -> None:
         super().set_state(state, be)
         self.t = state.get('t', 0)
-        m_data = state.get('m')
-        v_data = state.get('v')
+        layer_states = state.get('layer_states')
 
-        if m_data is None or v_data is None:
-            self.m = None
-            self.v = None
+        if layer_states is None or len(layer_states) == 0:
+            self.m, self.v = None, None
             return
 
-        self._loaded_m = m_data
-        self._loaded_v = v_data
+        self._loaded_m = []
+        self._loaded_v = []
+        
+        # The Inverse Prefix Strategy: Unpack the safe dictionary strings back into m and v memory
+        for layer_state in layer_states:
+            m_dict, v_dict = {}, {}
+            for key, tensor in layer_state.items():
+                if key.startswith("m_"):
+                    m_dict[key[2:]] = tensor
+                elif key.startswith("v_"):
+                    v_dict[key[2:]] = tensor
+            self._loaded_m.append(m_dict)
+            self._loaded_v.append(v_dict)
 
-    def get_config(self):
+    def get_config(self)->dict[str,any]:
         config = super().get_config()
         config.update({
             'beta1': self.beta1,

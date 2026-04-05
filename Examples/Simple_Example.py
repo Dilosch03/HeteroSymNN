@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from HeteroSymNN.Core.Nets.Dense import SimpleNN
-from HeteroSymNN.API.wrappers import Wraper
+from HeteroSymNN.Core.Nets import MLP
+from HeteroSymNN.API.wrappers import Wrapper
 
 def run_simple_demo():
     X = np.linspace(0, 2 * np.pi, 1000).reshape(-1, 1)
@@ -10,7 +10,7 @@ def run_simple_demo():
 
     print("--- 2. Creating Model (The easy way) ---")
 
-    model = SimpleNN(
+    model = MLP(
         nodes_structure=[1, 64, 64, 1], 
         activation=("relu*alfa",{"alfa":0.1}), 
         output_activation="num", # Linear output
@@ -19,7 +19,7 @@ def run_simple_demo():
     )
 
     # The Wrapper handles normalization and data splitting for you
-    trainer = Wraper(model, work_type="reg", normalize_inputs=True)
+    trainer = Wrapper(model, work_type="reg", normalize_inputs=True)
     trainer.load_training(X, y)
 
     print("--- 3. Training ---")

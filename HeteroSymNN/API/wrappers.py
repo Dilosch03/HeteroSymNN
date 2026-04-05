@@ -1,73 +1,67 @@
 import os
+import io
 import numpy as np
 import math as mth
 import itertools as iter
-from typing import Literal,Callable,Union
+from typing import Literal,Union,Optional
 import datetime
 import warnings
 import inspect
 import time
+import json
+import zipfile
 
 
 from ..Backend import hardware as HW
-from ..Core.Nets.dense import HeteroDense
+from ..types import LayerConstruction,NodeConfig
+from ..Core.Nets.base_classes import BaseNetwork
+from ..Core.layers import BaseLayer
 from ..Core import losses, optimizers,initializers
-from . import registry
-from ..exceptions import PathError,PathWarning,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,LoadingWarning,WrapperError
+from . import registries,utilities
+from ..exceptions import PathError,PathWarning,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,LoadingWarning,WrapperError,SavingError
 from ..config import settings
-
-def _normalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
-    """Internal helper for Min-Max normalization."""
-    range_val = max_val - min_val
-    range_val[range_val == 0] = 1.0
-    return (vals - min_val) / range_val
-
-def _denormalization(vals: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndarray:
-    """Internal helper for Min-Max denormalization."""
-    return vals * (max_val - min_val) + min_val
 
 class Wrapper():
     """
-    A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense`, :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` or :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`
+    A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.BaseNetwork` or subclass of :class:`~HeteroSymNN.Core.Nets.BaseNetwork`
 
     This class simplifies common tasks such as:
     
-    *   Data loading and normalization (Min-Max scaling).
+    *   Data loading and scaling (if :obj:`HeteroSymNN.API.DataTransformer` is pass).
     *   Training execution and loss tracking.
     *   Model evaluation (Classification metrics or Regression metrics).
     *   Saving and loading the full model state (architecture, weights, optimizer state).
 
     Parameters
     ----------
-    model : :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense` | :class:`~HeteroSymNN.Core.Nets.neural_nets.FlexibleNN` | :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN` or None
+    model : :class:`~HeteroSymNN.Core.Nets.BaseNetwork` | subclass of :class:`~HeteroSymNN.Core.Nets.BaseNetwork` or None
         The neural network instance to wrap. Can be ``None`` if loading a model from disk later.
     work_type : Literal["class", "reg"]
+        Can be ``None`` if loading a model from disk later.
         The type of problem the model solves:
         
         *   ``"class"``: Classification (calculates Accuracy, F1, etc.).
         *   ``"reg"``: Regression (calculates MSE, R2, etc.).
-    normalize_inputs : bool, optional
-        If ``True``, input data (X) will be automatically normalized to [0, 1] based on training data statistics. Defaults to ``True``.
-    normalize_outputs : bool, optional
-        If ``True``, output data (Y) will be automatically normalized to [0, 1] during training and denormalized during prediction. Defaults to ``True``.
+
+    _input_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
+        The scaling method that is going to be use to scale the input data. Defaults to ``None`` and doesn't scale the data.
+    _output_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
+        The descaling method that is going to be use to scale the input data. Defaults to ``None`` and doesn't descale the data.
     """
-    def __init__(self, model: HeteroDense,work_type:Literal["class","reg"],normalize_inputs: bool = True, normalize_outputs: bool = True):
-        self._model:HeteroDense = None
+    def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[utilities.DataTransformer] = None, output_transformer: Optional[utilities.DataTransformer] = None):
+        self._model:BaseNetwork = None
         self.training_data = None
         self.training_data_norm = None
-        self.normalize_inputs = normalize_inputs 
-        self.normalize_outputs = normalize_outputs
-        self.work_type =work_type
-        self.x_min = None
-        self.x_max = None
-        self.y_min = None
-        self.y_max = None
+        self._input_transformer = input_transformer
+        self._output_transformer = output_transformer
+        self.work_type = work_type
         self._loaded_train_data = False
+        self.model_name = model.__class__.__name__
 
-        self.model:HeteroDense = model
+        self.model:BaseNetwork = model
 
     @property
-    def model(self)->HeteroDense:
+    def model(self)->BaseNetwork:
         """
         The underlying neural network instance.
         
@@ -77,19 +71,32 @@ class Wrapper():
         return self._model
     
     @model.setter
-    def model(self, new_model):
-        self._model = new_model
-        
+    def model(self, new_model:BaseNetwork):
+        self._model:BaseNetwork = new_model
+
         if ((new_model != None) and (self._loaded_train_data)):
             X_norm, Y_norm = self.training_data_norm
             
             expected_x = new_model.layers[0].num_inputs
             if X_norm.ndim == 2 and X_norm.shape[1] != expected_x:
-                raise ShapeMismatchError(f"The model was expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.")
-            
+                if (settings.warning_level=="error"):
+                    raise ShapeMismatchError(f"The model new is expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.")
+                elif(settings.warning_level == "warn"):
+                    warnings.warn(f"The model new is expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.",ShapeMismatchError,stacklevel=2)
             expected_y = new_model.layers[-1].num_nodes
             if Y_norm.ndim == 2 and Y_norm.shape[1] != expected_y:
-                raise ShapeMismatchError(f"The model was expecting {expected_y} outputs, but the loaded data has {Y_norm.shape[1]} targets.")
+                if (settings.warning_level=="error"):
+                    raise ShapeMismatchError(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.")
+                elif(settings.warning_level == "warn"):
+                    warnings.warn(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.",ShapeMismatchError,stacklevel=2)
+            
+    @property
+    def input_transformer(self):
+        return self._input_transformer
+
+    @property
+    def output_transformer(self):
+        return self._output_transformer
 
     def fit(self, training_data: list, expected_results: list, epochs: int = None,training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
         """
@@ -186,24 +193,15 @@ class Wrapper():
                     raise ShapeMismatchError(f"The shape of the outputs are {Y_raw.shape}, but the model expects {expected_y_features} outputs.")
             
         self.training_data = (X_raw, Y_raw)
-        
-        if self.normalize_inputs:
-            self.x_min = np.min(X_raw, axis=0)
-            self.x_max = np.max(X_raw, axis=0)
-            X_norm = _normalization(X_raw, self.x_min, self.x_max)
-        else:
-            self.x_min = None
-            self.x_max = None
-            X_norm = X_raw
+        X_norm = X_raw
 
-        if self.normalize_outputs:
-            self.y_min = np.min(Y_raw, axis=0)
-            self.y_max = np.max(Y_raw, axis=0)
-            Y_norm = _normalization(Y_raw, self.y_min, self.y_max)
-        else:
-            self.y_min = None 
-            self.y_max = None
-            Y_norm = Y_raw
+        if (self._input_transformer is not None):
+            X_norm = self._input_transformer.fit_transform(X_raw)
+
+        Y_norm = Y_raw
+        if (self._output_transformer is not None):
+            Y_norm = self._output_transformer.fit_transform(Y_raw)
+            
         
         self.training_data_norm = (X_norm, Y_norm)
 
@@ -255,24 +253,44 @@ class Wrapper():
         """
         X_raw = np.array(data)
         
-        if self.normalize_inputs:
-            if self.x_min is None:
-                 raise WrapperError("The model was trained with the inputs normalized but the data scaler parameters are None.")
-            X_norm = _normalization(X_raw, self.x_min, self.x_max)
-        else:
-            X_norm = X_raw
+        X_norm = X_raw
+        if (self._input_transformer is not None):
+            None_keys = []
+            data_trans_config = self._input_transformer.get_config()
+            for key in data_trans_config.keys():
+                if data_trans_config[key] is None:
+                    None_keys.append(key)
+
+            if not(self._input_transformer.fitted):
+                raise WrapperError("A DataTransform object was pass but it was never fitted.")
+            
+            if (len(None_keys) > 0):
+                raise WrapperError(f"Input transformer has {",".join(None_keys)} with None values even though it was fitted.")
+                
+            X_norm = self._input_transformer.transform(X_raw)
+            
             
         Y_pred_norm = self.model.predict(X_norm)
         
-        if self.normalize_outputs:
-            if self.y_min is None:
-                raise WrapperError("The model was trained with the outputs normalized but the data scaler parameters are None.")
-            Y_denorm = _denormalization(Y_pred_norm, self.y_min, self.y_max)
-            return Y_denorm
-        else:
-            return Y_pred_norm 
+        Y_denorm = Y_pred_norm
+        if (self._output_transformer is not None):
+            None_keys = []
+            data_trans_config = self._output_transformer.get_config()
+            for key in data_trans_config.keys():
+                if data_trans_config[key] is None:
+                    None_keys.append(key)
 
-    def test_accuracy(self,test_data:list,expected_results:list)->Union[dict[str, float], tuple[dict[str, float], dict[str, int]]]:
+            if not(self._output_transformer.fitted):
+                raise WrapperError("A DataTransform object was pass but it was never fitted.")
+            
+            if (len(None_keys) > 0):
+                raise WrapperError(f"Input transformer has {",".join(None_keys)} with None values even though it was fitted.")
+                
+            Y_denorm = self._output_transformer.transform(Y_pred_norm)
+        
+        return Y_denorm
+
+    def test_accuracy(self,test_data:list,expected_results:list,threshold:float = 0.5)->Union[dict[str, float], tuple[dict[str, float], dict[str, int]]]:
         """
         Evaluates the model on a test dataset.
 
@@ -282,6 +300,8 @@ class Wrapper():
             Input features for testing.
         expected_results : list
             Ground truth values.
+        threshold : float, optional
+            Threshold for binary classification. Default is 0.5.
 
         Returns
         -------
@@ -292,17 +312,17 @@ class Wrapper():
         if (self.work_type == "reg"):
             results = self.regreccion_test_accuracy(test_data,expected_results)
         elif(self.work_type == "class"):
-            results = self.classification_test_accuracy(test_data,expected_results)
+            results = self.classification_test_accuracy(test_data,expected_results,threshold)
         else:
             raise WrapperError("Work type was not specified.")
         
         return results
 
-    def classification_test_accuracy(self, test_data: list, expected_results: list)->tuple[dict[str, float], dict[str, int]]:
+    def classification_test_accuracy(self, test_data: list, expected_results: list,threshold:float = 0.5)->tuple[dict[str, float], dict[str, int]]:
         """
         Calculates classification metrics (Accuracy, Precision, Recall/TPR, F1 Score).
 
-        Note: Currently assumes binary classification or multi-label where threshold is 0.5.
+        Note: Currently assumes binary classification or multi-label, default threshold is 0.5.
 
         Returns
         -------
@@ -314,7 +334,7 @@ class Wrapper():
         """
         predictions_raw = self.predict(test_data)
         
-        predictions = (predictions_raw > 0.5).astype(int).flatten()
+        predictions = (predictions_raw > threshold).astype(int).flatten()
         
         expected_results = list(expected_results)
         results_compare = {"correc_pos":0, "correct_neg":0, "false_pos":0, "false_neg":0}
@@ -426,196 +446,270 @@ class Wrapper():
         
         return evaluations
     
-    def save_model(self, path: str, model_name: str, description: str = None)->None:
+    def save_model(self, path: str, model_name: str = None, description: str = None,overwrite: bool = False)->None:
         """
         Saves the model architecture, parameters, optimizer state, and wrapper configuration to a file.
 
-        The file is saved as a compressed NumPy archive (``.npz``).
+        The file is saved as a compressed symnn archive (``.symnn``).
 
         Parameters
         ----------
         path : str
             Directory path to save the file.
         model_name : str
-            Name of the file (without extension).
+            Name of the model that is going to be saved (will be used for the filename).
         description : str, optional
             Optional description to store in metadata.
         """
-        if not path.endswith(".npz"):
-            path = os.path.join(path,model_name + ".npz")
+        if (model_name is None):
+            model_name = self.model_name
+        
+        is_directory = os.path.isdir(path) or path.endswith("/") or path.endswith(os.sep)
+
+        if is_directory:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_filename = f"{model_name}_{timestamp}.symnn"
+            
+            full_path = os.path.join(path, final_filename)
+            
+            # Note: Overwrite check omitted here because timestamps prevent collisions
+
+        else:
+            if not path.endswith(".symnn"):
+                full_path = path + ".symnn"
+            else:
+                full_path = path
+
+            # 3. The Overwrite Guardrail
+            if (os.path.exists(full_path)):
+                if not(overwrite):
+                    temp = full_path[:-6]
+                    offset = 1
+                    while (os.path.exists(temp + f"_{offset}.symnn")):
+                        offset += 1
+                    full_path = temp + f"_{offset}.symnn"
         
         try:
             self.model.change_device("CPU")
             architecture_config = self.model.get_config()
-            
+            architecture_config.pop("network_structure")
+
             metadata = {
                 'model_name': model_name,
+                'model_class': str(self.model.__class__.__name__),
+                'work_type': self.work_type,
                 'description': description,
                 'save_timestamp': datetime.datetime.now().isoformat(),
                 'total_training_iterations': self.model.num_complited_train_iterations,
-                'total_epochs_iteratios':self.model.num_completed_epochs,
-                'normalize_inputs': self.normalize_inputs,
-                'normalize_outputs': self.normalize_outputs,
+                'total_epochs_iterations':self.model.num_completed_epochs,
+                'input_transformer':  self._input_transformer.__class__.__name__ if self._input_transformer else None,
+                'output_transformer': self._output_transformer.__class__.__name__ if self._output_transformer else None,
                 "loaded_train_data":self._loaded_train_data
             }
 
-            normalization_stats = {
-                'x_min': self.x_min,
-                'x_max': self.x_max,
-                'y_min': self.y_min,
-                'y_max': self.y_max
-            }
+            transformation_configs = {}
+            if self.input_transformer is not None:
+                transformation_configs["inputs"] = self.input_transformer.get_config()
+            if self.output_transformer is not None:
+                transformation_configs["outputs"] = self.output_transformer.get_config()
             
             config_to_save = {
                 'architecture': architecture_config,
                 'metadata': metadata,
-                'normalization_stats': normalization_stats,
-                'optimizer_state': self.model.UPDATE_METHOD.get_state()
+                'transformation_configs': transformation_configs,
+                'optimizer_config':self.model._UPDATE_METHOD.get_config(),
             }
+            
 
             params = self.model.get_parameters()
 
-            # Flatten the parameters to avoid saving nested dictionaries as object arrays
             flat_params = {}
             for layer_key, layer_params in params.items():
                 for param_key, param_value in layer_params.items():
                     flat_params[f"{layer_key}_{param_key}"] = param_value
+            
+            opt_global, opt_layers = self.model._UPDATE_METHOD.get_state()
 
-            np.savez_compressed(path, config=config_to_save, **flat_params)
 
+            for param_key, val in opt_global.items():
+                flat_params[f"global_opt_{param_key}"] = val 
+
+            for i, layer_opt_dict in enumerate(opt_layers):
+                for param_key, matrix in layer_opt_dict.items():
+                    flat_params[f"layer_{i}_opt_{param_key}"] = matrix
+
+            npz_ram_buffer = io.BytesIO()
+            np.savez_compressed(npz_ram_buffer, **flat_params)
+
+
+            with zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                
+                archive.writestr("config.json", json.dumps(config_to_save, indent=4))
+                archive.writestr("weights.npz", npz_ram_buffer.getvalue())
+
+            return full_path
         except Exception as e:
-            raise IOError(f"Error al guardar el modelo.") from e
+            raise SavingError(f"Error al guardar el modelo.") from e
 
-    def load_model(self,path: str)->None:
+    def load_state(self, path: str) -> None:
         """
-        Loads a model from a ``.npz`` file created by :meth:`save_model`.
+        Loads a model from a ``.symnn`` ZIP archive created by :meth:`save_model`.
 
-        Reconstructs the :class:`~HeteroSymNN.Core.Nets.neural_nets.HeteroDense`, restores weights, 
-        optimizer state, and normalization statistics.
+        Reconstructs the Network, restores weights, optimizer state, and 
+        data normalization statistics directly from RAM buffers.
 
         Parameters
         ----------
         path : str
-            Path to the ``.npz`` file.
+            Path to the ``.symnn`` file.
         
         Raises
         ------
         IOError
             If the file cannot be loaded or has an invalid format.
         """
-        if not (path.endswith(".npz")):
-            path = path + ".npz"
-
-        if not(os.path.exists(path)):
-            raise PathError(f"No file found. {path}")
+        model,input_transformer,output_transformer,metadata = self._extract_symnn_archive(path)
+        self._model = model
+        self._input_transformer = input_transformer,
+        self._output_transformer = output_transformer
+        self.model_name = metadata.get('model_name')
+        self.work_type = metadata.get('work_type')
         
+    @classmethod
+    def load(cls, path: str) -> "Wrapper":
+        """
+        Creates a brand new Wrapper and populates it directly from a .symnn archive.
+        
+        Parameters
+        ----------
+        path : str
+            Path to the .symnn archive.
+        """
+        model,input_transformer,output_transformer,metadata = cls._extract_symnn_archive(path)
+
+        saved_work_type = metadata.get('work_type')
+        # 2. Instantiate the blank Wrapper using the saved settings
+        instance = cls(model=model, work_type=saved_work_type,input_transformer=input_transformer,output_transformer=output_transformer)
+
+        # 3. Use Mode 2 to inject the architecture and math
+        instance.model_name = metadata.get('model_name')
+        return instance
+    
+    @staticmethod
+    def _extract_symnn_archive(path: str) -> tuple[BaseNetwork,utilities.DataTransformer,utilities.DataTransformer,dict[str, any]]:
+        """
+        Internal method to load a .symnn archive.
+        
+        Parameters
+        ----------
+        path : str
+            Path to the .symnn archive.
+        """
+        if not path.endswith(".symnn"):
+            path = path + ".symnn"
+
+        if not os.path.exists(path):
+            raise PathError(f"No file found: {path}")
+
         try:
-            with np.load(path,allow_pickle=True) as data:         
-                config_wrapper = data['config'].item()
-                architecture_config = config_wrapper['architecture']
+            with zipfile.ZipFile(path, 'r') as archive:
+                # ==========================================
+                # PHASE 1: THE SKELETON (JSON Metadata)
+                # ==========================================
+                config_bytes = archive.read("config.json")
+                config_wrapper = json.loads(config_bytes)
+                
                 metadata = config_wrapper.get('metadata', {})
+                transformation_configs = config_wrapper.get('transformation_configs', {})
 
-                normalize_inputs_flag = metadata.get('normalize_inputs', True)
-                normalize_outputs_flag = metadata.get('normalize_outputs', True)
-                self.normalize_inputs =normalize_inputs_flag
-                self.normalize_outputs = normalize_outputs_flag
-                
-                metadata.get('total_training_iterations', 0)
-                normalization_stats = config_wrapper.get('normalization_stats', {})
-
-                loss_fn_config = architecture_config['loss_config']
-                loss_class_name:str = loss_fn_config.pop('class_name')
-                if loss_class_name not in registry.LOSS_FN_MAP:
-                    raise LoadingError(f"Unknown loss function: {loss_class_name}.")
-                loss_fn = registry.LOSS_FN_MAP[loss_class_name](**loss_fn_config) 
-                
-
-                optimizer_config = architecture_config['optimizer_config']
-                opt_class_name:str = optimizer_config.pop('class_name')
-                if opt_class_name not in registry.OPTIMIZER_MAP:
-                    raise LoadingError(f"Unknown optimizer: {opt_class_name}.")
-                optimizer = registry.OPTIMIZER_MAP[opt_class_name](**optimizer_config)
-
-                initializer = None
-                if 'initializer_config' in architecture_config:
-                    init_config = architecture_config['initializer_config']
-                    init_class_name = init_config.pop('class_name', None)
-                    if init_class_name and init_class_name in registry.INITIALIZER_MAP:
-                        # Instanciamos la clase de inicialización con sus parámetros guardados (si tuviera)
-                        initializer = registry.INITIALIZER_MAP[init_class_name](**init_config)
-                
-                # 3. Recrear la arquitectura
-                if (('nodes_structure' in architecture_config) and ('detailed_activations' in architecture_config)):
-                    self.model = HeteroDense(
-                        nodes_structure=architecture_config['nodes_structure'],
-                        detailed_activations=architecture_config['detailed_activations'],
-                        initializer=initializer,
-                        learning_rate=architecture_config['learning_rate'],
-                        learning_mode=architecture_config.get('learning_mode', 'Static'),
-                        training_mode=architecture_config.get('training_mode', 'stochastic'),
-                        batch_size=architecture_config.get('batch_size', 1),
-                        optimizer=optimizer,
-                        loss_function=loss_fn,
-                        num_treaning_iter=architecture_config.get('num_treaning_iterations', 100)
-                    )
-                elif architecture_config.get('layers_configuration'):
-                    raise LoadingError("Save format in old format not supported.")
+                input_scaler_config = transformation_configs.get("inputs")
+                if input_scaler_config is not None:
+                    input_transformer = registries.registry.data_transformers_map[metadata["input_transformer"]]()
+                    input_transformer.set_config(input_scaler_config)
                 else:
-                    raise LoadingError("Damaged file or configuration not recognized.")
+                    input_transformer = None
 
-                params_dict = {}
-                for k, v in data.items():
-                    if k == 'config':
-                        continue
-                    
-                    # k is like 'layer_0_weights'
-                    # Find the last underscore to split layer_key from param_key
-                    key_parts = k.rpartition('_')
-                    layer_key = key_parts[0]  # e.g., 'layer_0'
-                    param_key = key_parts[2]  # e.g., 'weights'
-
-                    if not layer_key or not param_key:
-                        if (settings.warning_level=="error"):
-                            raise LoadingError(f"Malformed parameter key '{k}' in model file.")
-                        elif (settings.warning_level=="warn"):
-                            warnings.warn(f"Skipping malformed parameter key '{k}' in model file.",LoadingWarning,stacklevel=2)
-                            continue
-
-                    if layer_key not in params_dict:
-                        params_dict[layer_key] = {}
-                    params_dict[layer_key][param_key] = v
-
-                self.model.set_parameters(params_dict)
+                output_scaler_config = transformation_configs.get("outputs")
+                if output_scaler_config is not None:
+                    output_transformer = registries.registry.data_transformers_map[metadata["output_transformer"]]()
+                    output_transformer.set_config(output_scaler_config)
+                else:
+                    output_transformer = None
                 
-                try:
-                    self.model.UPDATE_METHOD.set_state(config_wrapper.get('optimizer_state'), self.model._CALCULATION_MANAGER)
-                except Exception as e:
-                    if (HW.WARNINGS_STRICT_MODE):
-                        raise IOError("No se pudo restaurar el estado del optimizador.") from e
-                    else:
-                        warnings.warn(f"No se pudo restaurar el estado del optimizador. Causa: {e}. El optimizador se reiniciará.")
-
-                normalization_stats = config_wrapper.get('normalization_stats', {})
-                self.model.num_complited_train_iterations = metadata.get('total_training_iterations', 0)
-                self.model.num_completed_epochs = metadata.get('total_epochs_iteratios',0)
+                # 2. Reconstruct the Empty Architecture
+                model_class_name = metadata.get('model_class')
+                TargetNetworkClass = registries.registry._net_map[model_class_name]
                 
-                self._loaded_train_data = metadata.get("loaded_train_data",True)
-                if (self._loaded_train_data):
-                    if (self.normalize_inputs):
-                        self.x_min = normalization_stats.get('x_min')
-                        self.x_max = normalization_stats.get('x_max')
-                        if self.x_min is None:
-                            raise IOError("Error: El modelo requiere normalización de entrada (x_min/x_max) pero no se encontraron en el archivo.")
-                    
-                    # Cargar stats de Y solo si es necesario
-                    if (self.normalize_outputs):
-                        self.y_min = normalization_stats.get('y_min')
-                        self.y_max = normalization_stats.get('y_max')
-                        if self.y_min is None:
-                            raise IOError("Error: El modelo requiere normalización de salida (y_min/y_max) pero no se encontraron en el archivo.")
+                model = TargetNetworkClass.from_config(config_wrapper, registry_module=registries.registry)
 
+                # ==========================================
+                # PHASE 2: THE MATH (NPZ Binary Payload)
+                # ==========================================
+                npz_bytes = archive.read("weights.npz")
+                npz_ram_buffer = io.BytesIO(npz_bytes)
+                
+                # The "Empty Buckets" for routing
+                layer_params_dict = {}
+                opt_global = {}
+                opt_layers_dicts = [None]*len(model.layers)
+                
+                # We use allow_pickle=False because our matrices and scalars are pure!
+                with np.load(npz_ram_buffer, allow_pickle=False) as data:
+                    
+                    for key, value in data.items():
+                        
+                        # Route A: Global Optimizer State (e.g., "global_opt_t")
+                        if key.startswith("global_opt_"):
+                            param_name = key.replace("global_opt_", "", 1)
+                            # Convert 0-D numpy arrays back to pure Python scalars
+                            opt_global[param_name] = value.item() if value.ndim == 0 else value
+                            
+                        # Route B: Layer Optimizer State (e.g., "layer_0_opt_m")
+                        #NEED fix
+                        elif "_opt_" in key:
+                            parts = key.split("_opt_", 1)
+                            layer_idx = int(parts[0].split("_")[1]) # Extracts integer 0
+                            param_name = parts[1]                   # Extracts "m" or "v"
+                            
+                            if (opt_layers_dicts[layer_idx] is None):
+                                opt_layers_dicts[layer_idx] = {}
+                            opt_layers_dicts[layer_idx][param_name] = value
+                            
+                        # Route C: Layer Mathematical Parameters (e.g., "layer_0__weights")
+                        elif key.startswith("layer_"):
+                            # Safely split by the first two underscores: "layer" + "0" + "_weights"
+                            parts = key.split("_", 2)
+                            layer_key = f"{parts[0]}_{parts[1]}"  # Rebuilds "layer_0"
+                            param_key = parts[2]                  # Rebuilds "_weights"
+                            
+                            if layer_key not in layer_params_dict:
+                                layer_params_dict[layer_key] = {}
+                            layer_params_dict[layer_key][param_key] = value
+
+                # ==========================================
+                # PHASE 3: CROSSING THE TRANSLATION BOUNDARY
+                # ==========================================
+                
+                # 1. Inject pure dictionaries back into the Layers
+                model.set_parameters(layer_params_dict)
+                
+                # 2. Inject pure Tuple/State back into the Optimizer
+                # Note: We reconstruct the original dict format your optimizer expects
+                rebuilt_opt_state = {"layer_states":opt_layers_dicts}
+                rebuilt_opt_state.update(opt_global) # Adds 't'
+                
+                # Push state to Optimizer hardware
+                model._UPDATE_METHOD.set_state(rebuilt_opt_state, model._CALCULATION_MANAGER)
+                model._UPDATE_METHOD._initialize_state(model.layers)
+
+                # 3. Restore Metadata Statistics
+                model.num_complited_train_iterations = metadata.get('total_training_iterations', 0)
+                model.num_completed_epochs = metadata.get('total_epochs_iteratios', 0)
+
+                return (model, input_transformer, output_transformer, metadata)
         except Exception as e:
-            raise IOError(f"Error al cargar el modelo desde {path}. El archivo no se pudo leer, está dañado o no es un modelo válido. Causa: {e}") from e
+            raise LoadingError(f"Failed to load the model from {path}. The .symnn archive may be corrupted. Cause: {e}") from e
+
 
 class GridSearchWrapper(Wrapper):
     """
@@ -634,7 +728,7 @@ class GridSearchWrapper(Wrapper):
     normalize_outputs : bool, optional
         Whether to normalize outputs.
     """
-    def __init__(self,Model_class:Callable,work_type:Literal["class","reg"],validation_testing_split = 0.2,
+    def __init__(self,Model_class:type[BaseNetwork],work_type:Literal["class","reg"],validation_testing_split = 0.2,
                  normalize_inputs: bool = True, normalize_outputs: bool = True):
         
         super().__init__(model=None, work_type=work_type,
@@ -650,7 +744,7 @@ class GridSearchWrapper(Wrapper):
         self._y_train = None
         self._X_vali = None
         self._y_vali = None
-        self.best_model: HeteroDense = None
+        self.best_model: BaseNetwork = None
         self.best_params: dict[str, any] = None
         self.best_score: float = -np.inf
         self.grid_search_results: list[dict[str, any]] = []
@@ -729,7 +823,7 @@ class GridSearchWrapper(Wrapper):
                     static_params: dict[str, any],
                     param_grid: dict[str, list[any]],
                     metric_to_optimize: str = None,
-                    higher_is_better: bool = True)->tuple[HeteroDense, dict[str, any], list[dict[str, any]]]:
+                    higher_is_better: bool = True)->tuple[BaseNetwork, dict[str, any], list[dict[str, any]]]:
         """
         Internal method to execute the grid search loop.
         
@@ -823,7 +917,7 @@ class GridSearchWrapper(Wrapper):
                      
                      num_iterations: int = None, 
                      training_mode: Literal["batch", "mini-batch", "stochastic"] = None, 
-                     batch_size: int = None)->Union[list[float], tuple[HeteroDense, dict[str, any], list[dict[str, any]]]]:
+                     batch_size: int = None)->Union[list[float], tuple[BaseNetwork, dict[str, any], list[dict[str, any]]]]:
         """
         Executes training. Can function in two modes:
 

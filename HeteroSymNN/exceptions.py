@@ -140,6 +140,17 @@ class LoadingError(WrapperError):
     """
     pass
 
+class SavingError(WrapperError):
+    """
+    Exception raised when an error occurs during the saving process of models.
+    """
+    pass
+
+class DataTypeError(HeteroSymNNError):
+    """
+    HeteroSymNN exception for type errors.
+    """
+    pass
 
 
 class HeteroSymNNWarnings(UserWarning):

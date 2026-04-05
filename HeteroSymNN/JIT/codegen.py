@@ -59,6 +59,8 @@ COMMON_FORMULAS = {
     'softplus': "log(1 + exp(num))",
     'mish': "num * tanh(log(1 + exp(num)))",
     'gelu': "0.5 * num * (1 + erf(num / sqrt(2.0)))",
+    'linear': 'num',
+    'tanh':'tanh(num)',
 
     'mse': "(y_pred - y_true)**2",
     'mae': "Abs(y_pred - y_true)",

@@ -1,19 +1,30 @@
 import numpy as np
 from typing import Any
 
-class DataScaler:
-    """
-    Base class for data scalers.
+from ..exceptions import RuntimeStateError
 
-    Parameters
-    ----------
-    data : np.ndarray
-        Data to extract the parameters nessesary for the scaler.
+class DataTransformer:
     """
-    def __init__(self,data:np.ndarray):
-        pass
+    Base class for data transformations.
+    """
+    def __init__(self):
+        self.fitted = False
 
-    def normalize(self, data:np.ndarray)->np.ndarray:
+    def fit(self,data:np.ndarray):
+        """
+        Method to fit the transformer using the data.
+
+        The implementation must be done in the subclass.
+        
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to extract the parameters nessesary for the transformation.
+        """
+        self.fitted = True
+        return self
+
+    def transform(self, data:np.ndarray)->np.ndarray:
         """
         Method to normalize data.
         
@@ -26,10 +37,16 @@ class DataScaler:
         -------
         np.ndarray
             Normalized data.
+        
+        Exeptions
+        ---------
+        RuntimeStateError
+            If the scaler is not fitted.
         """
-        raise NotImplementedError
+        if not(self.fitted):
+            raise RuntimeStateError("Trying to do data scaling before fitting the scaler.")
 
-    def denormalize(self, data:np.ndarray)->np.ndarray:
+    def inverse_transform(self, data:np.ndarray)->np.ndarray:
         """
         Method to denormalize data.
         
@@ -42,73 +59,113 @@ class DataScaler:
         -------
         np.ndarray
             Denormalized data.
+        
+        Exeptions
+        ---------
+        RuntimeStateError
+            If the scaler is not fitted.
         """
-        raise NotImplementedError
+        if not(self.fitted):
+            raise RuntimeStateError("Trying to do data descaling before fitting the scaler.")
+    
+    def fit_transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Method to fit and transform the given data.
+        
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to transform.
+        
+        Returns
+        -------
+        np.ndarray
+            Transformed data.
+        """
+        self.fit(data)
+        return self.transform(data)
+
     
     def get_config(self)->dict[str,Any]:
         """
-        Method to get the configuration of the scaler.
+        Method to get the configuration of the instance.
 
-        Needs to return the values of the internal parameters of the scaler for it to be able to reconstruct itself with out needing the data.
+        Needs to return the values of the internal parameters of the instance for it to be able to reconstruct itself with out needing the dataset.
         
         Returns
         -------
         dict[str,Any]
-            Configuration of the scaler.
+            Configuration of the transformer.
         """
-        raise NotImplementedError
+        return {"fitted":self.fitted}
     
     def set_config(self,config:dict[str,Any])->None:
         """
-        Method to set the configuration of the scaler.
+        Method to set the configuration of the instance.
 
-        From a dictionary with strings as keys be able to reconstruct the scaler with out needing to pass the data.
+        From a dictionary with strings as keys be able to reconstruct the transformer with out needing to pass the data.
 
         Parameters
         ----------
         config : dict[str,Any]
-            Configuration of the scaler.
+            Configuration of the transformer.
         """
-        raise NotImplementedError
+        self.fitted = config["fitted"]
 
-class MinMaxScaler(DataScaler):
+class MinMaxScaler(DataTransformer):
     """
-    Scaler class that normalizes data between 0 and 1 with a min and max value method.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data to extract min and max of the values is going to transform.
+    Transformer class that normalizes data between 0 and 1 with a min and max value method.
     """
-    def __init__(self,data:np.ndarray):
-        self.min = min(data)
-        self.max = max(data)
 
-    def normalize(self, data:np.ndarray)->np.ndarray:
+    def __init__(self):
+        super().__init__()
+        self.min = None
+        self.max = None
+
+
+    def fit(self,data:np.ndarray)->None:
+        """
+        Method to fit the transformer using the min max method.
+
+        Parameters
+        ----------
+        data: np.ndarray
+            Data to extract the min and max values of the dataset.
+        """
+        self.min = np.min(data)
+        self.max = np.max(data)
+        super().fit(data)
+
+    def transform(self, data:np.ndarray)->np.ndarray:
+        super().transform(data)
         return (data - self.min) / (self.max - self.min)
 
-    def denormalize(self, data:np.ndarray)->np.ndarray:
+    def inverse_transform(self, data:np.ndarray)->np.ndarray:
+        super().inverse_transform(data)
         return data * (self.max - self.min) + self.min
     
     def get_config(self)->dict[str,float]:
         """
-        Method to get the configuration of the scaler.
+        Method to get the configuration of the instance.
         
         Returns
         -------
         dict[str,float]
-            Min and max values of the scaler.
+            Min and max values of the instance.
         """
-        return {"min":self.min, "max":self.max}
+        config = super().get_config()
+        config.update({"min":self.min, "max":self.max})
+        return config
     
     def set_config(self,config:dict[str,float])->None:
         """
-        Method to set the configuration of the scaler.
+        Method to set the configuration of the instance.
         
         Parameters
         ----------
         config : dict[str,float]
-            Min and max values of the scaler.
+            Min and max values of the instance.
         """
+        super().set_config(config)
         self.min = config["min"]
         self.max = config["max"]

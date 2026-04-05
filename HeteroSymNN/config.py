@@ -8,6 +8,7 @@ import numpy as np
 
 from .Backend.hardware import GPU_ENABLED,CPP_JIT_ENABLED
 from .exceptions import BackendNotAvailableError,PerformanceWarning,PathWarning,PathError,HardwareWarning
+from .Backend import hardware as HW
 
 class _Settings:
     
@@ -32,6 +33,14 @@ class _Settings:
             self._default_compute_method = "GPU_CUDA"
         elif CPP_JIT_ENABLED:
             self._default_compute_method = "CPU_JIT"
+        
+        if (self._default_compute_method == "GPU_CUDA"):
+            self._default_manager = HW.cp
+            self._default_asnumpy = HW.cp.asnumpy
+        else:
+            self._default_manager = np
+            self._default_asnumpy = np.array
+        
         
         self._default_dtype = np.float32
 
@@ -91,6 +100,18 @@ class _Settings:
         """
         """
         return self._default_compute_method
+    
+    @property
+    def default_manager(self):
+        """
+        """
+        return self._default_manager
+    
+    @property
+    def default_asnumpy(self):
+        """
+        """
+        return self._default_asnumpy
 
     def set_default_compute_method(self, method: str):
         method = method.upper()
@@ -114,6 +135,12 @@ class _Settings:
             method = "CPU_PYTHON"
             
         self._default_compute_method = method
+        if (method == "GPU_CUDA"):
+            self._default_manager = HW.cp
+            self._default_asnumpy = HW.cp.asnumpy
+        else:
+            self._default_manager = np
+            self._default_asnumpy = np.array
 
     @property
     def default_dtype(self)->np.dtype:

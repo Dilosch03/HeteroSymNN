@@ -7,7 +7,7 @@ from ...Backend import hardware as HW
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
 from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
-from ...exceptions import NetworkStructureError, LayerConfigurationError, BackendNotAvailableError, PerformanceWarning, MethodMigrationError, HardwareWarning, ShapeMismatchError, InvalidDeviceIDError
+from ...exceptions import NetworkStructureError, LayerConfigurationError, BackendNotAvailableError, PerformanceWarning, MethodMigrationError, HardwareWarning, ShapeMismatchError, InvalidDeviceIDError,LoadingError
 from ...config import settings
 
 class BaseNetwork:
@@ -93,11 +93,11 @@ class BaseNetwork:
         
     """
     def __init__(self, network_structure: list[tuple[int,type[BaseLayer]]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializers: Optional[list[InitC.Initializer]] = None,
-                 learning_rate: float = 0.001, batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch", learning_mode: str = "Static",
+                 learning_rate: float = 0.001,batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch",
                  loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_epochs: int = 1000):
         
-        self._CALCULATION_MANAGER = HW.be
-        self._ASNUMPY = HW.asnumpy
+        self._CALCULATION_MANAGER = settings.default_manager
+        self._ASNUMPY = settings.default_asnumpy
         self.num_complited_train_iterations = 0
         self.num_completed_epochs = 0
 
@@ -114,8 +114,6 @@ class BaseNetwork:
         if ((initial_values is not None) and (len(initial_values) != num_layers)):
             raise NetworkStructureError(f"Inical values were given, but the length ({len(initial_values)}) does not match the number of layers ({num_layers}).")
 
-        self._LEARNING_RATE = learning_rate
-        self._LEAR_MODE = learning_mode
         self.training_mode =training_mode
         self._BATCH_SIZE = batch_size
         self._GPU_ID = 0
@@ -129,8 +127,9 @@ class BaseNetwork:
 
 
         if (initializers is None):
+            initializers = []
             for _ in range(num_layers):
-                self._initializers.append(InitC.HeNormal())
+                initializers.append(InitC.HeNormal())
         
         if (len(initializers) != num_layers):
             raise NetworkStructureError(f"There were given {len(initializers)} initializers, but the structure is defined as {num_layers} layers.")
@@ -148,12 +147,10 @@ class BaseNetwork:
 
         if (optimizer != None):
             self._UPDATE_METHOD = optimizer
-            if (self._UPDATE_METHOD.learning_rate != None):
-                self._UPDATE_METHOD.learning_rate = self._LEARNING_RATE
-            else:
-                self._LEARNING_RATE = self._UPDATE_METHOD.learning_rate
+            if (self._UPDATE_METHOD.learning_rate is None):
+                self._UPDATE_METHOD.learning_rate = learning_rate
         else:
-            self._UPDATE_METHOD:OptiC.Optimizer = OptiC.AdamOptimizer(self._LEARNING_RATE,self._COMPUTATIONAL_METHOD.split("_")[0],device_id=self._GPU_ID)
+            self._UPDATE_METHOD:OptiC.Optimizer = OptiC.AdamOptimizer(learning_rate,self._COMPUTATIONAL_METHOD.split("_")[0],device_id=self._GPU_ID)
 
         if self.training_mode == "stochastic":
             self._BATCH_SIZE = 1
@@ -190,6 +187,92 @@ class BaseNetwork:
                     raise LayerConfigurationError(f"Layer {i} was not given {num_missing} required extra parameters, that are {missing}.")
 
         self.history_losses = []    
+    
+    @classmethod
+    def from_config(cls, general_configs: dict[str,Any], registry_module) -> "BaseNetwork":
+        """
+        Machine Resurrection Method.
+        Bypasses __init__ to allocate memory for the specific network subclass and populates the physics directly.
+        """
+        from ...Backend import hardware as HW 
+        
+        # 1. Allocate memory (Bypass __init__)
+        instance = cls.__new__(cls)
+        
+        # 2. Universal Hardware Pointers
+        instance._CALCULATION_MANAGER = settings.default_manager
+        instance._ASNUMPY = settings.default_asnumpy
+        instance._DEFAULT_FLOAT_TYPE = settings.default_dtype
+        instance._CURRENT_DEVICE = "CPU"
+        instance._COMPUTATIONAL_METHOD = settings.default_compute_method
+        instance._GPU_ID = 0
+        
+
+        architecture_config = general_configs.get('architecture', {})
+        metadata = general_configs.get('metadata', {})
+        transformation_configs = general_configs.get('transformation_configs', {})
+        # 3. Base State
+        instance._NETWORK_STRUCTURE = architecture_config.get('network_structure', [])
+        instance.training_mode = architecture_config.get('training_mode', 'mini-batch')
+        instance._BATCH_SIZE = architecture_config.get('batch_size', 32)
+        instance.num_treaning_epochs = architecture_config.get('num_treaning_epochs', 1000)
+        
+        instance.num_complited_train_iterations = metadata.get('num_complited_train_iterations', 0)
+        instance.num_completed_epochs = metadata.get('total_epochs_iterations', 0)
+        instance.history_losses = []
+        
+        # 4. Tools (Loss & Optimizer)
+        loss_fn_config = architecture_config['loss_config']
+        loss_class_name:str = loss_fn_config.pop('class_name')
+        if loss_class_name not in registry_module.loss_fn_map:
+            raise LoadingError(f"Unknown loss function: {loss_class_name}.")
+        loss_fn = registry_module.loss_fn_map[loss_class_name](**loss_fn_config) 
+        
+
+        optimizer_config = general_configs['optimizer_config']
+        opt_class_name:str = optimizer_config.pop('class_name')
+        if (opt_class_name not in registry_module.optimiers_map):
+            raise LoadingError(f"Unknown optimizer: {opt_class_name}.")
+        optimizer = registry_module.optimiers_map[opt_class_name](**optimizer_config)
+        
+        instance._LOSS_FUNCTION = loss_fn
+        instance._UPDATE_METHOD = optimizer
+        
+        # 5. Reconstruct Layers using standard Layer Constructors
+       # 5. Reconstruct Layers using standard Layer Constructors
+        instance._LAYERS = []
+        layers_configs_dict = architecture_config.get('layer_configs', {}) # Matched the key!
+        
+        # 1. Extract the keys and sort them strictly by their integer index
+        # This guarantees "layer_0", "layer_1", "layer_2" order no matter what JSON does
+        sorted_layer_keys = sorted(layers_configs_dict.keys(), key=lambda k: int(k.split('_')[1]))
+        
+        # 2. Iterate through the perfectly ordered keys
+        for layer_key in sorted_layer_keys:
+            layer_cfg = layers_configs_dict[layer_key]
+            
+            layer_class_name = layer_cfg['layer_type']
+            LayerClass = registry_module.layers_map[layer_class_name]
+            
+            # Rebuild Initializer Tool
+            init_cfg = layer_cfg.get('initializer')
+            rebuilt_initializer = None
+            if init_cfg:
+                InitClass = registry_module.initializers_map[init_cfg.pop('class_name')]
+                rebuilt_initializer = InitClass(**init_cfg)
+            
+            # Pack Tuple
+            layer_construction = (layer_cfg['layer_node_configs'], rebuilt_initializer)
+            
+            rebuilt_layer = LayerClass(
+                num_inputs=layer_cfg['num_inputs'],
+                layer_configuration=layer_construction,
+                batch_size=instance._BATCH_SIZE,
+                Gpu_id=instance._GPU_ID
+            )
+            instance._LAYERS.append(rebuilt_layer)
+            
+        return instance
     
     @property
     def layers(self)->Sequence[BaseLayer]:
@@ -286,7 +369,7 @@ class BaseNetwork:
         return self._LOSS_FUNCTION
     
     @property
-    def initializer(self)->InitC.Initializer:
+    def initializer(self)->list[InitC.Initializer]:
         """
         Property to get the current initializer being used by the network. Read-only.
 
@@ -294,7 +377,7 @@ class BaseNetwork:
         -------
         :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`
         """
-        return self._INITIALIZER
+        return self._initializers
 
     @property
     def learning_rate(self)->float:
@@ -305,11 +388,10 @@ class BaseNetwork:
         -------
         float
         """
-        return self._LEARNING_RATE
+        return self._UPDATE_METHOD.learning_rate
     
     @learning_rate.setter
     def learning_rate(self,new_learning_rate:float):
-        self._LEARNING_RATE = new_learning_rate
         self._UPDATE_METHOD.learning_rate = new_learning_rate
 
     def set_gpu_id(self,new_id:int)->None:
@@ -651,12 +733,9 @@ class BaseNetwork:
         """
         self.change_device("CPU")
         for key in params:
-            layer_params = {}
-            layer_params.update({"weights":params[key]["weights"].copy().T})
-            layer_params.update({"biases":params[key]["biases"].copy().reshape(-1,1)})
             if (type(key) != int):
                 index = int(key.split("_")[-1])
-            self._LAYERS[index].set_parameters(layer_params)
+            self._LAYERS[index].set_parameters(params[key])
 
     def change_constants(self,new_constants:dict[int,Union[list[ConstantToUpdate],ConstantToUpdate]])->None:
         """
@@ -691,21 +770,17 @@ class BaseNetwork:
                 * **"num_treaning_epochs"** (*int*): Number of training iterations (epochs).
         """
         self.change_device("CPU")
-        node_configs = []
-        for layer in self._LAYERS:
-            node_configs.append(layer.recunstruct_layer_config())
+        layers_configs = {}
+        for i,layer in enumerate(self._LAYERS):
+            layers_configs.update({"layer_"+str(i):layer.get_config()})
 
         config = {
             'network_structure': self._NETWORK_STRUCTURE,
-            'detailed_activations': node_configs,
-            'learning_rate': self._LEARNING_RATE,
-            'learning_mode': self._LEAR_MODE,
+            'layer_configs': layers_configs,
             'training_mode': self.training_mode,
             'batch_size': self._BATCH_SIZE
         }
 
-        config.update({'initializer_config': self._INITIALIZER.get_config()})
-        config['optimizer_config'] = self._UPDATE_METHOD.get_config()
         config["loss_config"] = self._LOSS_FUNCTION.get_config()
         config['num_treaning_epochs'] = self.num_treaning_epochs
         return config

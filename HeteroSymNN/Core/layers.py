@@ -210,7 +210,7 @@ class BaseLayer:
         list[:obj:`~HeteroSymNN.types.NodeConfig`]
             List of :obj:`~HeteroSymNN.types.NodeConfig` with the current constants.
         """
-        self._to("CPU")
+        self.to("CPU")
         new_layer_config = []
         for i,node in enumerate(self._layer_node_configs):
             node_constant_dict = {}
@@ -468,6 +468,24 @@ class BaseLayer:
             Dictionary containing the new parameters with keys 'weights' and 'biases'.
         """
         raise NotImplementedError
+    
+    def get_config(self)->dict[str,any]:
+        """
+        Method to get the configuration of the layer.
+        
+        This method must be implemented by the subclasses.
+
+        Returns
+        -------
+        dict[str, any]
+            Dictionary containing the configuration of the layer.
+        """
+        return  {"num_nodes":self._num_nodes,
+                "num_inputs":self._num_inputs,
+                "layer_node_configs":self.recunstruct_layer_config(),
+                "initializer":self._initializer.get_config(),
+                "layer_type":self.__class__.__name__
+                }
 
 class LinearLayer(BaseLayer):
     """
@@ -692,7 +710,8 @@ class LinearLayer(BaseLayer):
         """
         return {
             '_weights': self._ASNUMPY(self._weights).T,
-            '_biases': self._ASNUMPY(self._biases).T
+            '_biases': self._ASNUMPY(self._biases).T,
+            '_connection_mask': self._ASNUMPY(self._connection_mask).T
         }
         
     def set_parameters(self, params:dict[str,np.ndarray])->None:
@@ -704,8 +723,8 @@ class LinearLayer(BaseLayer):
         params : dict[str, np.ndarray]
             Dictionary containing the new parameters with keys 'weights' and 'biases'.
         """
-        corret_weights = (params["_weights"].shape == self._weights.shape)
-        correct_biases = (params["_biases"].shape == self._biases.shape)
+        corret_weights = (params["_weights"].T.shape == self._weights.shape)
+        correct_biases = (params["_biases"].T.shape == self._biases.shape)
         if not(correct_biases or corret_weights):
             raise LayerConfigurationError(f"""
                 Weights and biases are not in the correct dimentions. Expected {self._weights.T.shape} for the weights and {self._biases.T.shape} for the biases.
@@ -722,8 +741,9 @@ class LinearLayer(BaseLayer):
                 Received {params["_biases"].T.shape} for the biases.
                 """)
         
-        self._weights = np.array(params['_weights'], dtype=self._DEFAULT_FLOAT_TYPE)
-        self._biases = np.array(params['_biases'], dtype=self._DEFAULT_FLOAT_TYPE)
+        self.set_connection_mask(params['_connection_mask'].T)
+        self._weights = np.array(params['_weights'].T, dtype=self._DEFAULT_FLOAT_TYPE)
+        self._biases = np.array(params['_biases'].T, dtype=self._DEFAULT_FLOAT_TYPE)
     
     def set_connection_mask(self, connection_mask: np.ndarray)->None:
         """
@@ -731,13 +751,20 @@ class LinearLayer(BaseLayer):
 
         Parameters
         ----------
-        _connection_mask : np.ndarray
+        connection_mask : np.ndarray
             2D array of ones and zeros representing the connection mask. in the of shape (num_nodes, num_inputs).
         """
+        if (connection_mask.shape != (self._num_nodes,self._num_inputs)):
+            raise LayerConfigurationError(f"Connection mask is not in the correct dimentions. Expected ({self._num_nodes},{self._num_inputs}), received {connection_mask.shape} instead.)")
+
         if self._CURRENT_DEVICE == 'GPU':
             self._connection_mask = self._CALCULATION_MANAGER.array(connection_mask,dtype=self._CALCULATION_MANAGER.float32)
         else:
             self._connection_mask = connection_mask.astype(self._DEFAULT_FLOAT_TYPE)
+    
+    def get_config(self)->dict[str,any]:
+        config = super().get_config()
+        return config
 
 class RecurrentLayer(BaseLayer):
     """
