@@ -41,20 +41,20 @@ pip install HeteroSymNN[gpu]
 HeteroNN follows a Scikit-Learn style API. Here is how to create a "Cocktail Layer" that mixes periodic and linear features.
 
 ```sh
-from HeteroSymNN.API.wrappers import Wraper
-from HeteroSymNN.Core.Nets.neural_nets import FlexibleNN
+from HeteroSymNN.API.wrappers import Wrapper
+from HeteroSymNN.Core.Nets.dense import Dense
 
-model = FlexibleNN(
-    nodes_structure=[10,25,25,1],
-    activation_config = ["sin(x)","num",("tanh(z)*a",{"a":2})],
-    training_mode = "mini-batch",
-    batch_size = 32,
-    num_treaning_iter = 200
-    )
+model = Dense(
+    nodes_structure=[10, 25, 25, 1],
+    activation_config=["sin(x)", "num", ("tanh(z)*a", {"a": 2})],
+    training_mode="mini-batch",
+    batch_size=32,
+    num_training_iter=200
+)
 
-agent = Wraper(model,work_type="reg")
+agent = Wrapper(model, work_type="reg")
 agent.load_training(X_train, y_train)
-agent.run_training(num_iterations = 100, batch_size=64)
+agent.run_training(num_iterations=100, batch_size=64)
 ```
 
 ## How It Works
