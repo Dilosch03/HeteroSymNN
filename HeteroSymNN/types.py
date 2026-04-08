@@ -8,7 +8,7 @@ import numpy as np
 if os.environ.get("SPHINX_BUILD") == "True":
     
     class NodeConfig:
-        """NodeConfig reprecents the activation function and its custom constants in the function.
+        """NodeConfig represents the activation function and its custom constants in the function.
         
         Definition: ``tuple[str, dict[str, float]]``
         """
@@ -47,7 +47,7 @@ else:
         from .Core.initializers import Initializer
 
     NodeConfig: TypeAlias = tuple[str, dict[str, float]]  # Example: ("relu", {"alpha": 0.01})
-    """NodeConfig reprecents the activation function and its custom constants in the function.
+    """NodeConfig represents the activation function and its custom constants in the function.
         Definition: ``tuple[str, dict[str, float]]``"""
     FlexibleNodeConfig: TypeAlias = Union[str, NodeConfig]
     """FlexibleNodeConfig can be either a simple string representing the activation function name or a detailed :obj:`~NodeConfig` tuple."""

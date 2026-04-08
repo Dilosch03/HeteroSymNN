@@ -6,19 +6,15 @@ import itertools as iter
 from typing import Literal,Union,Optional
 import datetime
 import warnings
-import inspect
+import copy
 import time
 import json
 import zipfile
 
-
-from ..Backend import hardware as HW
-from ..types import LayerConstruction,NodeConfig
 from ..Core.Nets.base_classes import BaseNetwork
-from ..Core.layers import BaseLayer
-from ..Core import losses, optimizers,initializers
+from ..Core import losses, optimizers
 from . import registries,utilities
-from ..exceptions import PathError,PathWarning,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,LoadingWarning,WrapperError,SavingError
+from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,WrapperError,SavingError
 from ..config import settings
 
 class Wrapper():
@@ -34,31 +30,42 @@ class Wrapper():
 
     Parameters
     ----------
-    model : :class:`~HeteroSymNN.Core.Nets.BaseNetwork` | subclass of :class:`~HeteroSymNN.Core.Nets.BaseNetwork` or None
-        The neural network instance to wrap. Can be ``None`` if loading a model from disk later.
+    model : :class:`~HeteroSymNN.Core.Nets.BaseNetwork` | subclass of :class:`~HeteroSymNN.Core.Nets.BaseNetwork`
+        The neural network instance to wrap.
     work_type : Literal["class", "reg"]
-        Can be ``None`` if loading a model from disk later.
         The type of problem the model solves:
         
         *   ``"class"``: Classification (calculates Accuracy, F1, etc.).
         *   ``"reg"``: Regression (calculates MSE, R2, etc.).
 
-    _input_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
+    input_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
         The scaling method that is going to be use to scale the input data. Defaults to ``None`` and doesn't scale the data.
-    _output_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
+    output_transformer : 'obj:`HeteroSymNN.API.DataTransformer`, optional
         The descaling method that is going to be use to scale the input data. Defaults to ``None`` and doesn't descale the data.
+
+    Attributes
+    ----------
+    model : :class:`~HeteroSymNN.Core.Nets.BaseNetwork`, read-only
+        The underlying neural network instance.
+    input_transformer : :obj:`HeteroSymNN.API.DataTransformer`, read-only
+        The transformer used to scale input data. If the input data is not ben transform this would be `None`.
+    output_trasformer : :class:`HeteroSymNN.API.DataTransformer`, read-only
+        The transformer used to scale output data. If the output data is not ben transform this would be `None`.
+    work_type: str read-write
+        The type of problem the model solves.
+    
     """
     def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[utilities.DataTransformer] = None, output_transformer: Optional[utilities.DataTransformer] = None):
-        self._model:BaseNetwork = None
+        if not(issubclass(type(model), BaseNetwork)):
+            raise WrapperError("The model that was pass is not a subclass of BaseNetwork.")
+        
+        self._model:BaseNetwork = model
         self.training_data = None
-        self.training_data_norm = None
         self._input_transformer = input_transformer
         self._output_transformer = output_transformer
         self.work_type = work_type
         self._loaded_train_data = False
         self.model_name = model.__class__.__name__
-
-        self.model:BaseNetwork = model
 
     @property
     def model(self)->BaseNetwork:
@@ -91,12 +98,30 @@ class Wrapper():
                     warnings.warn(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.",ShapeMismatchError,stacklevel=2)
             
     @property
-    def input_transformer(self):
+    def input_transformer(self)->Union[utilities.DataTransformer, None]:
+        """
+        The transformer used to scale input data.
+        """
         return self._input_transformer
 
+    @input_transformer.setter
+    def input_transformer(self, new_transformer: utilities.DataTransformer):
+        self._input_transformer = new_transformer
+        if (self._loaded_train_data):
+            self.training_data_norm[0] = new_transformer.fit_transform(self.training_data[0])
+
     @property
-    def output_transformer(self):
+    def output_transformer(self)->Union[utilities.DataTransformer, None]:
+        """
+        The transformer used to scale output data.
+        """
         return self._output_transformer
+    
+    @output_transformer.setter
+    def output_transformer(self, new_transformer: utilities.DataTransformer):
+        self._output_transformer = new_transformer
+        if(self._loaded_train_data):
+            self.training_data_norm[1] = new_transformer.fit_transform(self.training_data[1])
 
     def fit(self, training_data: list, expected_results: list, epochs: int = None,training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
         """
@@ -130,13 +155,11 @@ class Wrapper():
 
     def load_training(self, training_data: list, expected_results: list)->None:
         """
-        Loads and prepares training data.
-
-        This method performs the following steps:
+        Loads and prepares training data by doing the following steps:
         
         1.  Converts inputs to NumPy arrays.
-        2.  Checks dimensions against the model architecture (if a model is set).
-        3.  Calculates normalization statistics (min/max) if normalization is enabled.
+        2.  Checks dimensions against the model architecture.
+        3.  Calculates transformation of the given data if a transformer was pass.
         4.  Stores the normalized data for training.
 
         Parameters
@@ -239,7 +262,7 @@ class Wrapper():
         """
         Generates predictions for new data.
 
-        Handles input normalization and output denormalization automatically if configured.
+        Handles input and output transformations automatically if configured.
 
         Parameters
         ----------
@@ -249,7 +272,7 @@ class Wrapper():
         Returns
         -------
         np.ndarray
-            Predicted values (denormalized if ``normalize_outputs=True``).
+            Predicted values.
         """
         X_raw = np.array(data)
         
@@ -261,7 +284,7 @@ class Wrapper():
                 if data_trans_config[key] is None:
                     None_keys.append(key)
 
-            if not(self._input_transformer.fitted):
+            if not(self._input_transformer.is_fitted):
                 raise WrapperError("A DataTransform object was pass but it was never fitted.")
             
             if (len(None_keys) > 0):
@@ -280,7 +303,7 @@ class Wrapper():
                 if data_trans_config[key] is None:
                     None_keys.append(key)
 
-            if not(self._output_transformer.fitted):
+            if not(self._output_transformer.is_fitted):
                 raise WrapperError("A DataTransform object was pass but it was never fitted.")
             
             if (len(None_keys) > 0):
@@ -292,7 +315,7 @@ class Wrapper():
 
     def test_accuracy(self,test_data:list,expected_results:list,threshold:float = 0.5)->Union[dict[str, float], tuple[dict[str, float], dict[str, int]]]:
         """
-        Evaluates the model on a test dataset.
+        Evaluates the model on the given test dataset.
 
         Parameters
         ----------
@@ -307,6 +330,9 @@ class Wrapper():
         -------
         dict or tuple
             Evaluation metrics depending on ``work_type``.
+            
+        *   `reg`: dict[str,float]
+        *   `class`: tuple[dict[str, float], dict[str, int]
         """
         results = {}
         if (self.work_type == "reg"):
@@ -472,7 +498,6 @@ class Wrapper():
             
             full_path = os.path.join(path, final_filename)
             
-            # Note: Overwrite check omitted here because timestamps prevent collisions
 
         else:
             if not path.endswith(".symnn"):
@@ -500,7 +525,7 @@ class Wrapper():
                 'work_type': self.work_type,
                 'description': description,
                 'save_timestamp': datetime.datetime.now().isoformat(),
-                'total_training_iterations': self.model.num_complited_train_iterations,
+                'total_training_iterations': self.model.num_completed_train_iterations,
                 'total_epochs_iterations':self.model.num_completed_epochs,
                 'input_transformer':  self._input_transformer.__class__.__name__ if self._input_transformer else None,
                 'output_transformer': self._output_transformer.__class__.__name__ if self._output_transformer else None,
@@ -553,7 +578,7 @@ class Wrapper():
 
     def load_state(self, path: str) -> None:
         """
-        Loads a model from a ``.symnn`` ZIP archive created by :meth:`save_model`.
+        Loads a model from a ``.symnn`` ZIP archive created by :meth:`save_model` and ovewrittes the current paramteres of the model and wrapper.
 
         Reconstructs the Network, restores weights, optimizer state, and 
         data normalization statistics directly from RAM buffers.
@@ -588,10 +613,8 @@ class Wrapper():
         model,input_transformer,output_transformer,metadata = cls._extract_symnn_archive(path)
 
         saved_work_type = metadata.get('work_type')
-        # 2. Instantiate the blank Wrapper using the saved settings
         instance = cls(model=model, work_type=saved_work_type,input_transformer=input_transformer,output_transformer=output_transformer)
 
-        # 3. Use Mode 2 to inject the architecture and math
         instance.model_name = metadata.get('model_name')
         return instance
     
@@ -613,9 +636,6 @@ class Wrapper():
 
         try:
             with zipfile.ZipFile(path, 'r') as archive:
-                # ==========================================
-                # PHASE 1: THE SKELETON (JSON Metadata)
-                # ==========================================
                 config_bytes = archive.read("config.json")
                 config_wrapper = json.loads(config_bytes)
                 
@@ -636,342 +656,242 @@ class Wrapper():
                 else:
                     output_transformer = None
                 
-                # 2. Reconstruct the Empty Architecture
+
                 model_class_name = metadata.get('model_class')
                 TargetNetworkClass = registries.registry._net_map[model_class_name]
                 
                 model = TargetNetworkClass.from_config(config_wrapper, registry_module=registries.registry)
 
-                # ==========================================
-                # PHASE 2: THE MATH (NPZ Binary Payload)
-                # ==========================================
                 npz_bytes = archive.read("weights.npz")
                 npz_ram_buffer = io.BytesIO(npz_bytes)
                 
-                # The "Empty Buckets" for routing
                 layer_params_dict = {}
                 opt_global = {}
                 opt_layers_dicts = [None]*len(model.layers)
                 
-                # We use allow_pickle=False because our matrices and scalars are pure!
                 with np.load(npz_ram_buffer, allow_pickle=False) as data:
-                    
                     for key, value in data.items():
-                        
-                        # Route A: Global Optimizer State (e.g., "global_opt_t")
                         if key.startswith("global_opt_"):
                             param_name = key.replace("global_opt_", "", 1)
                             # Convert 0-D numpy arrays back to pure Python scalars
                             opt_global[param_name] = value.item() if value.ndim == 0 else value
-                            
-                        # Route B: Layer Optimizer State (e.g., "layer_0_opt_m")
-                        #NEED fix
+
                         elif "_opt_" in key:
                             parts = key.split("_opt_", 1)
-                            layer_idx = int(parts[0].split("_")[1]) # Extracts integer 0
-                            param_name = parts[1]                   # Extracts "m" or "v"
+                            layer_idx = int(parts[0].split("_")[1])
+                            param_name = parts[1]                   
                             
                             if (opt_layers_dicts[layer_idx] is None):
                                 opt_layers_dicts[layer_idx] = {}
                             opt_layers_dicts[layer_idx][param_name] = value
                             
-                        # Route C: Layer Mathematical Parameters (e.g., "layer_0__weights")
                         elif key.startswith("layer_"):
-                            # Safely split by the first two underscores: "layer" + "0" + "_weights"
                             parts = key.split("_", 2)
-                            layer_key = f"{parts[0]}_{parts[1]}"  # Rebuilds "layer_0"
-                            param_key = parts[2]                  # Rebuilds "_weights"
+                            layer_key = f"{parts[0]}_{parts[1]}"
+                            param_key = parts[2]                 
                             
                             if layer_key not in layer_params_dict:
                                 layer_params_dict[layer_key] = {}
                             layer_params_dict[layer_key][param_key] = value
-
-                # ==========================================
-                # PHASE 3: CROSSING THE TRANSLATION BOUNDARY
-                # ==========================================
                 
-                # 1. Inject pure dictionaries back into the Layers
                 model.set_parameters(layer_params_dict)
                 
-                # 2. Inject pure Tuple/State back into the Optimizer
-                # Note: We reconstruct the original dict format your optimizer expects
                 rebuilt_opt_state = {"layer_states":opt_layers_dicts}
-                rebuilt_opt_state.update(opt_global) # Adds 't'
-                
-                # Push state to Optimizer hardware
+                rebuilt_opt_state.update(opt_global)
+
                 model._UPDATE_METHOD.set_state(rebuilt_opt_state, model._CALCULATION_MANAGER)
                 model._UPDATE_METHOD._initialize_state(model.layers)
 
-                # 3. Restore Metadata Statistics
-                model.num_complited_train_iterations = metadata.get('total_training_iterations', 0)
-                model.num_completed_epochs = metadata.get('total_epochs_iteratios', 0)
+                model.num_completed_train_iterations = metadata.get('total_training_iterations', 0)
+                model.num_completed_epochs = metadata.get('total_epochs_iterations', 0)
 
                 return (model, input_transformer, output_transformer, metadata)
         except Exception as e:
             raise LoadingError(f"Failed to load the model from {path}. The .symnn archive may be corrupted. Cause: {e}") from e
 
 
-class GridSearchWrapper(Wrapper):
+
+class GridSearchManager:
     """
-    A wrapper that extends :class:`Wraper` to perform Hyperparameter Grid Search.
+    An independent orchestrator that performs Hyperparameter Grid Search using Composition.
+    
+    Instead of inheriting from Wrapper, the manager takes a template Wrapper, 
+    mutates its architectural DNA based on a parameter grid, spawns completely independent 
+    clones, and races them to find the optimal configuration.
 
     Parameters
     ----------
-    Model_class : Callable
-        The class constructor to use for creating models (e.g., :class:`~HeteroSymNN.Core.Nets.neural_nets.SimpleNN`).
-    work_type : Literal["class", "reg"]
-        Type of problem (classification or regression).
-    validation_testing_split : float, optional
+    template_wrapper : Wrapper
+        A fully initialized Wrapper that serves as the base blueprint.
+    param_grid : dict[str, list[any]]
+        Dictionary where keys are parameter names and values are lists of possibilities to try.
+    validation_split : float, optional
         Fraction of data to use for validation during grid search (default 0.2).
-    normalize_inputs : bool, optional
-        Whether to normalize inputs.
-    normalize_outputs : bool, optional
-        Whether to normalize outputs.
     """
-    def __init__(self,Model_class:type[BaseNetwork],work_type:Literal["class","reg"],validation_testing_split = 0.2,
-                 normalize_inputs: bool = True, normalize_outputs: bool = True):
+    def __init__(self, template_wrapper: Wrapper, param_grid: dict[str, list[any]], validation_split: float = 0.2):
+        self.template_wrapper = template_wrapper
+        self.param_grid = param_grid
         
-        super().__init__(model=None, work_type=work_type,
-                         normalize_inputs=normalize_inputs, 
-                         normalize_outputs=normalize_outputs)
-
-        self.model_class = Model_class
-        if not (0.0 < validation_testing_split < 1.0):
-            raise ValueError("validation_split debe estar entre 0.0 y 1.0")
-        self.VALIDATION_SPLIT = validation_testing_split
-
-        self._X_train = None
-        self._y_train = None
-        self._X_vali = None
-        self._y_vali = None
-        self.best_model: BaseNetwork = None
+        if not (0.0 < validation_split < 1.0):
+            raise ValueError("validation_split value should be between 0 and 1.")
+        self.validation_split = validation_split
+        
+        self._X_train, self._y_train = None, None
+        self._X_vali, self._y_vali = None, None
+        
+        self.best_wrapper: Wrapper = None
         self.best_params: dict[str, any] = None
-        self.best_score: float = -np.inf
+        self.best_score: float = None
         self.grid_search_results: list[dict[str, any]] = []
 
-    def load_training(self, training_data: list, expected_results: list,shuffle:bool = True)->None:
-        """
-        Loads data and splits it into Training and Validation sets.
-
-        Parameters
-        ----------
-        training_data : list
-            All available input data.
-        expected_results : list
-            All available target data.
-        shuffle : bool, optional
-            Whether to shuffle data before splitting (default True).
-        """
-        # 1. Convertir a numpy para barajar y partir fácilmente
+    def load_data(self, training_data: list, expected_results: list, shuffle: bool = True) -> None:
+        """Loads data and splits it into Training and Validation sets."""
         X_full = np.array(training_data)
         Y_full = np.array(expected_results)
 
         if len(X_full) != len(Y_full):
-            raise ValueError("Los datos de entrenamiento (X) y los resultados (Y) tienen diferente número de muestras.")
+            raise ValueError(f"Number of samples in input and output data do not match. input samples: {len(X_full)}, output samples: {len(Y_full)}")
         
-        # 2. Barajar los datos (en conjunto)
         indices = np.arange(X_full.shape[0])
-        if (shuffle):
+        if shuffle:
             np.random.shuffle(indices)
         
         X_shuffled = X_full[indices]
         Y_shuffled = Y_full[indices]
         
-        # 3. Partir los datos
-        split_idx = int(X_full.shape[0] * (1 - self.VALIDATION_SPLIT))
+        split_idx = int(X_full.shape[0] * (1 - self.validation_split))
         
         if split_idx == 0 or split_idx == len(X_full):
-            raise ValueError(f"El split de validación ({self.VALIDATION_SPLIT}) resulta en un conjunto de entrenamiento o validación vacío.")
+            raise ValueError(f"The value for the split for validation ({self.validation_split}) returns and empty split for one of the tasks.")
 
         self._X_train = X_shuffled[:split_idx]
         self._y_train = Y_shuffled[:split_idx]
         self._X_vali = X_shuffled[split_idx:]
         self._y_vali = Y_shuffled[split_idx:]
-        
- 
-        
-        # Esto establece self.x_min, self.x_max, etc. usando SOLO el set de entrenamiento
-        super().load_training(self._X_train, self._y_train)
 
-    def _generate_param_combinations(self, param_grid: dict[str, list[any]]) -> list[dict[str, any]]:
+    def _generate_param_combinations(self) -> list[dict[str, any]]:
         """
         Internal helper to generate all combinations of hyperparameters.
-        
-        Parameters
-        ----------
-        param_grid : dict[str, list[any]]
-            Dictionary of the name of the parameter and the posible values.
 
         Returns
         -------
         list[dict[str, any]]
-            List of dictionarys comprising all combinations of hyperparameters.
+            List of parameter combinations.
         """
-        if not param_grid:
+        if not self.param_grid:
             return []
+        keys = self.param_grid.keys()
+        values = self.param_grid.values()
+        return [dict(zip(keys, combo)) for combo in iter.product(*values)]
 
-        param_keys = param_grid.keys()
-        value_lists = param_grid.values()
-
-
-        combinations_list = list(iter.product(*value_lists))
-        combinations_dict = [dict(zip(param_keys, combo)) for combo in combinations_list]
-
-        return combinations_dict
-
-    def _run_grid_search(self,
-                    static_params: dict[str, any],
-                    param_grid: dict[str, list[any]],
-                    metric_to_optimize: str = None,
-                    higher_is_better: bool = True)->tuple[BaseNetwork, dict[str, any], list[dict[str, any]]]:
+    def _clone_wrapper(self, new_config: dict[str,any]) -> Wrapper:
         """
-        Internal method to execute the grid search loop.
+        Internal helper to dynamically mutate the cofiguration of the template and spawn a fresh wrapper clone.
+
+        Parameters
+        ----------
+        new_config: dict[str, any]
+            the new congfiguration that is going to be applied to the template.
+
+        Returns
+        -------
+        Wrapper
+            Fresh wrapper with the mutated configuration.
+        """
+        base_config = self.template_wrapper.get_config()
+        mutated = copy.deepcopy(base_config)
         
+        for k, v in new_config.items():
+            if k in mutated['architecture']:
+                mutated['architecture'][k] = v
+            elif k in mutated['optimizer_config']:
+                mutated['optimizer_config'][k] = v
+            elif 'loss_config' in mutated['architecture'] and k in mutated['architecture']['loss_config']:
+                mutated['architecture']['loss_config'][k] = v
+            elif k == 'learning_rate': 
+                mutated['optimizer_config']['learning_rate'] = v
+
+        in_scaler, out_scaler = None, None
+        meta = mutated['metadata']
+        t_configs = mutated['transformation_configs']
+        
+        if meta.get('input_transformer'):
+            in_scaler = registries.registry.data_transformers_map[meta['input_transformer']]()
+            if "inputs" in t_configs: in_scaler.set_config(t_configs["inputs"])
+                
+        if meta.get('output_transformer'):
+            out_scaler = registries.registry.data_transformers_map[meta['output_transformer']]()
+            if "outputs" in t_configs: out_scaler.set_config(t_configs["outputs"])
+
+        TargetClass = registries.registry.net_map[meta['model_class']]
+        new_model = TargetClass.from_config(mutated, registry_module=registries.registry)
+
+        new_wrapper = Wrapper(
+            model=new_model,
+            work_type=meta['work_type'],
+            input_transformer=in_scaler,
+            output_transformer=out_scaler
+        )
+        new_wrapper.load_training(self._X_train, self._y_train)
+        return new_wrapper
+
+    def execute_search(self, metric_to_optimize: str = None, higher_is_better: bool = True) -> tuple[Wrapper, dict, list]:
+        """
+        Executes the grid search loop across all parameter combinations.
         
         Parameters
         ----------
-        static_params : dict[str, any]
-            Dictionary of the parameters that will remain static during the grid search.
-        param_grid : dict[str, list[any]]
-            Dictionary of the name of the parameter and the posible values.
         metric_to_optimize : str, optional
-            The metric name to use for selecting the best model.
+            The metric name to use for selecting the best model (e.g., 'R2', 'Acur').
         higher_is_better : bool, optional
             True if maximizing the metric, False if minimizing.
-        """
-        
-        if (metric_to_optimize == None):
-            if (self.work_type == "reg"):
-                metric_to_optimize = "R2"
-            else:
-                metric_to_optimize = "Acur"
-        
-        combinations = self._generate_param_combinations(param_grid)
-        
-        self.best_score = -np.inf if higher_is_better else np.inf
-        self.best_model = None
-        self.best_params = None
-        self.grid_search_results = []
-
-        num_features = 0
-        if (self._X_train is not None):
-            num_features = self._X_train.shape[1]
-
-
-        for i, params_combination in enumerate(combinations):
-            readable_params = {}
-            for k, v in params_combination.items():
-                if isinstance(v, (optimizers.Optimizer,losses.Loss)):
-                    readable_params[k] = v.__class__.__name__ + f"({v.get_config()})"
-                elif inspect.isclass(v):
-                    readable_params[k] = v.__name__
-                else:
-                    readable_params[k] = v
-
-            start_time = time.time()
-            
-            try:
-                model_args = static_params.copy()
-                model_args.update(params_combination)
-                
-                self.model = self.model_class(**model_args)
-                
-                super().run_training()
-                metrics:dict[str,float] = {}
-                if (self.work_type == "reg"):
-                    metrics = self.regreccion_test_accuracy(self._X_vali, self._y_vali)
-                else:
-                    metrics = self.classification_test_accuracy(self._X_vali,self._y_vali)
-                score = metrics.get(metric_to_optimize)
-
-                if (score == np.nan):
-                    raise ValueError(f"Métrica '{metric_to_optimize}' no encontrada. Métricas disponibles: {metrics.keys()}")
-
-                duration = time.time() - start_time
-                
-                result_entry = {'params': params_combination, 'score': score, 'metrics': metrics, 'duration_s': duration}
-                self.grid_search_results.append(result_entry)
-
-                if ((higher_is_better) and (score > self.best_score)):
-                    self.best_score = score
-                    self.best_model = self.model
-                    self.best_params = params_combination
-
-                elif ((not(higher_is_better)) and (score < self.best_score)):
-                    self.best_score = score
-                    self.best_model = self.model
-                    self.best_params = params_combination
-
-
-            except Exception as e:
-                self.grid_search_results.append({'params': readable_params, 'score': None, 'error': str(e)})
-
-        self.model = self.best_model
-        return self.best_model, self.best_params, self.grid_search_results
-
-    def run_training(self,
-                     static_params: dict[str, any] = None,
-                     param_grid: dict[str, list[any]] = None,
-                     metric_to_optimize: str = 'R2',
-                     higher_is_better: bool = True,
-                     
-                     num_iterations: int = None, 
-                     training_mode: Literal["batch", "mini-batch", "stochastic"] = None, 
-                     batch_size: int = None)->Union[list[float], tuple[BaseNetwork, dict[str, any], list[dict[str, any]]]]:
-        """
-        Executes training. Can function in two modes:
-
-        1.  **Grid Search Mode:** If ``param_grid`` is provided. Iterates through all parameter combinations, 
-            trains a new model for each, evaluates on the validation set, and selects the best one.
-        2.  **Standard Training Mode:** If ``param_grid`` is None. Trains the currently active model (e.g., the best model found) 
-            for additional iterations.
-
-        Parameters
-        ----------
-        static_params : dict[str, any], optional
-            Parameters that remain constant across all grid search trials (e.g., input size).
-        param_grid : dict[str, list[any]], optional
-            Dictionary where keys are parameter names and values are lists of possibilities to try.
-        metric_to_optimize : str, optional
-            The metric name to use for selecting the best model (e.g., 'R2', 'Acur', 'MSE').
-        higher_is_better : bool, optional
-            True if maximizing the metric (ejem. for Accuracy or R2), False if minimizing (ejem. for MSE).
-        
-        num_iterations : int, optional
-            Number of training iterations. If None, uses the model's configured default.
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training strategy. If None, uses the model's configured default.
-        batch_size : int, optional
-            Size of the batch when using "mini-batch" mode. If not pass, uses the model's configured default.
         
         Returns
         -------
-        tuple or list
-            In Grid Search mode: Returns ``(best_model, best_params, all_results)``.
-            In Standard mode: Returns the loss history list.
+        tuple
+            Returns ``(best_wrapper, best_params, all_results)``.
         """
-        
-        if param_grid is not None:
-            print("Grid search detectado (param_grid no es None). Iniciando búsqueda...")
-            if ((self._X_train is None) or (self._y_train is None) or (self._X_vali is None) or (self._y_vali is None) or (self.model_class is None) or (static_params is None)):
-                raise ValueError("Para grid search, debe proveer X_train, y_train, X_test, y_test, model_class, y static_params.")
+        if self._X_train is None:
+            raise WrapperError("No data loaded. Call load_data() before execute_search().")
+
+        if metric_to_optimize is None:
+            metric_to_optimize = "R2" if self.template_wrapper.work_type == "reg" else "Acur"
+
+        self.best_score = -np.inf if higher_is_better else np.inf
+        self.best_wrapper = None
+        self.best_params = None
+        self.grid_search_results = []
+
+        combinations = self._generate_param_combinations()
+
+        for combo in combinations:
+            start_time = time.time()
+            readable_combo = {k: (v.__class__.__name__ if isinstance(v, (optimizers.Optimizer, losses.Loss)) else v) for k, v in combo.items()}
             
-            return self._run_grid_search(
-                static_params=static_params,
-                param_grid=param_grid,
-                metric_to_optimize=metric_to_optimize,
-                higher_is_better=higher_is_better
-            )
-            
-        elif self.model is not None and num_iterations is not None:
-            return super().run_training(
-                num_iterations=num_iterations,
-                training_mode=training_mode,
-                batch_size=batch_size
-            )
-        
-        elif self.model is None and num_iterations is not None:
-            raise ValueError("No se ha encontrado un modelo. Debe ejecutar run_training con un 'param_grid' primero para encontrar un modelo.")
-        
-        else:
-            raise ValueError("Argumentos insuficientes. Debe proveer un 'param_grid' (para grid search) o 'num_iterations' (para un modelo existente).")
+            try:
+                trial_wrapper = self._clone_wrapper(combo)
+                trial_wrapper.run_training() 
+                
+                metrics = {}
+                if trial_wrapper.work_type == "reg":
+                    metrics = trial_wrapper.regreccion_test_accuracy(self._X_vali, self._y_vali)
+                else:
+                    metrics, _ = trial_wrapper.classification_test_accuracy(self._X_vali, self._y_vali)
+                    
+                score = metrics.get(metric_to_optimize)
+                
+                if score is None or np.isnan(score):
+                    raise ValueError(f"Metric '{metric_to_optimize}' not found or NaN. Available: {list(metrics.keys())}")
+                    
+                duration = time.time() - start_time
+                self.grid_search_results.append({'params': readable_combo, 'score': score, 'metrics': metrics, 'duration_s': duration})
+
+                if (higher_is_better and score > self.best_score) or (not higher_is_better and score < self.best_score):
+                    self.best_score = score
+                    self.best_wrapper = trial_wrapper
+                    self.best_params = combo
+
+            except Exception as e:
+                self.grid_search_results.append({'params': readable_combo, 'score': None, 'error': str(e)})
+
+        return self.best_wrapper, self.best_params, self.grid_search_results

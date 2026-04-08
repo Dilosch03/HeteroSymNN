@@ -1,5 +1,4 @@
-from .dense import *
-from .evo import *
-from .funcional import *
+from .dense import HeteroDense,Dense,MLP
+from .base_classes import BaseNetwork
 
-__all__ = ["HeteroDense","Dense","MLP","EvoNet"]
+__all__ = ["HeteroDense","Dense","MLP","BaseNetwork"]

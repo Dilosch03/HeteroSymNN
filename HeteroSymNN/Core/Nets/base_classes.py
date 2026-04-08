@@ -19,41 +19,37 @@ class BaseNetwork:
         network_structure : list[int,type[BaseLayer]]
             List with the number of nodes per layer and the type of layers that will be used including input and output layers.
         extra_layer_parameters : list[dict[str,Any]]
-            list of dictionaris with the extra parameters that the layer need to work correctly.
+            list of dictionaries with the extra parameters that the layer need to work correctly.
         detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
         initial_values : Optional[list[:obj:`~HeteroSymNN.types.LayerValues`]], optional
             Optional list of initial values for each layer. If not provided, weights and biases will be initialized using the specified initializer., by default None
-        initializer : Optional[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-            Initializer to use for weights and biases if initial_values is not provided. Most pass an instance of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and the default uses :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`, value by default is None.
+        initializer : List[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+            List of initializer to use for weights and biases if initial_values is not provided. Most pass an instance of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and if value is left as None it will use :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`.
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
             Batch size to use during training, by default 32 if training_mode is "mini-batch", 1 if "stochastic" and size of the dataset if "batch".
         training_mode : Literal["batch", "mini-batch", "stochastic"], optional
             Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". By default "mini-batch".
-        learning_mode : str, optional
-            Learning mode of the network. Currently only "Static" is supported., by default "Static"
         loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
+            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
         optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
-            Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.,value by default is None.
+            Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.
         num_epochs: int, optional
             Number of Epochs to use during training, by default 1000
 
         Attributes
         ----------
-        num_treaning_epochs : int, read-write
+        num_training_epochs : int, read-write
             Number of training iterations (epochs) for the network.
-        learning_mode : str, read-write
-            Learning mode of the network. Currently only "Static" is supported.
         training_mode : Literal["batch", "mini-batch", "stochastic"], read-write
             Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
         batch_size : int, read-write
             Batch size to use during training.
         history_losses : list[float], read-only
             List of loss values recorded at each epoch during training.
-        num_complited_train_iterations : int, read-only
+        num_completed_train_iterations : int, read-only
             Number of completed training steps.
         num_completed_epochs : int, read-only
             Number of completed training epochs.
@@ -75,22 +71,22 @@ class BaseNetwork:
         ... )
 
         
-        >>> from HeteroSymNN.Core.Nets import losses as lossC, optimizers as OptiC, initializers as InitC
-        >>> custom_loss = lossC.CrossEntropyLoss()
-        >>> custom_optimizer = OptiC.SGDOptimizer(learning_rate=0.01)
-        >>> custom_initializer = InitC.XavierUniform()
-        >>> CNN = ConfigurableNN(
-        ...     nodes_structure=[4, 6, 3],
+        >>> from HeteroSymNN.Core.Nets import BaseNetwork
+        >>> from HeteroSymNN.Core.layers import LinearLayer
+        >>> from HeteroSymNN.Core import initializers,optimizers,losses
+        >>> custom_loss_func = losses.BinaryCrossEntropy()
+        >>> custom_optimizer = optimizers.SgdOptimizer(0.01)
+        >>> custom_initializers = [initializers.HeNormal(0.8),initializers.XavierUniform(1)]
+        >>> NN = BaseNetwork(network_structure = [(3,None),(5,LinearLayer),(2,LinearLayer)],
+        ...     extra_layer_parameters = [{}]*2,
         ...     detailed_activations=[
-        ...         [("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {})],
-        ...         [("softmax", {}), ("softmax", {}), ("softmax", {})]
-        ...     ],
-        ...     initializer=custom_initializer,
-        ...     loss_function=custom_loss,
-        ...     optimizer=custom_optimizer,
-        ...     training_mode="batch"
-        ... )
-        
+        ...        [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
+        ...    [("sigmoid", {}), ("sigmoid", {})]
+        ...    ],
+        ... initializers=custom_initializers,
+        ... optimizer=custom_optimizer,
+        ... loss_function=custom_loss_func
+        ... )       
     """
     def __init__(self, network_structure: list[tuple[int,type[BaseLayer]]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializers: Optional[list[InitC.Initializer]] = None,
                  learning_rate: float = 0.001,batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch",
@@ -98,7 +94,7 @@ class BaseNetwork:
         
         self._CALCULATION_MANAGER = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
-        self.num_complited_train_iterations = 0
+        self.num_completed_train_iterations = 0
         self.num_completed_epochs = 0
 
         if len(network_structure) < 2:
@@ -120,7 +116,7 @@ class BaseNetwork:
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
         self._CURRENT_DEVICE = "CPU"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
-        self.num_treaning_epochs = num_epochs
+        self.num_training_epochs = num_epochs
         self._NETWORK_STRUCTURE = network_structure
         self._init_density_of_mask = 1.0
         self._initializers = []
@@ -145,7 +141,7 @@ class BaseNetwork:
                 raise RuntimeError(f"The loss function computational method ({temp_result}) couldn't be sync with the main network computational method ({self._COMPUTATIONAL_METHOD}).")
                 
 
-        if (optimizer != None):
+        if not(optimizer is None):
             self._UPDATE_METHOD = optimizer
             if (self._UPDATE_METHOD.learning_rate is None):
                 self._UPDATE_METHOD.learning_rate = learning_rate
@@ -193,13 +189,22 @@ class BaseNetwork:
         """
         Machine Resurrection Method.
         Bypasses __init__ to allocate memory for the specific network subclass and populates the physics directly.
+
+        Parameters
+        ----------
+        general_configs: dict[str,any]
+            json in dictionary form of the config.json file inside .symnn files.
+        registry_module: :class:`~HeteroSymNN.Core.Nets.registries._Registry`
+            registry intance with all the class dictionaries for the instansing of the used classes.
+            
+        Returns
+        -------
+        :obj:`~HeteroSymNN.Core.Nets.BaseNetwork`
+            instanced object of the network class.
         """
-        from ...Backend import hardware as HW 
         
-        # 1. Allocate memory (Bypass __init__)
         instance = cls.__new__(cls)
         
-        # 2. Universal Hardware Pointers
         instance._CALCULATION_MANAGER = settings.default_manager
         instance._ASNUMPY = settings.default_asnumpy
         instance._DEFAULT_FLOAT_TYPE = settings.default_dtype
@@ -210,18 +215,17 @@ class BaseNetwork:
 
         architecture_config = general_configs.get('architecture', {})
         metadata = general_configs.get('metadata', {})
-        transformation_configs = general_configs.get('transformation_configs', {})
-        # 3. Base State
+
         instance._NETWORK_STRUCTURE = architecture_config.get('network_structure', [])
         instance.training_mode = architecture_config.get('training_mode', 'mini-batch')
         instance._BATCH_SIZE = architecture_config.get('batch_size', 32)
-        instance.num_treaning_epochs = architecture_config.get('num_treaning_epochs', 1000)
+        instance.num_training_epochs = architecture_config.get('num_training_epochs', 1000)
         
-        instance.num_complited_train_iterations = metadata.get('num_complited_train_iterations', 0)
+        instance.num_completed_train_iterations = metadata.get('num_completed_train_iterations', 0)
         instance.num_completed_epochs = metadata.get('total_epochs_iterations', 0)
         instance.history_losses = []
         
-        # 4. Tools (Loss & Optimizer)
+
         loss_fn_config = architecture_config['loss_config']
         loss_class_name:str = loss_fn_config.pop('class_name')
         if loss_class_name not in registry_module.loss_fn_map:
@@ -238,30 +242,24 @@ class BaseNetwork:
         instance._LOSS_FUNCTION = loss_fn
         instance._UPDATE_METHOD = optimizer
         
-        # 5. Reconstruct Layers using standard Layer Constructors
-       # 5. Reconstruct Layers using standard Layer Constructors
+
         instance._LAYERS = []
         layers_configs_dict = architecture_config.get('layer_configs', {}) # Matched the key!
         
-        # 1. Extract the keys and sort them strictly by their integer index
-        # This guarantees "layer_0", "layer_1", "layer_2" order no matter what JSON does
         sorted_layer_keys = sorted(layers_configs_dict.keys(), key=lambda k: int(k.split('_')[1]))
         
-        # 2. Iterate through the perfectly ordered keys
         for layer_key in sorted_layer_keys:
             layer_cfg = layers_configs_dict[layer_key]
             
             layer_class_name = layer_cfg['layer_type']
             LayerClass = registry_module.layers_map[layer_class_name]
             
-            # Rebuild Initializer Tool
             init_cfg = layer_cfg.get('initializer')
             rebuilt_initializer = None
             if init_cfg:
                 InitClass = registry_module.initializers_map[init_cfg.pop('class_name')]
                 rebuilt_initializer = InitClass(**init_cfg)
             
-            # Pack Tuple
             layer_construction = (layer_cfg['layer_node_configs'], rebuilt_initializer)
             
             rebuilt_layer = LayerClass(
@@ -519,6 +517,11 @@ class BaseNetwork:
     def _to(self, device:Literal["CPU","GPU"]):
         """
         Internal method to move the network parameters to the specified device.
+        
+        Parameters
+        ----------
+        device : Literal["CPU","GPU"]
+            Device to move the network parameters to.
         """
         device = device.upper()
         self._UPDATE_METHOD._to_device(device)
@@ -545,7 +548,7 @@ class BaseNetwork:
 
         return current_a
 
-    def backward(self,error_values:BackendArray)->BackendArray:
+    def _backward(self,error_values:BackendArray)->BackendArray:
         """
         Internal method to perform a backward pass through the network.
         
@@ -582,26 +585,21 @@ class BaseNetwork:
             Computed loss for the training step.
         """
         self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
-        self.num_complited_train_iterations += 1
+        self.num_completed_train_iterations += 1
         
         y_pred = self._forward(x_input)
         
         loss = self._LOSS_FUNCTION.forward(y_pred, y_target)
         error_to_propagate = self._LOSS_FUNCTION.backward(y_pred, y_target)
 
-        self.backward(error_to_propagate)
+        self._backward(error_to_propagate)
         self.update_params(x_input)
 
         return loss
     
-    def update_params(self, inputs:BackendArray)->None:
+    def update_params(self)->None:
         """
         Update the network parameters using the optimizer.
-
-        Parameters
-        ----------
-        inputs : :obj:`~HeteroSymNN.types.BackendArray`
-            Input values used for the parameter update.
         """
         self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
         self._UPDATE_METHOD.step(self._LAYERS) 
@@ -618,7 +616,7 @@ class BaseNetwork:
         training_targets : list[list[float]]
             List of target output samples for training. Shape should be (num_samples, num_outputs).
         num_iterations : int, optional
-            Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_treaning_epochs`., by default None
+            Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_training_epochs`., by default None
         training_mode : Literal["batch", "mini-batch", "stochastic"], optional
             Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". If not provided, uses the current value of the attribute :obj:`~training_mode`., by default None
         batch_size : int, optional
@@ -636,7 +634,7 @@ class BaseNetwork:
         mode = self.training_mode if training_mode is None else training_mode
         b_size = self._BATCH_SIZE if batch_size is None else batch_size
         if (num_iterations == None):
-            num_iterations = self.num_treaning_epochs
+            num_iterations = self.num_training_epochs
 
         self.training_mode = mode
         if (b_size != self._BATCH_SIZE):
@@ -680,7 +678,7 @@ class BaseNetwork:
         input_values : list or list[list]
             Input values for making predictions. In case of multiple samples, shape should be (num_samples, num_features) or (num_features, num_samples).
         to_cpu : bool, optional
-            Whether to return the predictions as a NumPy array on the CPU. If False, returns in the current backend array format., by default True
+            Whether to return the predictions as a NumPy array on the CPU. If False, returns in the current backend array format. by default True
         
         Returns
         -------
@@ -759,15 +757,12 @@ class BaseNetwork:
 
             Parameters include:
                 * **"network_structure"** (*list[int]*): List of number of nodes per layer and the type of layer.
-                * **"detailed_activations"** (*list[list[NodeConfig]*): Activation configuration for each node.
+                * **"layer_configs"** (*dict[str,any]*): Configuration of each layer.
                 * **"learning_rate"** (*float*): Learning rate of the network.
-                * **"learning_mode"** (*str*): Learning mode of the network.
                 * **"training_mode"** (*str*): Training mode ("batch", "mini-batch", "stochastic").
                 * **"batch_size"** (*int*): Batch size used during training.
-                * **"initializer_config"** (*dict[str, Any]*): Configuration of the initializer.
-                * **"optimizer_config"** (*dict[str, Any]*): Configuration of the optimizer.
                 * **"loss_config"** (*dict[str, Any]*): Configuration of the loss function.
-                * **"num_treaning_epochs"** (*int*): Number of training iterations (epochs).
+                * **"num_training_epochs"** (*int*): Number of training iterations (epochs).
         """
         self.change_device("CPU")
         layers_configs = {}
@@ -782,5 +777,5 @@ class BaseNetwork:
         }
 
         config["loss_config"] = self._LOSS_FUNCTION.get_config()
-        config['num_treaning_epochs'] = self.num_treaning_epochs
+        config['num_training_epochs'] = self.num_training_epochs
         return config

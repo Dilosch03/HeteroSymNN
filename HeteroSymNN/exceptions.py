@@ -185,7 +185,7 @@ class PathWarning(HeteroSymNNWarnings):
 
 class ShapeWarning(HeteroSymNNWarnings):
     """
-    Warning raised when there is a mismatch in the shapes of the reciving data.
+    Warning raised when there is a mismatch in the shapes of the receiving data.
     """
     pass
 

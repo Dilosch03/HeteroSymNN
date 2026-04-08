@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 
 from .Backend.hardware import GPU_ENABLED,CPP_JIT_ENABLED
-from .exceptions import BackendNotAvailableError,PerformanceWarning,PathWarning,PathError,HardwareWarning
+from .exceptions import BackendNotAvailableError,PerformanceWarning,PathWarning,PathError
 from .Backend import hardware as HW
 
 class _Settings:
@@ -47,6 +47,7 @@ class _Settings:
     @property
     def use_kernel_cache(self) -> bool:
         """
+        Boolean atribute if the libary is going to cache the created kernels. Default is True.
         """
         return self._use_kernel_cache
 
@@ -57,6 +58,7 @@ class _Settings:
     @property
     def n_jobs(self) -> int:
         """
+        Number of threads that the library is allow to use. Default is all the available threads.
         """
         return self._num_cpu_threads
     
@@ -64,15 +66,21 @@ class _Settings:
     def n_jobs(self, value: int):
         if (value > os.cpu_count()):
             if (self._warning_level == "error"):
-                raise ValueError
+                raise ValueError("Tried to use more threads than available.")
             elif (self._warning_level == "warn"):
-                warnings.warn()
+                warnings.warn("Tried to use more threads than available. Using all available threads")
         self._num_cpu_threads = value
 
     
     @property
     def warning_level(self) -> str:
         """
+        Level of how strict the library is with warnings.
+        Options are:
+            *"ignore"*
+            *"warn"*
+            *"error"*
+        Default is "warn".
         """
         return self._warning_level
 
@@ -86,34 +94,53 @@ class _Settings:
     @property
     def cpu_cache_dir(self) -> Path:
         """
+        Path to the directory used for storing JIT-compiled CPU kernels.
         """
         return self._cpu_cache_dir
     
     @property
     def kernel_cache(self) -> dict:
         """
+        Ram cache currently used by HeteroSymNN.
         """
         return self._kernel_cache
 
     @property
     def default_compute_method(self) -> str:
         """
+        Default compute method used by HeteroSymNN.
+        Options are:
+            *"GPU_CUDA"*
+            *"CPU_JIT"*
+            *"CPU_PYTHON"*
+        Defaults to the hightest available method.
+
+        If want to change the method use :meth:`set_default_compute_method`.
         """
         return self._default_compute_method
     
     @property
     def default_manager(self):
         """
+        Default manager used by HeteroSymNN.
         """
         return self._default_manager
     
     @property
     def default_asnumpy(self):
         """
+        Default method used for the asnumpy operations.
         """
         return self._default_asnumpy
 
     def set_default_compute_method(self, method: str):
+        """
+        Sets the default compute method used by HeteroSymNN.
+        Options are:
+            *"GPU_CUDA"*
+            *"CPU_JIT"*
+            *"CPU_PYTHON"*
+        """
         method = method.upper()
         valid_methods = ["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
         
@@ -145,6 +172,8 @@ class _Settings:
     @property
     def default_dtype(self)->np.dtype:
         """
+        Default data type used by HeteroSymNN.
+        Default used is float32.
         """
         return self._default_dtype
 

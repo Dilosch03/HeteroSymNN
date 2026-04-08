@@ -22,7 +22,7 @@ try:
         cp = cupy
         GPU_ENABLED = True
         asnumpy = cp.asnumpy
-except Exception:
+except Exception as e:
     warnings.warn("Cupy not installed. Training would be done in the CPU")
 
 def _check_cpp_compiler()->bool:
@@ -49,7 +49,22 @@ def _check_cpp_compiler()->bool:
 
 CPP_JIT_ENABLED = _check_cpp_compiler()
 
-def _get_cuda_dims(n,device_id:int):
+def _get_cuda_dims(n:int,device_id:int)->tuple[int, int]:
+    """
+    Not yet utilized internal method to get the number of dims a certain gpu has.
+
+    Parameters
+    ----------
+    n: int
+        size of the mange data
+    device_id: int
+        gpu id that is going to be used
+    
+    Returns
+    -------
+    tuple[int, int]
+        tuple with the number size of the grid and the size of the block
+    """
     max_threads = 256
     if(GPU_ENABLED):
         try:

@@ -8,9 +8,6 @@ class Initializer:
     Should act as a shape-filling utility for Layers. The Layer dictates the shape.
     """
     def __init__(self):
-        """
-        In the case that the initializers need extra parameters overload the __init__ method.
-        """
         pass
         
     def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
@@ -98,6 +95,11 @@ class BaseInitializer(Initializer):
     Base class for initializers that provides generic definitions of how the `generate_constant` and `generate_binary_mask` for general methods.
     
     Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+
+    Parameters
+    ----------
+    connection_density: float, optional
+        defines how sparced the binary mask is going to be. Defaults to 1.0.
     """
     def __init__(self,connection_density:float=None):
         self._seted_connection_density = connection_density
@@ -145,6 +147,18 @@ class BaseInitializer(Initializer):
         return (np.random.rand(*shape) < self.connection_density).astype(np.float32)
 
     def get_config(self)->dict[str,Any]:
+        """
+        Returns the configuration of the initializer.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name": for saving of the initializer.
+
+            *"connection_density": how dense the binary mask creates.
+        """
         return {"class_name": self.__class__.__name__, "connection_density": self.connection_density}
 
 class RandomNormal(BaseInitializer):
@@ -191,6 +205,26 @@ class RandomNormal(BaseInitializer):
         return np.random.normal(self.mean, self.stddev, shape).astype(np.float32)
     
     def get_config(self)->dict[str,Any]:
+        """
+        Returns the configuration of the initializer.
+
+        This method should be implemented by subclasses to return a dictionary containing 
+        the configuration parameters necessary to reconstruct the initializer instance.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name": for saving of the initializer.
+
+            *"connection_density": how dense the binary mask creates.
+
+            *"stddev": standard deviation of the random values to generate.
+
+            *"mean": mean of the random values to generate.
+
+        """
         params = {"stddev": self.stddev, "mean": self.mean}
         params.update(super().get_config())
         return params
@@ -240,6 +274,26 @@ class RandomUniform(BaseInitializer):
         return np.random.uniform(self.min_val, self.max_val, shape).astype(np.float32)
 
     def get_config(self)->dict[str,Any]:
+        """
+        Returns the configuration of the initializer.
+
+        This method should be implemented by subclasses to return a dictionary containing 
+        the configuration parameters necessary to reconstruct the initializer instance.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name": for saving of the initializer.
+
+            *"connection_density": how dense the binary mask creates.
+
+            *"min_val": lower bound of the range of random values to generate.
+
+            *"max_val": upper bound of the range of random values to generate.
+
+        """
         params = {"min_val": self.min_val, "max_val": self.max_val}
         params.update(super().get_config())
         return params
@@ -459,6 +513,24 @@ class Orthogonal(BaseInitializer):
         return (self.gain * q).reshape(shape).astype(np.float32)
 
     def get_config(self)->dict[str,Any]:
+        """
+        Returns the configuration of the initializer.
+
+        This method should be implemented by subclasses to return a dictionary containing 
+        the configuration parameters necessary to reconstruct the initializer instance.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name": for saving of the initializer.
+
+            *"connection_density": how dense the binary mask creates.
+
+            *"gain": Multiplicative factor to applied to the orthogonal matrix.
+
+        """
         params = {"gain": self.gain}
         params.update(super().get_config())
         return params

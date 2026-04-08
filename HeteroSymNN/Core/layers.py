@@ -18,12 +18,21 @@ class BaseLayer:
         ----------
         _num_inputs : int
             Number of inputs the layer is going to receive.
-        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstruction`
-            Configuration of the layer including the node activation functions and their constants as well as the initial _weights, _biases and connection mask.
+        layer_configuration : :type:`~HeteroSymNN.types.LayerConstruction`
+            Configuration of the layer including the node activation functions and their constants as well as the initializer used for the parameters of the layer.
         batch_size : int, optional
             Initial batch size for the layer, by default 1.
         gpu_id : int, optional
             Id of the GPU to use if available, by default 0.
+
+        Attributes
+        ----------
+        delta: :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the contribution to the error of the layer.
+        a: :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the output of the layer.
+        z:  :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the input of the layer after applying the mask and the biases.
     """
     def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
         
@@ -60,7 +69,7 @@ class BaseLayer:
         
         Returns
         -------
-        :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`
+        :class:`~HeteroSymNN.Core.Nets.initializers.Initializer`
         """
         return self._initializer
 
@@ -93,7 +102,7 @@ class BaseLayer:
         """
         Property to get the current GPU ID being used for calculations.
 
-        If want to set a new GPU ID use :obj:`set_gpu_id`.
+        If want to set a new GPU ID use :meth:`set_gpu_id`.
 
         Returns
         -------
@@ -119,11 +128,11 @@ class BaseLayer:
         """
         Property to get the current activation function constants array.
 
-        To change any constant or list of constants use :obj:`change_constant`.
+        To change any constant or list of constants use :meth:`change_constant`.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Array of activation function constants.
         """
         return self._funcs_constats
@@ -131,7 +140,7 @@ class BaseLayer:
     @property
     def current_device(self)->Literal["CPU","GPU"]:
         """
-        Property to get the current device where the parameters like _weights, _biases and connection mask are located.
+        Property to get the current device where the parameters are located.
 
         Returns
         -------
@@ -147,8 +156,8 @@ class BaseLayer:
 
         Returns
         -------
-        list[:obj:`~HeteroSymNN.types.NodeConfig`]
-            List of :obj:`~HeteroSymNN.types.NodeConfig` used during layer construction.
+        list[:type:`~HeteroSymNN.types.NodeConfig`]
+            List of :type:`~HeteroSymNN.types.NodeConfig` used during layer construction.
         """
         return self._layer_node_configs
     
@@ -175,12 +184,12 @@ class BaseLayer:
 
         Parameters
         ---------- 
-        activation_functions : list[:obj:`~HeteroSymNN.types.NodeConfig`]
-            List of :obj:`~HeteroSymNN.types.NodeConfig` for the layer.
+        activation_functions : list[:type:`~HeteroSymNN.types.NodeConfig`]
+            List of :type:`~HeteroSymNN.types.NodeConfig` for the layer.
 
         Returns
         -------
-        tuple[np.ndarray, :obj:`~HeteroSymNN.types.BackendArray`]
+        tuple[np.ndarray, :type:`~HeteroSymNN.types.BackendArray`]
             Tuple containing the array of constants and the offsets for each node.
         """
         temp = []
@@ -207,8 +216,8 @@ class BaseLayer:
 
         Returns
         -------
-        list[:obj:`~HeteroSymNN.types.NodeConfig`]
-            List of :obj:`~HeteroSymNN.types.NodeConfig` with the current constants.
+        list[:type:`~HeteroSymNN.types.NodeConfig`]
+            List of :type:`~HeteroSymNN.types.NodeConfig` with the current constants.
         """
         self.to("CPU")
         new_layer_config = []
@@ -241,7 +250,7 @@ class BaseLayer:
                 
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
-        Method to force the layer to use a specific computational method. WARNING, this will forece a kernel recompilation.
+        Method to force the layer to use a specific computational method. *WARNING*, this will forece a kernel recompilation.
         
         Parameters
         ----------
@@ -253,11 +262,11 @@ class BaseLayer:
         Returns
         -------
         Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
-            The computational method that was set. This could be different from the requested one if the requested one is not available or encontered an error with out :obj:`~HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` been set to True.
+            The computational method that was set. This could be different from the requested one if the requested one is not available or encontered an error with out :attr:`~HeteroSymNN.config.settings.warning_level` been set to "error".
         """
         new_method = new_method.upper()
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
+            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
@@ -365,7 +374,7 @@ class BaseLayer:
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the parameters by name.
         """
         return {}
@@ -378,7 +387,7 @@ class BaseLayer:
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the parameters gradients by name.
         """
         return {}
@@ -391,7 +400,7 @@ class BaseLayer:
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the masks of the parameters by name.
         """
         return {}
@@ -402,12 +411,12 @@ class BaseLayer:
         
         Parameters
         ----------
-        input_values : :obj:`~HeteroSymNN.types.BackendArray`
+        input_values : :type:`~HeteroSymNN.types.BackendArray`
             Input values to the layer.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Output values of the layer after applying the activation functions.
         """
         raise NotImplementedError
@@ -418,12 +427,12 @@ class BaseLayer:
         
         Parameters
         ----------
-        error_values : :obj:`~HeteroSymNN.types.BackendArray`
+        error_values : :type:`~HeteroSymNN.types.BackendArray`
             Error values from the next layer.
 
         Returns
         ------- 
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Error values to be passed to the previous layer.
         """
         raise NotImplementedError
@@ -434,7 +443,7 @@ class BaseLayer:
         
         Parameters
         ----------
-        new_values: Union[list[:obj:`~HeteroSymNN.types.ConstantToUpdate`], :obj:`~HeteroSymNN.types.ConstantToUpdate`]
+        new_values: Union[list[:type:`~HeteroSymNN.types.ConstantToUpdate`], :type:`~HeteroSymNN.types.ConstantToUpdate`]
             New value or list of new values to set. Each value is a tuple containing the node index, the constant name, and the new value.
         """
         if (type(new_values[0]) == int):
@@ -445,14 +454,15 @@ class BaseLayer:
             self._funcs_constats[traductor[value[1]]] = value[2]
 
     def get_parameters(self)->dict[str,np.ndarray]:
-        #see if the mask is geting saved
         """
         Method to get the parameters of the layer.
         
         This method must be implemented by the subclasses.
 
-        :return: Dictionary of the parameters by string.
-        :rtype: dict[str, ndarray]
+        Returns
+        ------
+        dict[str, ndarray]:
+            Dictionary of the parameters by string. 
         """
         raise NotImplementedError
         
@@ -465,7 +475,7 @@ class BaseLayer:
         Parameters
         ----------
         params : dict[str, np.ndarray]
-            Dictionary containing the new parameters with keys 'weights' and 'biases'.
+            Dictionary containing the new parameters with string keys.
         """
         raise NotImplementedError
     
@@ -493,27 +503,36 @@ class LinearLayer(BaseLayer):
         
         Parameters
         ----------
-        _num_inputs : int
+        num_inputs : int
             Number of inputs the layer is going to receive.
-        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstructionConfig`
-            Configuration of the layer including the node activation functions and their constants as well as the initial _weights, _biases and connection mask.
+        layer_configuration : :type:`~HeteroSymNN.types.LayerConstructionConfig`
+            Configuration of the layer including the node activation functions and their constants as well as the initializer to set the weights, biases and connection mask.
         batch_size : int, optional
             Initial batch size for the layer, by default 1.
         Gpu_id : int, optional
-            Id of the GPU to use if available, by default 0.
+            Id of the GPU to use if available, by default 0.3
+        
+        Attributes
+        ----------
+        delta: :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the contribution to the error of the layer.
+        a: :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the output of the layer.
+        z:  :type:`HeteroSymnn.types.BackendArray`
+            values per neuron of the input of the layer after applying the mask and the biases.
         
         Examples
         --------
         Generaly one doesn't need to instanciate this class directly but if some want to do it, here is an example of how to do it.
 
-        >>> from HeteroSymNN.Core.Nets.layers import LinearLayer
-        >>> from HeteroSymNN.Core.initializers import HeNormal
-        >>> num_inputs = 3
-        >>> num_nodes = 5
-        >>> inicial_params = HeNormal().generate(3,5)
-        >>> layer_config = [("relu", {}),("relu", {}),("sigmoid", {}),("relu", {}),("relu", {})]
-        >>> constuctor = (layer_config,inicial_params)
-        >>> layer = LinearLayer(num_inputs,constuctor)
+        >>> from HeteroSymNN.Core.layers import LinearLayer
+        >>> from HeteroSymNN.Core import initializers
+        >>> custom_initializer = initializers.HeNormal()
+        >>> layer_config = ([("relu", {}),("relu", {}),("sigmoid", {}),("relu", {}),("relu", {})],custom_initializer)
+        >>> layer = LinearLayer(
+        ...    num_inputs=3,
+        ...    layer_configuration=layer_config
+        ... )
         
         
     """
@@ -560,11 +579,11 @@ class LinearLayer(BaseLayer):
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the parameters by name.
 
-                "weights": :obj:`~HeteroSymNN.types.BackendArray`
-                "biases": :obj:`~HeteroSymNN.types.BackendArray`
+                "weights": :type:`~HeteroSymNN.types.BackendArray`
+                "biases": :type:`~HeteroSymNN.types.BackendArray`
         """
         return {
             "weights": self._weights,
@@ -577,11 +596,11 @@ class LinearLayer(BaseLayer):
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the parameters gradients by name.
 
-                "weights": :obj:`~HeteroSymNN.types.BackendArray`
-                "biases": :obj:`~HeteroSymNN.types.BackendArray`
+                "weights": :type:`~HeteroSymNN.types.BackendArray`
+                "biases": :type:`~HeteroSymNN.types.BackendArray`
         """
         return {
             "weights": self._grad_weights,
@@ -594,10 +613,10 @@ class LinearLayer(BaseLayer):
 
             Return
             ------
-            dict[str, :obj:`~HeteroSymNN.types.BackendArray`]
+            dict[str, :type:`~HeteroSymNN.types.BackendArray`]
                 Dictionary of the masks of the parameters by name.
 
-                'weights': :obj:`~HeteroSymNN.types.BackendArray`
+                'weights': :type:`~HeteroSymNN.types.BackendArray`
         """
         return {
             "weights": self._connection_mask
@@ -658,12 +677,12 @@ class LinearLayer(BaseLayer):
         
         Parameters
         ----------
-        input_values : :obj:`~HeteroSymNN.types.BackendArray`
+        input_values : :type:`~HeteroSymNN.types.BackendArray`
             Input values to the layer.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Output values of the layer after applying the activation functions.
         """
         self._cached_input = input_values
@@ -681,12 +700,12 @@ class LinearLayer(BaseLayer):
         
         Parameters
         ----------
-        error_values : :obj:`~HeteroSymNN.types.BackendArray`
+        error_values : :type:`~HeteroSymNN.types.BackendArray`
             Error values from the next layer.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Error values to be passed to the previous layer.
         """
         if (self._cached_input is None):
@@ -701,7 +720,6 @@ class LinearLayer(BaseLayer):
         return prev_layer_error_sum
 
     def get_parameters(self)->dict[str,np.ndarray]:
-        #see if the mask is geting saved
         """
         Method to get the parameters of the layer.
         
@@ -721,7 +739,7 @@ class LinearLayer(BaseLayer):
         Parameters
         ----------
         params : dict[str, np.ndarray]
-            Dictionary containing the new parameters with keys 'weights' and 'biases'.
+            Dictionary containing the new parameters with keys '_weights', '_biases' and '_connection_mask'.
         """
         corret_weights = (params["_weights"].T.shape == self._weights.shape)
         correct_biases = (params["_biases"].T.shape == self._biases.shape)
@@ -769,6 +787,8 @@ class LinearLayer(BaseLayer):
 class RecurrentLayer(BaseLayer):
     """
         Recurrent layer class.
+
+        *Class not implemented yet*
     """
     def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
         

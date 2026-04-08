@@ -1,9 +1,10 @@
 import numpy as np
-from HeteroSymNN.Core.Nets.dense import FlexibleNN, ConfigurableNN
-from HeteroSymNN.Core import initializers as InitC
-from HeteroSymNN.API.wrappers import GridSearchWraper
+from HeteroSymNN.Core.Nets import Dense,HeteroDense
+from HeteroSymNN.API.wrappers import GridSearchWrapper
 from HeteroSymNN.Core import optimizers as OptiC
 from HeteroSymNN.Backend import hardware as HW
+from HeteroSymNN.API import utilities as utils
+
 
 def run_expert_demo():
     print("\n" + "="*60)
@@ -36,7 +37,7 @@ def run_expert_demo():
         'batch_size': [64]
     }
 
-    gs = GridSearchWraper(FlexibleNN, "class", validation_testing_split=0.2)
+    gs = GridSearchWrapper(Dense, "class", validation_testing_split=0.2)
     gs.load_training(X.tolist(), y.tolist())
 
     print("-> Running Grid Search...")
@@ -74,7 +75,7 @@ def run_heterogeneous_demo():
         [("softmax", {})] * 10 # L2
     ]
     
-    model = ConfigurableNN(nodes, activations, batch_size=256)
+    model = HeteroDense(nodes, activations, batch_size=256)
     
     # 2. Configure Heterogeneity
     print("\n-> Configuring Hardware Distribution:")
@@ -82,7 +83,7 @@ def run_heterogeneous_demo():
     # Layer 0: Force CPU
     L0 = model.layers[0]
     L0._change_COMPUTATIONAL_METHOD("CPU_PYTHON")
-    print(f"   Layer 0: {L0.COMPUTATIONAL_METHOD} (Host Memory)")
+    print(f"   Layer 0: {L0.computational_method} (Host Memory)")
 
     # Layer 1: GPU + Float16 (Quantization)
     L1 = model.layers[1]
@@ -97,13 +98,13 @@ def run_heterogeneous_demo():
     # Force JIT Recompile for __half
     L1._act_funcions_manager.dtype = target_type
     L1._act_funcions_manager._compile_for_current_method()
-    print(f"   Layer 1: {L1.COMPUTATIONAL_METHOD} (FP16 Tensor Cores)")
+    print(f"   Layer 1: {L1.computational_method} (FP16 Tensor Cores)")
 
     # Layer 2: GPU + Float32
     L2 = model.layers[2]
     L2.set_gpu_id(0)
     L2._change_COMPUTATIONAL_METHOD("GPU_CUDA")
-    print(f"   Layer 2: {L2.COMPUTATIONAL_METHOD} (FP32 Precision)")
+    print(f"   Layer 2: {L2.computational_method} (FP32 Precision)")
 
     # 3. Execute
     print("\n-> Running Hybrid Forward Pass...")

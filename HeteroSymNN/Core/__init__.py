@@ -1,7 +1,4 @@
-from .initializers import *
-from .losses import *
-from .optimizers import *
-from .layers import *
-from . import Nets
+from .layers import BaseLayer,LinearLayer
+from . import Nets,initializers,losses,optimizers
 
-__all__ = ["Layer","Nets"]
+__all__ = ["BaseLayer","LinearLayer","Nets","initializers","losses","optimizers"]

@@ -1,8 +1,7 @@
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets.Dense import ConfigurableNN
+from HeteroSymNN.Core.Nets import HeteroDense
 from HeteroSymNN.Backend import hardware as HW
-from HeteroSymNN.Backend.tuner import estimate_batch_capacity # The tool we made
 
 def run_hardware_demo():
     if not HW.GPU_ENABLED:
@@ -17,7 +16,7 @@ def run_hardware_demo():
     activations = [ [("relu", {})] * 2048 ] * 3
     activations.append( [("softmax", {})] * 10 ) # Output layer
 
-    model = ConfigurableNN(
+    model = HeteroDense(
         nodes_structure=nodes,
         detailed_activations=activations,
         batch_size=1024 # Starting large
@@ -75,7 +74,7 @@ def run_symbolic_demo():
     
     activations = [[(custom_func, {})] * 1000] 
     
-    model = ConfigurableNN(
+    model = HeteroDense(
         nodes_structure=[1000, 1000],
         detailed_activations=activations,
         batch_size=1024

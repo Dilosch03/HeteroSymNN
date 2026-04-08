@@ -7,13 +7,12 @@ from ..Backend import hardware as HW
 from ..JIT.compiler import SymbolicJITCompiler
 from ..types import BackendArray
 from ..config import settings
-from ..exceptions import InvalidDeviceIDError
+from ..exceptions import PerformanceWarning,BackendNotAvailableError
+
 
 class Loss:
     """
     Base class for all loss functions.
-
-    All methods that any loss class needs to have are defined here.
     """
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
         """
@@ -45,14 +44,14 @@ class Loss:
 
         Parameters
         ----------
-        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+        y_pred : :type:`~HeteroSymNN.types.BackendArray`
             The predicted values.
-        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+        y_true : :type:`~HeteroSymNN.types.BackendArray`
             The ground truth values.
         
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             The loss value.
         """
         raise NotImplementedError
@@ -65,14 +64,14 @@ class Loss:
 
         Parameters
         ----------
-        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+        y_pred : :type:`~HeteroSymNN.types.BackendArray`
             The predicted values.
-        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+        y_true : :type:`~HeteroSymNN.types.BackendArray`
             The ground truth values.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             The gradient of the loss.
         """
         raise NotImplementedError
@@ -107,11 +106,11 @@ class FlexibleLoss(Loss):
 
     Examples
     --------
+    >>> from HeteroSymNN.Core.Nets import MLP
     >>> from HeteroSymNN.Core.losses import FlexibleLoss
-    >>> from HeteroSymNN.Core.Nets.neural_nets import SimpleNN
-    >>> net_structure = [4, 6, 3]
-    >>> loss_expression = "abs(y_pred - y_true)"
-    >>> example_net = SimpleNN(net_structure,"sigmoid",loss_function=FlexibleLoss(loss_expression))
+    >>> NN = MLP(nodes_structure=[4, 6, 3],
+    ...        activation="sigmoid",
+    ...        loss_function=FlexibleLoss("abs(y_pred - y_true)"))
     """
     def __init__(self, loss_expression: str = "(y_pred - y_true)**2", constants: dict[str, float] = None,
                  computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
@@ -123,16 +122,16 @@ class FlexibleLoss(Loss):
         if (computational_method != None):
             if ((computational_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
                 if (settings.warning_level == "error"):
-                    raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
+                    raise BackendNotAvailableError("Tried to use GPU_CUDA but no GPU is available.")
                 elif (settings.warning_level == "warn"):
-                    warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intentando con el metodo CPU_JIT")
+                    warnings.warn("Tried to use GPU_CUDA but no GPU is available."+"Trying with CPU_JIT",PerformanceWarning,stacklevel=2)
                     computational_method = "CPU_JIT"
 
             if ((computational_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
                 if (settings.warning_level == "error"):
-                    raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
+                    raise BackendNotAvailableError("Tried to use CPU_JIT but no C++ compiler is available.")
                 elif (settings.warning_level == "warn"):
-                    warnings.warn("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+                    warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                     computational_method = "CPU_PYTHON"
 
             self._COMPUTATIONAL_METHOD = computational_method
@@ -247,13 +246,13 @@ class FlexibleLoss(Loss):
         new_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
             New computational method to set.
         gpu_id : int, optional
-            GPU ID to use if the new method is "GPU_CUDA". If not provided, the current GPU ID of the network will be used., by default None.
+            GPU ID to use if the new method is "GPU_CUDA". If not provided, the current GPU ID already saved will be used., by default None.
         
         Raises
         ------
         ValueError
             If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
-        RuntimeError
+        BackendNotAvailableError
             If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
         
         Returns
@@ -269,17 +268,17 @@ class FlexibleLoss(Loss):
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de GPU_CUDA cuando no se tiene una gpu valida."+"Intentando con el metodo CPU_JIT")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to use GPU_CUDA but no GPU is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to use GPU_CUDA but no GPU is available."+"Trying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
 
         if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
-            if (HW.WARNINGS_STRICT_MODE):
-                raise RuntimeError("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido.")
-            else:
-                warnings.warn("Se intento cambiar al metodo de CPU_JIT cuando no se tiene un compilador de c++ valido."+"Cambiando al metodo CPU_PYTHON")
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to use CPU_JIT but no C++ compiler is available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
         
         if (new_method != self._COMPUTATIONAL_METHOD):
@@ -295,14 +294,14 @@ class FlexibleLoss(Loss):
 
         Parameters
         ----------
-        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+        y_pred : :type:`~HeteroSymNN.types.BackendArray`
             Predicted values.
-        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+        y_true : :type:`~HeteroSymNN.types.BackendArray`
             True values.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Loss value.
         """
         loss_vec = self._be.zeros_like(y_pred)
@@ -315,14 +314,14 @@ class FlexibleLoss(Loss):
 
         Parameters
         ----------
-        y_pred : :obj:`~HeteroSymNN.types.BackendArray`
+        y_pred : :type:`~HeteroSymNN.types.BackendArray`
             Predicted values.
-        y_true : :obj:`~HeteroSymNN.types.BackendArray`
+        y_true : :type:`~HeteroSymNN.types.BackendArray`
             True values.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Gradient of the loss with respect to the predicted values.
         """
         grad_vec = self._be.zeros_like(y_pred)
@@ -358,6 +357,13 @@ class FlexibleLoss(Loss):
         -------
         dict[str,any]
             A dictionary containing the class name, loss expression, and constants.
+
+            **class_name** : str
+                The name of the class.
+            **loss_expression** : str
+                The definition of the loss function.
+            **constants** : dict[str,float]
+                dictionary of the non-standard constants that are in the loss function if any.
         """
         return {
             "class_name": "FlexibleLoss",

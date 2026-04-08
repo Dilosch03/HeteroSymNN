@@ -7,7 +7,7 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(name="HeteroSymNN",
-      version="1.0.0",
+      version="0.3.0",
       packages=find_packages(),
       python_requires=">=3.10",
       author="Dilosch03",

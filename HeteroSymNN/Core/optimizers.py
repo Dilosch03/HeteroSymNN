@@ -156,13 +156,13 @@ class Optimizer:
             
             Parameter
             ---------
-            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+            layer : :class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`
                 The layer to update.
             param_name : str
                 The name of the parameter to update.
-            param : :obj:`~HeteroSymNN.types.BackendArray`
+            param : :type:`~HeteroSymNN.types.BackendArray`
                 The current values of the parameter.
-            grad : :obj:`~HeteroSymNN.types.BackendArray`
+            grad : :type:`~HeteroSymNN.types.BackendArray`
                 The gradient of the parameter.
         """
         raise NotImplementedError
@@ -176,7 +176,7 @@ class Optimizer:
 
         Parameters
         ----------
-        layers : list
+        layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers to update.
         """
         self._to_device(self.COMPUTACIONAL_DEVICE)
@@ -185,16 +185,19 @@ class Optimizer:
             for layer in layers:
                 self._route_layer(layer)
         else:
-            # The "Lazy Trapdoor": Creates the persistent pool exactly once.
             if self._thread_pool is None:
                 self._thread_pool = concurrent.futures.ThreadPoolExecutor()
             
-            # The "Hot Path": Dispatch work to awake threads.
-            # list() acts as a barrier, forcing the main thread to wait for all parallel updates to finish.
             list(self._thread_pool.map(self._route_layer, layers))
 
     def _route_layer(self, layer):
-        """Helper method to isolate the logic for a single thread/loop pass."""
+        """Helper method to isolate the logic for a single thread/loop pass.
+        
+        Parameter
+        ---------
+        layer: :class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`
+            Layer to update.
+        """
         params = layer.working_parameters
         grads = layer.working_gradients
         masks = getattr(layer, 'working_masks', {}) 
@@ -230,7 +233,7 @@ class Optimizer:
         self._to_device("CPU")
         return ({},{})
 
-    def set_state(self, state, be):
+    def set_state(self, state:dict[str,any], be):
         """
         Sets the internal state of the optimizer.
         
@@ -239,14 +242,14 @@ class Optimizer:
 
         Parameters
         ----------
-        state : dict
+        state : dict[str, Any]
             The state dictionary to load.
-        be : module
+        be : :mod:`numpy` or :mod:`cupy`
             The backend module (numpy or cupy) to use for creating arrays.
         """
         self._to_device("CPU")
 
-    def get_config(self):
+    def get_config(self)->dict[str,any]:
         """
         Returns the configuration of the optimizer.
         
@@ -255,7 +258,7 @@ class Optimizer:
 
         Returns
         -------
-        dict
+        dict[str,any]
             Dictionary containing the configuration parameters.
         """
         self._to_device("CPU")
@@ -271,7 +274,7 @@ class Optimizer:
 
         Parameters
         ----------
-        layers : list
+        layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers in order.
         """
         pass
@@ -291,8 +294,7 @@ class SgdOptimizer(Optimizer):
     device_id : int, optional
         The ID of the GPU to use if computational_device is "GPU".
     """
-    _kernel_weights = None
-    _kernel_bias = None
+    _kernel = None
 
     def __init__(self, learning_rate: float = None,computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
         if (learning_rate is None):
@@ -300,9 +302,17 @@ class SgdOptimizer(Optimizer):
         super().__init__(learning_rate,computational_device,device_id)
 
     def _refresh_parameters(self, vector_format):
+        """
+        Internal method to refresh internal parameters when changing devices or vector formats.
+
+        This method is not used in this class.
+        """
         pass
     
     def _setup_kernels(self):
+        """
+        Internal method to setup CUDA kernel.
+        """
         if (HW.GPU_ENABLED):
             if (SgdOptimizer._kernel is None):
                 SgdOptimizer._kernel = HW.cp.ElementwiseKernel(
@@ -318,17 +328,17 @@ class SgdOptimizer(Optimizer):
             
             Parameter
             ---------
-            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+            layer : :class:`~HeteroSymNN.Core.Nets.layers.Layer`
                 The layer to update.
             param_name : str
                 The name of the parameter to update.
-            param : :obj:`~HeteroSymNN.types.BackendArray`
+            param : :type:`~HeteroSymNN.types.BackendArray`
                 The current values of the parameter.
-            grad : :obj:`~HeteroSymNN.types.BackendArray`
+            grad : :type:`~HeteroSymNN.types.BackendArray`
                 The gradient of the parameter.
         """
         if (self.CURRENT_DEVICE == "GPU"):
-            SgdOptimizer._kernel_weights(grad, float(self.learning_rate), mask, param)
+            SgdOptimizer._kernel(grad, float(self.learning_rate), mask, param)
         else:
             param -= self.learning_rate * grad * mask
 
@@ -339,12 +349,25 @@ class SgdOptimizer(Optimizer):
         
         Parameters
         ----------
-        layers : list
+        layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers to update.
-        inputs : Any
-            Input data.
         """
         super().step(layers)
+
+    def get_config(self):
+        """
+        Returns the configuration of the optimizer.
+
+        Returns
+        -------
+        dict[str,any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name":name of the class for the saving and loading of the models.
+
+            *"learning_rate":learning rate of the optimizer.
+        """
+        return super().get_config()
 
 class AdamOptimizer(Optimizer):
     """
@@ -377,6 +400,9 @@ class AdamOptimizer(Optimizer):
         self.v = None 
 
     def _setup_kernels(self):
+        """
+        Internal method to setup CUDA kernel.
+        """
         if  ((HW.GPU_ENABLED) and (AdamOptimizer._fused_kernel is None)):
             AdamOptimizer._fused_kernel = HW.cp.ElementwiseKernel(
                 'T grad, T lr, T beta1, T beta2, T eps, T beta1_t, T beta2_t, T mask',
@@ -393,38 +419,47 @@ class AdamOptimizer(Optimizer):
             )
 
     def _initialize_state(self, layers: list):
+        """
+        Internal method to initialize the optimizer state.
+        
+        Parameters
+        ----------
+        layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
+        """
         if self.learning_rate is None:
             self.learning_rate = 0.001
             
         self.m = {}
         self.v = {}
-        # Track the structural order of layers for saving later
         self._layer_order = [] 
 
         for i, layer in enumerate(layers):
             layer_id = id(layer)
             self._layer_order.append(layer_id)
             
-            # Check the Staging Area: Did we load state from disk?
             if hasattr(self, '_loaded_m') and self._loaded_m is not None:
-                # Pull the saved parameters for this specific layer index
                 saved_m = self._loaded_m[i]
                 saved_v = self._loaded_v[i]
                 
-                # Dynamically load whatever keys exist ('weights', 'biases') and push to hardware
                 self.m[layer_id] = {k: self.be.array(v) for k, v in saved_m.items()}
                 self.v[layer_id] = {k: self.be.array(v) for k, v in saved_v.items()}
             else:
-                # Standard initialization with zeros
                 self.m[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
                 self.v[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
 
-        # Clean up the staging area so it doesn't re-trigger
         if hasattr(self, '_loaded_m'):
             self._loaded_m = None
             self._loaded_v = None
 
     def _refresh_parameters(self, vector_format):
+        """
+        Internal method to refresh internal parameters when changing devices or vector formats.
+
+        Parameter
+        ---------
+        vector_format: `numpy.ndarray` or `cupy.ndarray`
+            The new vector format.
+        """
         if ((getattr(self, 'm', None) is None) or (getattr(self, 'v', None) is None)):
             return
 
@@ -453,13 +488,13 @@ class AdamOptimizer(Optimizer):
             
             Parameter
             ---------
-            layer : :obj:`~HeteroSymNN.Core.Nets.layers.Layer`
+            layer : :class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`
                 The layer to update.
             param_name : str
                 The name of the parameter to update.
-            param : :obj:`~HeteroSymNN.types.BackendArray`
+            param : :type:`~HeteroSymNN.types.BackendArray`
                 The current values of the parameter.
-            grad : :obj:`~HeteroSymNN.types.BackendArray`
+            grad : :type:`~HeteroSymNN.types.BackendArray`
                 The gradient of the parameter.
         """
         m_t = self.m[id(layer)][param_name]
@@ -474,19 +509,15 @@ class AdamOptimizer(Optimizer):
         else:
             grad_masked = grad * mask
 
-            # Update momentums
             m_t = self.beta1 * m_t + (1 - self.beta1) * grad_masked
             v_t = self.beta2 * v_t + (1 - self.beta2) * (grad_masked ** 2)
             
-            # Save updated states back to dictionaries
             self.m[id(layer)][param_name] = m_t
             self.v[id(layer)][param_name] = v_t
             
-            # Bias correction
             m_hat = m_t / (1 - self.t_pow_beta1)
             v_hat = v_t / (1 - self.t_pow_beta2)
             
-            # Apply gradients
             param -= self.learning_rate * m_hat / (self.be.sqrt(v_hat) + self.epsilon)
 
     def step(self, layers: list):
@@ -495,7 +526,7 @@ class AdamOptimizer(Optimizer):
         
         Parameters
         ----------
-        layers : list
+        layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers to update.
         """
         if self.learning_rate is None:
@@ -534,7 +565,6 @@ class AdamOptimizer(Optimizer):
             layer_m = self.m[layer_id]
             layer_v = self.v[layer_id]
             
-            # The Prefix Strategy: Flatten the momentum and velocity into a single dict safely
             layer_state = {}
             for k, v in layer_m.items():
                 layer_state[f"m_{k}"] = self._ASNUMPY(v)
@@ -545,7 +575,16 @@ class AdamOptimizer(Optimizer):
 
         return ({'t': self.t}, layer_states)
 
-    def set_state(self, state: dict, be) -> None:
+    def set_state(self, state: dict[str,any], be) -> None:
+        """
+        Sets the internal state of the optimizer.
+        
+        Parameters
+        ----------
+        state : dict[str, Any]
+            The state dictionary to load.
+        be : :mod:`numpy` or :mod:`cupy`
+        """
         super().set_state(state, be)
         self.t = state.get('t', 0)
         layer_states = state.get('layer_states')
@@ -557,7 +596,7 @@ class AdamOptimizer(Optimizer):
         self._loaded_m = []
         self._loaded_v = []
         
-        # The Inverse Prefix Strategy: Unpack the safe dictionary strings back into m and v memory
+
         for layer_state in layer_states:
             m_dict, v_dict = {}, {}
             for key, tensor in layer_state.items():
@@ -569,6 +608,24 @@ class AdamOptimizer(Optimizer):
             self._loaded_v.append(v_dict)
 
     def get_config(self)->dict[str,any]:
+        """
+        Returns the configuration of the optimizer.
+        
+        Return
+        ------
+        dict[str,any]
+            Dictionary containing the configuration parameters.
+
+            *"class_name":name of the class for the saving and loading of the models.
+
+            *"learning_rate":learning rate of the optimizer.
+
+            *"beta1":exponential decay rate for the 1st moment estimates.
+
+            *"beta2":exponential decay rate for the 2nd moment estimates.
+
+            *"epsilon":small constant for numerical stability.S
+        """
         config = super().get_config()
         config.update({
             'beta1': self.beta1,

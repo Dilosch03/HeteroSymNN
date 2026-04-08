@@ -6,9 +6,25 @@ from ..exceptions import RuntimeStateError
 class DataTransformer:
     """
     Base class for data transformations.
+
+    Atributes
+    ---------
+    is_fitted : bool, read-only
+        Whether the transformer has been fitted.
     """
     def __init__(self):
-        self.fitted = False
+        self._fitted = False
+    
+    @property
+    def is_fitted(self)->bool:
+        """
+        Property to get if the transformer as been fitted.
+
+        Returns
+        -------
+        bool
+        """
+        return self._fitted
 
     def fit(self,data:np.ndarray):
         """
@@ -21,51 +37,51 @@ class DataTransformer:
         data : np.ndarray
             Data to extract the parameters nessesary for the transformation.
         """
-        self.fitted = True
+        self._fitted = True
         return self
 
     def transform(self, data:np.ndarray)->np.ndarray:
         """
-        Method to normalize data.
+        Method to transform data.
         
         Parameters
         ----------
         data : np.ndarray
-            Data to normalize.
+            Data to transform.
         
         Returns
         -------
         np.ndarray
-            Normalized data.
+            transformed data.
         
-        Exeptions
+        Raises
         ---------
         RuntimeStateError
             If the scaler is not fitted.
         """
-        if not(self.fitted):
+        if not(self._fitted):
             raise RuntimeStateError("Trying to do data scaling before fitting the scaler.")
 
     def inverse_transform(self, data:np.ndarray)->np.ndarray:
         """
-        Method to denormalize data.
+        Method to reverse the transformation of the data.
         
         Parameters
         ----------
         data : np.ndarray
-            Data to denormalize.
+            Data to do the inverse transformation.
         
         Returns
         -------
         np.ndarray
-            Denormalized data.
+            Detransformed data.
         
-        Exeptions
+        Raises
         ---------
         RuntimeStateError
             If the scaler is not fitted.
         """
-        if not(self.fitted):
+        if not(self._fitted):
             raise RuntimeStateError("Trying to do data descaling before fitting the scaler.")
     
     def fit_transform(self, data: np.ndarray) -> np.ndarray:
@@ -97,7 +113,7 @@ class DataTransformer:
         dict[str,Any]
             Configuration of the transformer.
         """
-        return {"fitted":self.fitted}
+        return {"fitted":self._fitted}
     
     def set_config(self,config:dict[str,Any])->None:
         """
@@ -110,7 +126,7 @@ class DataTransformer:
         config : dict[str,Any]
             Configuration of the transformer.
         """
-        self.fitted = config["fitted"]
+        self._fitted = config["fitted"]
 
 class MinMaxScaler(DataTransformer):
     """
@@ -119,10 +135,31 @@ class MinMaxScaler(DataTransformer):
 
     def __init__(self):
         super().__init__()
-        self.min = None
-        self.max = None
+        self._min = None
+        self._max = None
 
+    @property
+    def min(self)->float:
+        """
+        Property to get the min value of the instance.
 
+        Returns
+        -------
+        float
+        """
+        return self._min
+    
+    @property
+    def max(self)->float:
+        """
+        Property to get the max value of the instance.
+
+        Returns
+        -------
+        float
+        """
+        return self._max
+    
     def fit(self,data:np.ndarray)->None:
         """
         Method to fit the transformer using the min max method.
@@ -132,17 +169,17 @@ class MinMaxScaler(DataTransformer):
         data: np.ndarray
             Data to extract the min and max values of the dataset.
         """
-        self.min = np.min(data)
-        self.max = np.max(data)
+        self._min = np.min(data)
+        self._max = np.max(data)
         super().fit(data)
 
     def transform(self, data:np.ndarray)->np.ndarray:
         super().transform(data)
-        return (data - self.min) / (self.max - self.min)
+        return (data - self._min) / (self._max - self._min)
 
     def inverse_transform(self, data:np.ndarray)->np.ndarray:
         super().inverse_transform(data)
-        return data * (self.max - self.min) + self.min
+        return data * (self._max - self._min) + self._min
     
     def get_config(self)->dict[str,float]:
         """
@@ -154,7 +191,7 @@ class MinMaxScaler(DataTransformer):
             Min and max values of the instance.
         """
         config = super().get_config()
-        config.update({"min":self.min, "max":self.max})
+        config.update({"min":self._min, "max":self._max})
         return config
     
     def set_config(self,config:dict[str,float])->None:
@@ -167,5 +204,5 @@ class MinMaxScaler(DataTransformer):
             Min and max values of the instance.
         """
         super().set_config(config)
-        self.min = config["min"]
-        self.max = config["max"]
+        self._min = config["min"]
+        self._max = config["max"]

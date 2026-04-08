@@ -37,7 +37,7 @@ class SymbolicJITCompiler:
 
     Parameters
     ----------
-    configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+    configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
         A list of configurations defining the functions to compile. 
         For 'activation' mode, this is a list of (function_name_or_expression, constants_dict) for each node.
         For 'loss' mode, this is a list containing a single tuple with the loss expression and its constants.
@@ -121,19 +121,18 @@ class SymbolicJITCompiler:
             self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
             self.func_ids = self.func_ids_gpu
 
-        elif (calculation_method == "CPU_CPP"):
+        elif (calculation_method == "CPU_JIT"):
             self._compile_cpp_kernels(configs)
 
         elif ( calculation_method == "CPU_PYTHON"):
             self._compile_py_kernels(configs)
 
         else:
-            raise ValueError("Calculation Method no es GPU_CUDA, CPU_CPP o CPU_PYTHON")
+            raise ValueError("Calculation Method given isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
 
     def _get_ccode_from_config(self, func_str:str, constants:dict[str, float]):
         """
-        
         Internal method that parses a string expression into SymPy expressions for the function and its derivative.
 
         Parameters
@@ -212,7 +211,7 @@ class SymbolicJITCompiler:
 
         Parameters
         ----------
-        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
             List of function configurations.
         target_key : Literal["CPP", "PY", "GPU"]
             Key suffix for the cache to distinguish between backends.
@@ -292,7 +291,7 @@ class SymbolicJITCompiler:
 
         Parameters
         ----------
-        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
             List of function configurations to compile.
         
         Raises
@@ -450,7 +449,7 @@ class SymbolicJITCompiler:
 
         Parameters
         ----------
-        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
             List of function configurations to compile.
         """
         compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')
@@ -502,7 +501,7 @@ class SymbolicJITCompiler:
 
         Parameters
         ----------
-        configs : list[:obj:`~HeteroSymNN.types.NodeConfig`]
+        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
             List of function configurations to compile.
         
         Raises

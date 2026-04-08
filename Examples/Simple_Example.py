@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 
 from HeteroSymNN.Core.Nets import MLP
 from HeteroSymNN.API.wrappers import Wrapper
+from HeteroSymNN.API import utilities as utils
+
 
 def run_simple_demo():
     X = np.linspace(0, 2 * np.pi, 1000).reshape(-1, 1)
@@ -19,7 +21,7 @@ def run_simple_demo():
     )
 
     # The Wrapper handles normalization and data splitting for you
-    trainer = Wrapper(model, work_type="reg", normalize_inputs=True)
+    trainer = Wrapper(model, work_type="reg", input_transformer=utils.MinMaxScaler())
     trainer.load_training(X, y)
 
     print("--- 3. Training ---")
