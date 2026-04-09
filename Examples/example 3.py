@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets import HeteroDense
+from HeteroSymNN.Core.Nets.dense import HeteroDense
 from HeteroSymNN.Backend import hardware as HW
 
 def run_hardware_demo():
@@ -9,54 +9,40 @@ def run_hardware_demo():
         return
 
     print("--- 1. Low Level Setup ---")
-    # Huge model to stress test memory
     nodes = [128, 2048, 2048, 2048, 10] 
     
-    # Manually defining identical layers for ConfigurableNN
     activations = [ [("relu", {})] * 2048 ] * 3
-    activations.append( [("softmax", {})] * 10 ) # Output layer
+    activations.append( [("sigmoid", {})] * 10 ) 
 
     model = HeteroDense(
         nodes_structure=nodes,
         detailed_activations=activations,
-        batch_size=1024 # Starting large
+        batch_size=1024 
     )
 
     print("--- 2. Hardware Diagnostics ---")
-    # Check VRAM before we move the model
-    free_mem, _ = HW.get_gpu_memory_info(0)
-    print(f"Initial VRAM Free: {free_mem / 1024**2:.2f} MB")
+    # Use CuPy's internal memory pool to check actual VRAM allocation
+    mempool = HW.cp.get_default_memory_pool()
+    print(f"Initial VRAM Used: {mempool.used_bytes() / 1024**2:.2f} MB")
 
-    print("--- 3. Moving to GPU (Float32) ---")
+    print("--- 3. Moving to GPU ---")
     model.set_gpu_id(0)
     model.change_device("GPU")
     
-    # Check VRAM consumption
-    free_mem_after, _ = HW.get_gpu_memory_info(0)
-    print(f"VRAM after Float32 Load: {free_mem_after / 1024**2:.2f} MB")
+    print(f"VRAM after Float32 Load: {mempool.used_bytes() / 1024**2:.2f} MB")
 
-    print("\n--- 4. QUANTIZATION (The Magic Trick) ---")
-    # Compress the model to Float16
-    model.quantize("float16")
-    
-    free_mem_quant, _ = HW.get_gpu_memory_info(0)
-    print(f"VRAM after Float16 Quantization: {free_mem_quant / 1024**2:.2f} MB")
-    print("✅ Model compressed successfully!")
-
-    print("\n--- 5. Run Training Kernel ---")
-    X_dummy = np.random.rand(1024, 128).astype(np.float32) # Input
-    y_dummy = np.random.rand(1024, 10).astype(np.float32)  # Target
+    print("\n--- 4. Run Training Kernel ---")
+    X_dummy = np.random.rand(1024, 128).astype(np.float32)
+    y_dummy = np.random.rand(1024, 10).astype(np.float32)
 
     start = time.time()
-    # Explicitly calling a single train step to measure latency
     loss = model.train_step(model._CALCULATION_MANAGER.array(X_dummy.T), 
                             model._CALCULATION_MANAGER.array(y_dummy.T))
     
-    # Force sync for accurate timing
     HW.be.cuda.Device(0).synchronize()
     duration = (time.time() - start) * 1000
     
-    print(f"Forward+Backward Pass Time (FP16): {duration:.2f} ms")
+    print(f"Forward+Backward Pass Time: {duration:.2f} ms")
 
 def run_symbolic_demo():
     print("\n" + "="*40)
@@ -66,12 +52,7 @@ def run_symbolic_demo():
     print("Defining a completely custom activation function:")
     print("Formula: 'sin(num) * exp(-abs(num))' (The 'Damped Sine')")
     
-    # 1. Define Custom Activation
-    # We use a single layer network to isolate the function
-    # Input: 1000 neurons -> Output: 1000 neurons
-    # All 1000 neurons use this weird math function
     custom_func = "sin(num) * exp(-Abs(num))"
-    
     activations = [[(custom_func, {})] * 1000] 
     
     model = HeteroDense(
@@ -80,29 +61,40 @@ def run_symbolic_demo():
         batch_size=1024
     )
     
+    print("-> Setting weights to Identity and mask to 1s to test pure activation math...")
+    # Hack: Force weights to be an identity matrix, biases to 0, and mask to all 1s
+    # so that the input passes directly into the activation function unaltered.
+    layer0 = model.layers[0]
+    layer_params = {
+        '_weights': np.eye(1000, dtype=np.float32),
+        '_biases': np.zeros((1, 1000), dtype=np.float32),
+        '_connection_mask': np.ones((1000, 1000), dtype=np.float32)
+    }
+    layer0.set_parameters(layer_params)
+
     if HW.GPU_ENABLED:
         print("-> Compiling Custom CUDA Kernel...")
         model.set_gpu_id(0)
         model.change_device("GPU")
-        # This triggers the JIT compiler to write C++ code, call NVCC, and load the kernel
         model._change_COMPUTATIONAL_METHOD("GPU_CUDA") 
         print("✅ Compilation Complete! Kernel loaded to GPU.")
-    else:
+    elif HW.CPP_JIT_ENABLED:
         print("-> Compiling Custom C++ Kernel (CPU)...")
         model._change_COMPUTATIONAL_METHOD("CPU_JIT")
         print("✅ Compilation Complete! DLL loaded.")
+    else:
+        print("-> Using Python Lambdas (CPU)...")
+        model._change_COMPUTATIONAL_METHOD("CPU_PYTHON")
 
     # 2. Test it
     x_test = np.linspace(-5, 5, 1024).reshape(-1, 1).astype(np.float32)
-    # Broadcast input to 1000 neurons
     x_input = np.tile(x_test, (1, 1000)) 
     
     print("-> Running Forward Pass...")
-    # The framework will now execute the custom math on the device
     y_pred = model.predict(x_input)
     
-    # Verify values (Just check the first neuron)
-    y_sample = y_pred[0, 0] # Result of the first point (-5.0)
+    # Verify values
+    y_sample = y_pred[0, 0] 
     x_val = -5.0
     expected = np.sin(x_val) * np.exp(-abs(x_val))
     

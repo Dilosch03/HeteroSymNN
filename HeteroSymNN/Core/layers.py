@@ -727,9 +727,9 @@ class LinearLayer(BaseLayer):
         :rtype: dict[str, ndarray]
         """
         return {
-            '_weights': self._ASNUMPY(self._weights).T,
-            '_biases': self._ASNUMPY(self._biases).T,
-            '_connection_mask': self._ASNUMPY(self._connection_mask).T
+            'weights': self._ASNUMPY(self._weights).T,
+            'biases': self._ASNUMPY(self._biases).T,
+            'connection_mask': self._ASNUMPY(self._connection_mask).T
         }
         
     def set_parameters(self, params:dict[str,np.ndarray])->None:
@@ -739,29 +739,29 @@ class LinearLayer(BaseLayer):
         Parameters
         ----------
         params : dict[str, np.ndarray]
-            Dictionary containing the new parameters with keys '_weights', '_biases' and '_connection_mask'.
+            Dictionary containing the new parameters with keys 'weights', 'biases' and 'connection_mask'.
         """
-        corret_weights = (params["_weights"].T.shape == self._weights.shape)
-        correct_biases = (params["_biases"].T.shape == self._biases.shape)
+        corret_weights = (params["weights"].T.shape == self._weights.shape)
+        correct_biases = (params["biases"].T.shape == self._biases.shape)
         if not(correct_biases or corret_weights):
             raise LayerConfigurationError(f"""
                 Weights and biases are not in the correct dimentions. Expected {self._weights.T.shape} for the weights and {self._biases.T.shape} for the biases.
-                Received {params["_weights"].T.shape} for the weights and {params["_biases"].T.shape} for the biases.
+                Received {params["weights"].shape} for the weights and {params["biases"].shape} for the biases.
                  """)
         elif not(corret_weights):
             raise LayerConfigurationError(f"""
                 Weights are not in the correct dimentions. Expected {self._weights.T.shape} for the weights.
-                Received {params["_weights"].T.shape} for the weights.
+                Received {params["weights"].shape} for the weights.
                 """)
         elif not (correct_biases):
             raise LayerConfigurationError(f"""
                 Biases are not in the correct dimentions. Expected {self._biases.T.shape} for the biases.
-                Received {params["_biases"].T.shape} for the biases.
+                Received {params["biases"].shape} for the biases.
                 """)
         
-        self.set_connection_mask(params['_connection_mask'].T)
-        self._weights = np.array(params['_weights'].T, dtype=self._DEFAULT_FLOAT_TYPE)
-        self._biases = np.array(params['_biases'].T, dtype=self._DEFAULT_FLOAT_TYPE)
+        self.set_connection_mask(params['connection_mask'].T)
+        self._weights = np.array(params['weights'].T, dtype=self._DEFAULT_FLOAT_TYPE)
+        self._biases = np.array(params['biases'].T, dtype=self._DEFAULT_FLOAT_TYPE)
     
     def set_connection_mask(self, connection_mask: np.ndarray)->None:
         """
