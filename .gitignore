@@ -182,3 +182,5 @@ cython_debug/
 
 structure.txt
 *test.py
+
+*.symnn

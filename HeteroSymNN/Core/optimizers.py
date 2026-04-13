@@ -360,7 +360,7 @@ class SgdOptimizer(Optimizer):
 
         Returns
         -------
-        dict[str,any]
+        dict[str,any]:
             Dictionary containing the configuration parameters.
 
             *"class_name":name of the class for the saving and loading of the models.
@@ -615,15 +615,10 @@ class AdamOptimizer(Optimizer):
         ------
         dict[str,any]
             Dictionary containing the configuration parameters.
-
             *"class_name":name of the class for the saving and loading of the models.
-
             *"learning_rate":learning rate of the optimizer.
-
             *"beta1":exponential decay rate for the 1st moment estimates.
-
             *"beta2":exponential decay rate for the 2nd moment estimates.
-
             *"epsilon":small constant for numerical stability.S
         """
         config = super().get_config()

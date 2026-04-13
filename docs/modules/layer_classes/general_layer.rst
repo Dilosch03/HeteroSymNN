@@ -1,8 +1,7 @@
 Base Layer Class
 ================
 
-.. autoclass:: HeteroSymNN.Core.Nets.layers.Layer
+.. autoclass:: HeteroSymNN.Core.layers.BaseLayer
    :members:
    :undoc-members:
-   :show-inheritance:
    :no-index:

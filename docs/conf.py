@@ -42,7 +42,6 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
 
 # Prevent Sphinx from expanding type aliases and defaults
 autodoc_preserve_defaults = True

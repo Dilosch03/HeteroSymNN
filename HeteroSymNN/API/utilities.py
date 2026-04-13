@@ -6,11 +6,6 @@ from ..exceptions import RuntimeStateError
 class DataTransformer:
     """
     Base class for data transformations.
-
-    Atributes
-    ---------
-    is_fitted : bool, read-only
-        Whether the transformer has been fitted.
     """
     def __init__(self):
         self._fitted = False

@@ -11,20 +11,13 @@ class _Registry:
     """
     Class to manage the dictionaries for the loading of saved models.
 
-    Atributes
-    ---------
-    loss_fn_map : dict[str,losses.Loss], read-only
-        Dictionary of all the losses classes that currently the library know about.
-    optimiers_map : dict[str,optimizers.Optimizer], read-only
-        Dictionary of all the optimizers classes that currently the library know about.
-    initializers_map : dict[str,initializers.Initializer], read-only
-        Dictionary of all the initializers classes that currently the library know about.
-    layers_map : dict[str,layers.BaseLayer], read-only
-        Dictionary of all the layers classes that currently the library know about.
-    net_map : dict[str,Nets.BaseNetwork], read-only
-        Dictionary of all the networks classes that currently the library know about.
-    transformers_map : dict[str,utilities.DataTransformer], read-only
-        Dictionary of all the data transformers classes that currently the library know about.
+    This class dynamically maps string identifiers (found in .symnn save files) 
+    back to their executable Python class objects, preventing the need for 
+    insecure eval() calls. 
+    
+    The internal maps are populated automatically upon the importing of the packet by scanning 
+    the HeteroSymNN Core modules. External, custom-built classes must be injected 
+    manually using the `add_net` or `add_data_transformer` methods.
     """
     def __init__(self):
         self._loss_fn_map:dict[str,losses.Loss] = self._build_dynamic_map(losses, losses.Loss)
@@ -167,7 +160,7 @@ class _Registry:
         
         Raises
         ------
-        DataTypeError 
+        :exc:`~HeteroSymNN.exceptions.DataTypeError` 
             If the given class is not a sub class of the base initializer class (initializers.Initializer).
         """
         if not(issubclass(custom_initializer,initializers.Initializer)):
@@ -185,7 +178,7 @@ class _Registry:
 
         Raises
         ------
-        DataTypeError
+        :exc:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base loss function class (losses.Loss).
         """
         if not(issubclass(custom_loss,losses.Loss)):
@@ -203,7 +196,7 @@ class _Registry:
 
         Raises
         ------
-        DataTypeError
+        :exc:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base optimizer class (optimizers.Optimizer).
         """
         if not(issubclass(custom_optimizer,optimizers.Optimizer)):
@@ -221,7 +214,7 @@ class _Registry:
 
         Raises
         ------
-        DataTypeError
+        :exc:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base layer class (layers.BaseLayer).
         """
         if not(issubclass(custom_layer,layers.BaseLayer)):
@@ -239,7 +232,7 @@ class _Registry:
 
         Raises
         ------
-        DataTypeError
+        :exc:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base network class (Nets.BaseNetwork).
         """
         if not(issubclass(custom_net,Nets.BaseNetwork)):
@@ -257,7 +250,7 @@ class _Registry:
 
         Raises
         ------
-        DataTypeError
+        :obj:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base Data Transformer class (utilities.DataTransformer).
         """
         if not(issubclass(custom_data_transformer,utilities.DataTransformer)):

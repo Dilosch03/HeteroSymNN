@@ -373,7 +373,7 @@ class BaseNetwork:
 
         Returns
         -------
-        :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`
+        list[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`]
         """
         return self._initializers
 

@@ -76,10 +76,12 @@ class _Settings:
     def warning_level(self) -> str:
         """
         Level of how strict the library is with warnings.
+        
         Options are:
             *"ignore"*
             *"warn"*
             *"error"*
+
         Default is "warn".
         """
         return self._warning_level
@@ -109,10 +111,12 @@ class _Settings:
     def default_compute_method(self) -> str:
         """
         Default compute method used by HeteroSymNN.
+
         Options are:
             *"GPU_CUDA"*
             *"CPU_JIT"*
             *"CPU_PYTHON"*
+            
         Defaults to the hightest available method.
 
         If want to change the method use :meth:`set_default_compute_method`.
@@ -136,10 +140,11 @@ class _Settings:
     def set_default_compute_method(self, method: str):
         """
         Sets the default compute method used by HeteroSymNN.
-        Options are:
-            *"GPU_CUDA"*
-            *"CPU_JIT"*
-            *"CPU_PYTHON"*
+
+        Parameters
+        ----------
+        method : {"GPU_CUDA", "CPU_JIT", "CPU_PYTHON"}
+            The method to set as default.
         """
         method = method.upper()
         valid_methods = ["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]

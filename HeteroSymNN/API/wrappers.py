@@ -336,7 +336,7 @@ class Wrapper():
         """
         results = {}
         if (self.work_type == "reg"):
-            results = self.regreccion_test_accuracy(test_data,expected_results)
+            results = self.regression_test_accuracy(test_data,expected_results)
         elif(self.work_type == "class"):
             results = self.classification_test_accuracy(test_data,expected_results,threshold)
         else:
@@ -397,7 +397,7 @@ class Wrapper():
 
         return (evals, results_compare)
     
-    def regreccion_test_accuracy(self, test_data: list, expected_results: list)->dict[str, float]:
+    def regression_test_accuracy(self, test_data: list, expected_results: list)->dict[str, float]:
         """
         Calculates regression metrics (R2, MSE, RMSE, MAE, MAPE, AIC, BIC).
 
@@ -874,7 +874,7 @@ class GridSearchManager:
                 
                 metrics = {}
                 if trial_wrapper.work_type == "reg":
-                    metrics = trial_wrapper.regreccion_test_accuracy(self._X_vali, self._y_vali)
+                    metrics = trial_wrapper.regression_test_accuracy(self._X_vali, self._y_vali)
                 else:
                     metrics, _ = trial_wrapper.classification_test_accuracy(self._X_vali, self._y_vali)
                     
