@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from HeteroSymNN.Core.Nets.dense import MLP
 from HeteroSymNN.API.wrappers import Wrapper
-from HeteroSymNN.API import utilities as utils
+from HeteroSymNN.API import data_transformers as utils
 
 def run_simple_demo():
     print("--- 1. Generating Data ---")

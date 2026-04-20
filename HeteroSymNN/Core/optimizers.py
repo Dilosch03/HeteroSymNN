@@ -27,8 +27,8 @@ class Optimizer:
         self.DEVICE_ID = device_id
         self.CURRENT_DEVICE = "CPU"
         self.COMPUTACIONAL_DEVICE = settings.default_compute_method.split("_")[0]
-        self.be = HW.be 
-        self._ASNUMPY = HW.asnumpy
+        self.be = settings.default_manager
+        self._ASNUMPY = settings.default_asnumpy
         self._thread_pool = None
 
         if (computational_device != None):

@@ -42,7 +42,7 @@ class RuntimeStateError(HeteroSymNNError):
     Exception raised when a method is called in an invalid execution state or order 
     (e.g., calling a backward pass before a forward pass).
     """
-
+    pass
 
 class MethodMigrationError(BackendError):
     """
@@ -54,7 +54,7 @@ class MethodMigrationError(BackendError):
 
 class ShapeMismatchError(HeteroSymNNError):
     """
-    Exception raised when there is a mismatch in the shapes of the reciving data.
+    Exception raised when there is a mismatch in the shapes of the receiving data.
     """
     def __init__(self, message):
         super().__init__(message)
@@ -81,6 +81,7 @@ class ResourceAllocationError(BackendError):
     Exception raised when the hardware (specifically GPU VRAM) runs out of memory. 
     Usually indicates the batch size is too large or the network is too deep for the current device.
     """
+    pass
 
 class BackendDataTypeError(BackendError):
     """
@@ -88,6 +89,7 @@ class BackendDataTypeError(BackendError):
     with the current backend's expected precision (e.g., float32), 
     preventing C++ JIT or CUDA kernel execution.
     """
+    pass
 
 class JITCompilationError(JITError):
     """
@@ -108,7 +110,7 @@ class FormulaParsingError(JITError):
 class NetworkStructureError(ConfigError):
     """
     Exception raised when there is an issue with the network structure.
-    Invalid number of layer or activation mismaches.
+    Invalid number of layer or activation mismatches.
     """
     def __init__(self, message):
         super().__init__(message)

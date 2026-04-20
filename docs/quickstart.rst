@@ -3,58 +3,98 @@
 Quickstart
 ==========
 
-HeteroSymNN utilizes a declarative architecture. You define the *structure* and the *mathematical symbols*, and the JIT compiler handles the underlying memory and execution logistics. The high-level API is designed to mirror Scikit-Learn for ease of use.
+HeteroSymNN utilizes a declarative architecture designed for simplicity and extreme flexibility. You define the structure and the mathematical symbols, and the JIT compiler handles the underlying memory, gradients, and execution logistics.
 
-The "Cocktail" Layer Concept
-----------------------------
+The API provides different levels of abstraction depending on how much granular control you need over the mathematical laws of your network.
 
-In traditional neural networks, an entire layer applies a single activation function (e.g., ReLU). In HeteroSymNN, you can construct "Cocktail Layers"—layers composed of distinctly different mathematical functions operating side-by-side.
+1. The Standard MLP (Homogeneous Network)
+--------------------------------------
 
-Basic Training Example
-----------------------
-
-This example demonstrates how to build a network predicting continuous values (Regression) using a mix of periodic and parameterized activation functions.
+If you just need a standard, high-performance neural network where all hidden layers share the same activation function, use the MLP (Multi-Layer Perceptron) class. This is the simplest builder and mirrors traditional deep learning frameworks.
 
 .. code-block:: python
 
-    from HeteroSymNN.API.wrappers import Wrapper
-    form HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.Core.Nets import MLP
+    from HeteroSymNN.API import Wrapper
 
-    # 1. Define the Architecture & Symbolic Activations
-    # nodes_structure: Defines the input, hidden, and output sizes.
-    # activation_config: Maps to the layers (excluding the input layer).
+    # Define a network with 10 inputs, two hidden layers of 25 nodes, and 1 output.
+    # By default, all hidden layers will use "relu" and the output uses "num" (linear).
+    model = MLP(
+        nodes_structure=[10, 25, 25, 1],
+        activation="relu"
+    )
+
+    # Wrap the model for Scikit-Learn style training
+    agent = Wrapper(model, work_type="reg") # "reg" for Regressixon
+
+    # Train instantly
+    agent.fit(X_train, y_train, epochs=100)
+
+2. Layer-Level Heterogeneity (The "Cocktail" Network)
+------------------------------------------------------
+
+In standard frameworks, mixing different activation functions usually requires custom boilerplate classes. With HeteroSymNN's Dense builder, you can effortlessly assign different mathematical strings to different layers.
+
+Here is how to create a network that uses periodic functions (Sine) in the first hidden layer, and parameterized functions in the second:
+
+.. code-block:: python
+
+    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.API import Wrapper
+
+    # Define the network topology and layer-wise activations
     model = Dense(
         nodes_structure=[10, 25, 25, 1],
         activation_config=[
-            "sin(num)",                             # Layer 1: Pure Sine wave
-            "num",                                  # Layer 2: Linear pass-through
-            ("tanh(num)*a", {"a": 2.0})             # Layer 3: Parameterized hyperbolic tangent
-        ],
-        training_mode="mini-batch",
-        batch_size=32,
-        num_training_iter=200
+            "sin(num)",                        # Hidden Layer 1: Sine wave
+            "Max(0, num)",                     # Hidden Layer 2: Standard ReLU
+            ("tanh(num) * a", {"a": 2.0})      # Output Layer: Parameterized Tanh
+        ]
     )
 
-    # 2. Wrap the model for automated memory management and training
-    # "reg" indicates Regression. Use "class" for Classification.
     agent = Wrapper(model, work_type="reg")
+    agent.fit(X_train, y_train, epochs=100)
 
-    # 3. Fit the model to the data
-    # The Wrapper automatically handles data formatting and scaling
-    # X_train shape: (samples, 10), y_train shape: (samples, 1)
-    loss_history = agent.fit(X_train, y_train)
+3. Node-Level Heterogeneity (Deep Customization)
+-------------------------------------------------
 
-    # 4. Generate Predictions
-    predictions = agent.predict(X_test)
+The true superpower of the HeteroSymNN JIT Compiler is that it is not restricted to layers. You can define a different mathematical activation function for every single neuron in a layer. The engine fuses all of these distinct instructions into a single C++/CUDA kernel launch, avoiding execution penalties.
 
-    # 5. Evaluate Metrics (Calculates R2, MSE, MAE, etc.)
-    metrics = agent.regression_test_accuracy(X_test, y_test)
-    print(metrics)
+To achieve this granular control, use the node-level configuration arrays:
 
-Understanding the Configuration
--------------------------------
+.. code-block:: python
 
-Notice the ``activation_config`` list in the example above:
+    from HeteroSymNN.Core.Nets.dense import HeteroDense
+    # Define a small network: 2 inputs, a hidden layer with 3 neurons, 1 output
+    # We explicitly define the math for each of the 3 hidden neurons:
+    hidden_activations = [
+        ("sin(num)",{}),                        # Neuron 1: Periodic sine wave
+        ("Max(0, num)",{}),                     # Neuron 2: Standard ReLU
+        ("exp(num * beta)", {"beta": -0.5})     # Neuron 3: Parameterized Exponential
+    ]
 
-* Strings like ``"sin(num)"`` tell the symbolic compiler to parse a standard mathematical function, utilizing ``num`` as the standard variable for the incoming node value.
-* Tuples like ``("tanh(num)*a", {"a": 2.0})`` allow you to define custom mathematical expressions while explicitly passing static constants (like ``a``) into the JIT-compiled C++ or CUDA kernel.
+    # The output layer (1 neuron) uses a standard linear activation
+    output_activations = ["num"]
+
+    # Construct the fully heterogeneous network
+    hetero_model = HeteroDense(
+        nodes_structure=[2, 3, 1],
+        detailed_activations=[hidden_activations, output_activations]
+    )
+
+1. Zero-Recompile Tuning (Dynamic Constants)
+--------------------------------------------
+
+Notice the variables `a`` and `beta`` in the examples above. You are not forced to hard-code numerical constraints in your strings.
+
+HeteroSymNN treats these symbolic constants as mutable kernel arguments. This means you can update these hyperparameters dynamically on the fly without triggering a slow C++/CUDA recompilation.
+
+.. code-block:: python
+    # Update the 'beta' constant for a specific layer/neuron in real-time
+    # The framework routes this directly to the compiled C++ kernel memory.
+
+    # Example: Update the 'beta' parameter we defined in the HeteroDense model
+    # Format: {Layer_Index: list or single of (Node_Index, Constant_Name, New_Value))}
+    hetero_model.update_constant({0: (2, "beta", -0.9)})
+
+This feature is exceptionally powerful for hyperparameter grid searching or Evolutionary Algorithms, where constants must mutate thousands of times per second.

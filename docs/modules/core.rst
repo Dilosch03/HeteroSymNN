@@ -1,18 +1,19 @@
+.. _core-components:
+
 Core Components
 ===============
 
-The **Core** module contains the building blocks of the neural networks.
+The **Core** module is the engine room of HeteroSymNN. While the API module handles the user-friendly Scikit-Learn style training loops, the Core module houses the raw physical memory managers, network topologies, and symbolic mathematical rules.
 
 .. toctree::
    :maxdepth: 1
-   :caption: Networks Classes:
+   :caption: Network Architectures:
 
    networks
 
-
 .. toctree::
    :maxdepth: 1
-   :caption: Other objects used:
+   :caption: Optimization & Physics:
 
    rest_core/initializers
    rest_core/losses
@@ -20,6 +21,6 @@ The **Core** module contains the building blocks of the neural networks.
 
 .. toctree:: 
    :maxdepth: 1
-   :caption: Layer Clases:
+   :caption: Hardware & Memory Routing:
 
    layers

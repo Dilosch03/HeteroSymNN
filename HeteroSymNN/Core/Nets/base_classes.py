@@ -593,7 +593,7 @@ class BaseNetwork:
         error_to_propagate = self._LOSS_FUNCTION.backward(y_pred, y_target)
 
         self._backward(error_to_propagate)
-        self.update_params(x_input)
+        self.update_params()
 
         return loss
     

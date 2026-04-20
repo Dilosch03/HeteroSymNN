@@ -13,7 +13,7 @@ import zipfile
 
 from ..Core.Nets.base_classes import BaseNetwork
 from ..Core import losses, optimizers
-from . import registries,utilities
+from . import data_transformers, registries
 from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,WrapperError,SavingError
 from ..config import settings
 
@@ -55,7 +55,7 @@ class Wrapper():
         The type of problem the model solves.
     
     """
-    def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[utilities.DataTransformer] = None, output_transformer: Optional[utilities.DataTransformer] = None):
+    def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[data_transformers.DataTransformer] = None, output_transformer: Optional[data_transformers.DataTransformer] = None):
         if not(issubclass(type(model), BaseNetwork)):
             raise WrapperError("The model that was pass is not a subclass of BaseNetwork.")
         
@@ -98,27 +98,27 @@ class Wrapper():
                     warnings.warn(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.",ShapeMismatchError,stacklevel=2)
             
     @property
-    def input_transformer(self)->Union[utilities.DataTransformer, None]:
+    def input_transformer(self)->Union[data_transformers.DataTransformer, None]:
         """
         The transformer used to scale input data.
         """
         return self._input_transformer
 
     @input_transformer.setter
-    def input_transformer(self, new_transformer: utilities.DataTransformer):
+    def input_transformer(self, new_transformer: data_transformers.DataTransformer):
         self._input_transformer = new_transformer
         if (self._loaded_train_data):
             self.training_data_norm[0] = new_transformer.fit_transform(self.training_data[0])
 
     @property
-    def output_transformer(self)->Union[utilities.DataTransformer, None]:
+    def output_transformer(self)->Union[data_transformers.DataTransformer, None]:
         """
         The transformer used to scale output data.
         """
         return self._output_transformer
     
     @output_transformer.setter
-    def output_transformer(self, new_transformer: utilities.DataTransformer):
+    def output_transformer(self, new_transformer: data_transformers.DataTransformer):
         self._output_transformer = new_transformer
         if(self._loaded_train_data):
             self.training_data_norm[1] = new_transformer.fit_transform(self.training_data[1])
@@ -472,7 +472,7 @@ class Wrapper():
         
         return evaluations
     
-    def save_model(self, path: str, model_name: str = None, description: str = None,overwrite: bool = False)->None:
+    def save_model(self, path: str, model_name: str = None, description: str = None,overwrite: bool = False)->str:
         """
         Saves the model architecture, parameters, optimizer state, and wrapper configuration to a file.
 
@@ -619,7 +619,7 @@ class Wrapper():
         return instance
     
     @staticmethod
-    def _extract_symnn_archive(path: str) -> tuple[BaseNetwork,utilities.DataTransformer,utilities.DataTransformer,dict[str, any]]:
+    def _extract_symnn_archive(path: str) -> tuple[BaseNetwork,data_transformers.DataTransformer,data_transformers.DataTransformer,dict[str, any]]:
         """
         Internal method to load a .symnn archive.
         

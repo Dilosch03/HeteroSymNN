@@ -1,50 +1,71 @@
-.. _Wrappers:
+.. _wrappers:
 
-Wrappers
-========
+Wrappers & Training Interfaces
+==============================
 
-High-level wrappers to simplify the training, evaluation, and management of HeteroSymNN models.
+Under the hood, HeteroSymNN acts as a complex Differentiable JIT Compiler, managing hardware memory routing, symbolic derivatives, and C++ code generation. However, we make end-user experience simple and intuitive. 
 
-Model Wrapper
--------------
+The wrapper classes act as this translation boundary. They encapsulate the raw network architectures and provide standard, Scikit-Learn style interfaces (like ``fit`` and ``predict``) so you don't have to manually write complex ``for`` loops, batching chunkers, or metric trackers.
+
+1. The Model Wrapper
+--------------------
+
+**When to Use:**
+Use the ``Wrapper`` class for all day-to-day model training, evaluation, and data transformation. Whether you are running a simple classification task or a complex physics regression, this class handles the forward/backward data flow, automatic scaling (if a DataTransformer is passed), and saving and loading of model safely from/to a ``.symnn`` archive.
+
+**Code Example:**
+
+.. code-block:: python
+
+    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.API.wrappers import Wrapper
+
+    # 1. Define your raw engine
+    model = Dense(nodes_structure=[10, 25, 1], activation_config=["sin(num)", "num"])
+
+    # 2. Wrap it for Regression ("reg") or Classification ("class")
+    agent = Wrapper(model, work_type="reg")
+
+    # 3. Train and predict instantly
+    agent.fit(X_train, y_train, epochs=100)
+    predictions = agent.predict(X_new)
+    
+    # 4. Save the compiled model and its weights
+    agent.save_model("my_physics_model.symnn")
 
 .. autoclass:: HeteroSymNN.API.wrappers.Wrapper
    :members:
    :undoc-members:
    :show-inheritance:
-   :no-index:
 
-   The primary interface for interacting with neural networks.
-   
-   It abstracts away the complexity of:
-   
-   * Training loops.
-   * Model persistence (Saving/Loading to ``.symnn``).
-   * Accuracy testing (Regression and Classification metrics).
+2. Grid Search Manager
+----------------------
 
-   **Example Usage:**
+**When to Use:**
+Use the ``GridSearchManager`` when you need to find the optimal hyperparameters for your network. 
 
-   .. code-block:: python
+Because HeteroSymNN treats mathematical constants (like ``alpha`` or ``beta``) as mutable kernel arguments, this grid searcher can test thousands of different symbolic constant values *without* triggering a slow C++/CUDA recompilation, making it drastically faster than standard framework tuning.
 
-      agent = Wrapper(model, work_type="reg")
-      agent.load_training(X_train, y_train)
-      agent.run_training(num_iterations=100)
-      prediction = agent.predict(X_new)
+**Code Example:**
 
-Grid Search Wrapper
--------------------
+.. code-block:: python
+
+    from HeteroSymNN.API.wrappers import GridSearchManager
+    from HeteroSymNN.Core.optimizers import Adam, SGD
+
+    # 1. Define the parameter grid to test
+    param_grid = {
+        'learning_rate': [0.01, 0.001],
+        'batch_size': [32, 64],
+        'optimizer': [Adam(), SGD()]
+    }
+
+    # 2. Initialize the search across the wrapped model
+    searcher = GridSearchManager(agent, param_grid)
+    
+    # 3. Execute the search and return the best performing wrapper
+    best_agent, best_params = searcher.search(X_train, y_train, metric_to_optimize="r2")
 
 .. autoclass:: HeteroSymNN.API.wrappers.GridSearchManager
    :members:
    :undoc-members:
-   :no-index:
-
-   A tool for Hyperparameter Optimization.
-   
-   It automatically splits training data into Train/Validation sets and tests combinations of parameters.
-
-   **Key Features:**
-   
-   * **Automatic Splitting:** Splits data into training and validation sets.
-   * **Metric Tracking:** Tracks R2 (Regression) or Accuracy (Classification).
-   * **Best Model Retention:** Automatically keeps the best performing model instance.

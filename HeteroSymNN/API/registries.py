@@ -4,7 +4,7 @@ import pkgutil
 
 
 from ..Core import losses, optimizers,initializers,layers, Nets
-from . import utilities
+from . import data_transformers
 from ..exceptions import DataTypeError
 
 class _Registry:
@@ -25,7 +25,7 @@ class _Registry:
         self._initializers_map:dict[str, initializers.Initializer] = self._build_dynamic_map(initializers, initializers.Initializer)
         self._layers_map:dict[str, layers.BaseLayer] = self._build_dynamic_map(layers, layers.BaseLayer)
         self._net_map:dict[str,Nets.BaseNetwork] = self._scan_package_deep(Nets,Nets.BaseNetwork)
-        self._transformers_map:dict[str,utilities.DataTransformer] = self._build_dynamic_map(utilities, utilities.DataTransformer)
+        self._transformers_map:dict[str,data_transformers.DataTransformer] = self._build_dynamic_map(data_transformers, data_transformers.DataTransformer)
 
     def _build_dynamic_map(self,module, base_class)->dict[str,type]:
         """
@@ -239,7 +239,7 @@ class _Registry:
             raise DataTypeError("The class that was given is not a child of the base network class (Nets.BaseNetwork).")
         self._net_map[custom_net.__name__] = custom_net
     
-    def add_data_transformer(self,custom_data_transformer:type[utilities.DataTransformer]):
+    def add_data_transformer(self,custom_data_transformer:type[data_transformers.DataTransformer]):
         """
         Method to add a data transformer subclass to the translator dictionary.
         
@@ -253,7 +253,7 @@ class _Registry:
         :obj:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base Data Transformer class (utilities.DataTransformer).
         """
-        if not(issubclass(custom_data_transformer,utilities.DataTransformer)):
+        if not(issubclass(custom_data_transformer,data_transformers.DataTransformer)):
             raise DataTypeError("The class that was given is not a child of the base data transformer class (utilities.DataTransformer).")
         self._net_map[custom_data_transformer.__name__] = custom_data_transformer
 

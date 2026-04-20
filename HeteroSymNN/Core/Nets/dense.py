@@ -163,7 +163,8 @@ class Dense(HeteroDense):
              raise NetworkStructureError(f"The list of the activation functions have {len(activation_config)} elements, but was set {num_layers} layers in nodes_structure.")
         
         if not isinstance(initializer, list):
-            initializer = [initializer] * num_layers
+            if not(initializer is None):
+                initializer = [initializer] * num_layers
 
         detailed_activations = self._expand_to_detailed(num_layers, nodes_structure[1:], activation_config)
 

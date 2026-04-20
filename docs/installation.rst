@@ -3,7 +3,7 @@
 Installation
 ============
 
-HeteroSymNN is designed to be lightweight and portable. Its architecture allows it to gracefully degrade from High-Performance GPU execution down to pure Python based on your system's available hardware.
+HeteroSymNN is designed to be lightweight and portable. Its architecture allows it to gracefully degrade from High-Performance GPU execution down to pure Python based on your system's available hardware and software.
 
 Standard Installation (CPU)
 ---------------------------
@@ -27,7 +27,7 @@ To enable the highest-performance ``GPU_CUDA`` backend, install HeteroSymNN with
     pip install HeteroSymNN[gpu]
 
 .. warning::
-    This requires an NVIDIA GPU and compatible CUDA drivers pre-installed on your system.
+    This requires an NVIDIA GPU and compatible CUDA drivers pre-installed on your system for CuPy to work.
 
 Installation from Source
 ------------------------
@@ -49,5 +49,4 @@ Once installed, you can quickly verify which hardware backend HeteroSymNN has se
 
     from HeteroSymNN import config
 
-    # Will output "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON"
-    print(f"Active Compute Backend: {config.settings.default_compute_method}")
+    print(config.settings.default_compute_method})

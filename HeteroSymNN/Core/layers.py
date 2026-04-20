@@ -36,8 +36,8 @@ class BaseLayer:
     """
     def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
         
-        self._CALCULATION_MANAGER = HW.be
-        self._ASNUMPY = HW.asnumpy
+        self._CALCULATION_MANAGER = settings.default_manager
+        self._ASNUMPY = settings.default_asnumpy
         self._GPU_ID = Gpu_id
         self._CURRENT_DEVICE = "CPU"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
