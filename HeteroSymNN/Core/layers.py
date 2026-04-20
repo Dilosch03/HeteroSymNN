@@ -271,17 +271,19 @@ class BaseLayer:
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
-        if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
+        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             if (settings.warning_level == "error"):
                 raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
             elif (settings.warning_level == "warn"):
                 warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
-        if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
+        if ((new_method == "CPU_JIT")):
             if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT',but currently is not available.")
                 raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
             elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                #warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
 
         if(new_method != self._COMPUTATIONAL_METHOD):
@@ -545,8 +547,8 @@ class LinearLayer(BaseLayer):
         self._biases = np.array(init_biases).astype(self._DEFAULT_FLOAT_TYPE)
         self._weights = np.array(init_weights).astype(self._DEFAULT_FLOAT_TYPE)
         self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
-        self._grad_weights = np.zeros_like(self._weights)
-        self._grad_biases = np.zeros_like(self._biases)
+        self._grad_weights = np.zeros_like(self._weights,dtype=self._DEFAULT_FLOAT_TYPE)
+        self._grad_biases = np.zeros_like(self._biases,dtype=self._DEFAULT_FLOAT_TYPE)
         self._cached_input:BackendArray = None
 
     @property
@@ -713,7 +715,7 @@ class LinearLayer(BaseLayer):
         batch_size = self.z.shape[1]
         self._act_funcions_manager.backward_kernel(self.z, error_values, self.delta, self._funcs_constats, self.param_offsets, self._num_nodes,batch_size)
         self._grad_biases = self._CALCULATION_MANAGER.mean(self.delta, axis=1, keepdims=True)
-        self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T) / batch_size
+        self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T) / self._DEFAULT_FLOAT_TYPE(batch_size)
         effective_weights = self._weights * self._connection_mask
         prev_layer_error_sum = self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta)
         

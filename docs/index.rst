@@ -11,7 +11,7 @@ Unlike standard deep learning frameworks that optimize for homogeneous layer mat
 Installation
 ------------
 
-HeteroSymNN defaults to highly portable CPU operations using numpy (or OpenMP if a C++ compiler is detected):
+HeteroSymNN defaults to highly portable CPU operations using numpy:
 
 .. code-block:: bash
 
@@ -64,6 +64,15 @@ HeteroSymNN operates as a **Differentiable Compiler** rather than a standard ten
 
    installation
    quickstart
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project Information:
+
+   benchmarks
+   roadmap
+   changelog
+   contribution
 
 .. toctree::
    :maxdepth: 2

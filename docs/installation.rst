@@ -15,7 +15,7 @@ The standard installation relies on CPU execution.
     pip install HeteroSymNN
 
 .. note::
-    **JIT Acceleration Context:** To utilize the ``CPU_JIT`` backend (which offers massive performance gains over standard Python execution), you must have a C++ compiler accessible in your system's PATH (``g++``, ``clang``, or ``cl.exe``). If no compiler is detected, the engine will safely fallback to ``CPU_PYTHON``.
+    **JIT Acceleration Context:** Currently the ``CPU_JIT`` mode is not available due to optimization problems that will be resolved in the future.
 
 GPU Installation (CUDA)
 -----------------------

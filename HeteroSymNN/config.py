@@ -29,10 +29,13 @@ class _Settings:
         self._cpu_cache_dir = Path(user_cache_dir("HeteroSymNN_Cache"),"CPU")
         self._kernel_cache = {}
         self._default_compute_method = "CPU_PYTHON"
+        self._available_methods = ["CPU_PYTHON"]
         if GPU_ENABLED:
             self._default_compute_method = "GPU_CUDA"
-        elif CPP_JIT_ENABLED:
-            self._default_compute_method = "CPU_JIT"
+            self._available_methods.append("GPU_CUDA")
+        
+        #elif CPP_JIT_ENABLED:
+        #    self._default_compute_method = "CPU_JIT"
         
         if (self._default_compute_method == "GPU_CUDA"):
             self._default_manager = HW.cp
@@ -50,6 +53,13 @@ class _Settings:
         Boolean atribute if the libary is going to cache the created kernels. Default is True.
         """
         return self._use_kernel_cache
+    
+    @property
+    def available_methods(self) -> list[str]:
+        """
+        list of the available compuational methods that the library can use.
+        """
+        return self._available_methods
 
     @use_kernel_cache.setter
     def use_kernel_cache(self, value: bool):
@@ -137,7 +147,7 @@ class _Settings:
         """
         return self._default_asnumpy
 
-    def set_default_compute_method(self, method: str):
+    def set_default_compute_method(self, method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
         """
         Sets the default compute method used by HeteroSymNN.
 
@@ -154,16 +164,18 @@ class _Settings:
 
         if method == "GPU_CUDA" and not GPU_ENABLED:
             msg = "GPU_CUDA requested but GPU is not enabled."
-            if self._warnings_strict_mode:
+            if self._warning_level == "error":
                 raise BackendNotAvailableError(msg)
-            warnings.warn(f"{msg} Falling back to CPU.",PerformanceWarning,stacklevel=2)
+            elif self._warning_level == "warn":
+                warnings.warn(f"{msg} Falling back to CPU.",PerformanceWarning,stacklevel=2)
             method = "CPU_JIT" if CPP_JIT_ENABLED else "CPU_PYTHON"
 
         if method == "CPU_JIT" and not CPP_JIT_ENABLED:
             msg = "CPU_JIT requested but C++ compiler is not available."
-            if self._warnings_strict_mode:
+            if self._warning_level == "error":
                 raise BackendNotAvailableError(msg)
-            warnings.warn(f"{msg} Falling back to CPU_PYTHON.",PerformanceWarning,stacklevel=2)
+            elif self._warning_level == "warn":
+                warnings.warn(f"{msg} Falling back to CPU_PYTHON.",PerformanceWarning,stacklevel=2)
             method = "CPU_PYTHON"
             
         self._default_compute_method = method
@@ -228,7 +240,10 @@ class _Settings:
         """
         Sets the global data type for the engine.
         Supports standard floating point and integer types for future quantization.
+
+        Currently the framework doesnt have the ability to change from float32.
         """
+        return
         
         if dtype_str in self.mapping:
             self._default_dtype = self.mapping[dtype_str]

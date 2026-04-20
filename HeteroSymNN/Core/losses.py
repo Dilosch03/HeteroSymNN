@@ -219,9 +219,9 @@ class FlexibleLoss(Loss):
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
-                self.arr_constants = self._be.array(temp)
+                self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
         else:
-            self.arr_constants = self._be.array(temp)
+            self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
 
     def set_gpu_id(self,new_id:int)->None:
         """
@@ -262,23 +262,25 @@ class FlexibleLoss(Loss):
         """
         new_method = new_method.upper()
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("Se intento cambiar a un metodo computacional que no es GPU_CUDA, CPU_JIT o CPU_PYTHON")
+            raise ValueError("Tried to change to a not suported method. Expected GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
-        if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
+        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             if (settings.warning_level == "error"):
                 raise BackendNotAvailableError("Tried to use GPU_CUDA but no GPU is available.")
             elif (settings.warning_level == "warn"):
                 warnings.warn("Tried to use GPU_CUDA but no GPU is available."+"Trying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
 
-        if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
+        if ((new_method == "CPU_JIT")):
             if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
                 raise BackendNotAvailableError("Tried to use CPU_JIT but no C++ compiler is available.")
             elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                #warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
         
         if (new_method != self._COMPUTATIONAL_METHOD):
@@ -304,7 +306,7 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Loss value.
         """
-        loss_vec = self._be.zeros_like(y_pred)
+        loss_vec = self._be.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
         return self._be.mean(loss_vec) 
 
@@ -324,7 +326,7 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Gradient of the loss with respect to the predicted values.
         """
-        grad_vec = self._be.zeros_like(y_pred)
+        grad_vec = self._be.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         return grad_vec * (2.0 / y_pred.size) 
 

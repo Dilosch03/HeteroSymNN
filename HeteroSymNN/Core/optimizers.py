@@ -23,7 +23,6 @@ class Optimizer:
         The ID of the GPU to use if computational_device is "GPU".
     """
     def __init__(self, learning_rate: float = None, computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
-        self.learning_rate = learning_rate
         self.DEVICE_ID = device_id
         self.CURRENT_DEVICE = "CPU"
         self.COMPUTACIONAL_DEVICE = settings.default_compute_method.split("_")[0]
@@ -46,6 +45,8 @@ class Optimizer:
             else:
                 self.be = np
                 self._ASNUMPY = np.array
+        
+        self.learning_rate = self.be.array(learning_rate,dtype=settings.default_dtype)
             
         self._setup_kernels()
 
@@ -391,11 +392,11 @@ class AdamOptimizer(Optimizer):
     _fused_kernel = None
     def __init__(self, learning_rate: float = None,computational_device:Literal["GPU", "CPU"]=None, device_id: int = None, beta1: float = 0.9, beta2: float = 0.999, epsilon: float = 1e-8):
         super().__init__(learning_rate,computational_device,device_id)
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.epsilon = epsilon
+        self.beta1 = self.be.array(beta1,dtype=settings.default_dtype)
+        self.beta2 = self.be.array(beta2,dtype=settings.default_dtype)
+        self.epsilon = self.be.array(epsilon,dtype=settings.default_dtype)
         
-        self.t = 0
+        self.t = self.be.array(0,dtype=settings.default_dtype)
         self.m = None 
         self.v = None 
 
@@ -427,7 +428,7 @@ class AdamOptimizer(Optimizer):
         layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
         """
         if self.learning_rate is None:
-            self.learning_rate = 0.001
+            self.learning_rate = self.be.array(0.001,dtype=settings.default_dtype)
             
         self.m = {}
         self.v = {}
@@ -441,11 +442,11 @@ class AdamOptimizer(Optimizer):
                 saved_m = self._loaded_m[i]
                 saved_v = self._loaded_v[i]
                 
-                self.m[layer_id] = {k: self.be.array(v) for k, v in saved_m.items()}
-                self.v[layer_id] = {k: self.be.array(v) for k, v in saved_v.items()}
+                self.m[layer_id] = {k: self.be.array(v, dtype=settings.default_dtype) for k, v in saved_m.items()}
+                self.v[layer_id] = {k: self.be.array(v, dtype=settings.default_dtype) for k, v in saved_v.items()}
             else:
-                self.m[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
-                self.v[layer_id] = {k: self.be.zeros_like(p) for k, p in layer.working_parameters.items()}
+                self.m[layer_id] = {k: self.be.zeros_like(p,dtype=settings.default_dtype) for k, p in layer.working_parameters.items()}
+                self.v[layer_id] = {k: self.be.zeros_like(p,dtype=settings.default_dtype) for k, p in layer.working_parameters.items()}
 
         if hasattr(self, '_loaded_m'):
             self._loaded_m = None
@@ -502,8 +503,8 @@ class AdamOptimizer(Optimizer):
 
         if (self.CURRENT_DEVICE == "GPU"):
             AdamOptimizer._fused_kernel(
-                grad, float(self.learning_rate), float(self.beta1), float(self.beta2), float(self.epsilon), 
-                float(self.t_pow_beta1), float(self.t_pow_beta2), mask,
+                grad, self.learning_rate, self.beta1, self.beta2, self.epsilon, 
+                self.t_pow_beta1, self.t_pow_beta2, mask,
                 param, m_t, v_t
             )
         else:
@@ -530,7 +531,7 @@ class AdamOptimizer(Optimizer):
             List of layers to update.
         """
         if self.learning_rate is None:
-            self.learning_rate = 0.001
+            self.learning_rate = self.be.array(0.001,dtype=settings.default_dtype)
 
         if self.m is None:
             self._initialize_state(layers)

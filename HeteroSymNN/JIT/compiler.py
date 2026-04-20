@@ -131,68 +131,90 @@ class SymbolicJITCompiler:
             raise ValueError("Calculation Method given isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
 
-    def _get_ccode_from_config(self, func_str:str, constants:dict[str, float]):
+    def _get_ccode_from_config(self, func_str: str, constants: dict[str, float]):
         """
-        Internal method that parses a string expression into SymPy expressions for the function and its derivative.
-
-        Parameters
-        ----------
-        func_str : str
-            The mathematical expression string (e.g., "Max(0, num)").
-        constants : dict[str, float]
-            Dictionary of constant values used in the expression.
-
-        Returns
-        -------
-        tuple[sympy.Expr, sympy.Expr]
-            A tuple containing the symbolic expression for the function and its derivative.
+        Internal method that parses a string expression into SymPy expressions.
         """
         constants = constants or {}
-        x_sym,z_sym = sp.symbols("x z")
-        local_dict = {'e': mth.e, 'pi': mth.pi, 'tau': mth.tau, 'phi': (1 + mth.sqrt(5)) / 2}
-        num_sym = sp.symbols("num")
-        if (self.mode == "activation"):
-            num_sym = self.main_vars[0]
-
+        
+        # PRO TIP: Replaced `mth.e` and `mth.pi` with `sp.E` and `sp.pi`. 
+        # Using Python float math constants causes SymPy to prematurely calculate 
+        # floating point values, ruining your symbolic derivatives!
+        local_dict = {'e': sp.E, 'pi': sp.pi, 'tau': 2 * sp.pi, 'phi': (1 + sp.sqrt(5)) / 2}
+        
+        # Populate local_dict with main_vars to preserve exact `real=True` symbol instances
         for var in self.main_vars:
             local_dict[str(var)] = var
 
         for_subs = {}
-
-
-        sorted_constatanst = sorted(constants)
-        for id,key in enumerate(sorted_constatanst):
+        sorted_constants = sorted(constants)
+        for id, key in enumerate(sorted_constants):
             for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
 
-        if (func_str in codegen.COMMON_FORMULAS):
+        # 1. Exact Match Fallback (e.g., user just types "relu" with no arguments)
+        if func_str in codegen.COMMON_FORMULAS:
             func_str = codegen.COMMON_FORMULAS[func_str]
 
-        temp = {}
-        for key in codegen.COMMON_FORMULAS.keys():
-            temp[key] = sp.parse_expr(codegen.COMMON_FORMULAS[key],local_dict=local_dict)
+        # 2. THE FIX: Create SymPy Callables for nested string parsing
+        temp_callables = {}
         
-        local_dict = local_dict | temp
+        # Extract the exact symbols from local_dict (or create fallbacks)
+        # This ensures we don't accidentally mix a generic `y_pred` with a `y_pred(real=True)`
+        y_pred_sym = local_dict.get('y_pred', sp.symbols('y_pred', real=True))
+        y_true_sym = local_dict.get('y_true', sp.symbols('y_true', real=True))
+        num_sym = local_dict.get('num', sp.symbols('num', real=True))
+        
+        for key, expr_string in codegen.COMMON_FORMULAS.items():
+            # Parse the base formula string into an expression (e.g., Max(0, num))
+            base_expr = sp.parse_expr(expr_string, local_dict=local_dict)
+            
+            # Check variable names as strings to safely handle real=True metadata
+            free_sym_names = [str(s) for s in base_expr.free_symbols]
+            
+            # Determine if it's a Loss function (uses y_pred/y_true) or Activation (uses num)
+            if "y_pred" in free_sym_names or "y_true" in free_sym_names:
+                # Create a lambda that takes two arguments and subs them in
+                temp_callables[key] = lambda pred, true, e=base_expr, yp=y_pred_sym, yt=y_true_sym: e.subs({yp: pred, yt: true})
+            else:
+                # Create a lambda that takes one argument and subs it into 'num'
+                temp_callables[key] = lambda val, e=base_expr, n=num_sym: e.subs({n: val})
+        
+        # Merge the lambdas into the local parsing dictionary
+        local_dict = local_dict | temp_callables
 
-        func_expr = sp.parse_expr(func_str,local_dict=local_dict,evaluate=False)
+        # 3. Parse the final expression
+        func_expr = sp.parse_expr(func_str, local_dict=local_dict, evaluate=False)
         func_expr = func_expr.subs(for_subs)
         free_symb = func_expr.free_symbols
 
-        main_vars_found = []
-        if (num_sym in free_symb):
-            main_vars_found.append(num_sym)
-        if ((x_sym in free_symb)and not("z" in constants.keys())):
-            main_vars_found.append(x_sym)
-        if ((z_sym in free_symb)and not("x" in constants.keys())):
-            main_vars_found.append(z_sym)
+        # 4. Mode-specific Free Variable Validation
+        if self.mode == "activation":
+            x_sym, z_sym = sp.symbols("x z")
+            main_vars_found = []
+            
+            if num_sym in free_symb:
+                main_vars_found.append(num_sym)
+            if (x_sym in free_symb) and not ("z" in constants.keys()):
+                main_vars_found.append(x_sym)
+            if (z_sym in free_symb) and not ("x" in constants.keys()):
+                main_vars_found.append(z_sym)
 
-        if (len(main_vars_found)>1):
-            if (settings.warning_level == "error"):
-                raise FormulaParsingError(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables. Must have only one.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables.",CompilationWarning,stacklevel=4)
+            if len(main_vars_found) > 1:
+                if settings.warning_level == "error":
+                    raise ValueError(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables. Must have only one.")
+                elif settings.warning_level == "warn":
+                    warnings.warn(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables.", CompilationWarning, stacklevel=4)
+            
+            # Map aliases back to the main activation variable
+            func_expr = func_expr.subs({x_sym: num_sym, z_sym: num_sym})
+            
+        elif self.mode == "loss":
+            # In loss mode, multiple main variables (y_pred and y_true) are expected.
+            # We bypass the "must have only one" restriction entirely.
+            pass
         
-        func_expr = func_expr.subs({x_sym:num_sym,z_sym:num_sym})
-        if (callable(func_expr)):
+        # If the parsed result is a lambda (e.g., user typed just "mse"), unpack main_vars into it
+        if callable(func_expr):
             func_expr = func_expr(*self.main_vars)
 
         deriv_expr_subbed = sp.diff(func_expr, self.deriv_target)

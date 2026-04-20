@@ -1,6 +1,8 @@
 import numpy as np
 from typing import Any
 
+from ..config import settings
+
 class Initializer:
     """
     Base class for all initializers.
@@ -105,7 +107,7 @@ class BaseInitializer(Initializer):
         self._seted_connection_density = connection_density
         if (connection_density is None):
             connection_density = 1.0
-        self.connection_density = np.clip(connection_density, 0.0, 1.0)
+        self.connection_density = np.clip(connection_density, 0.0, 1.0,dtype=settings.default_dtype)
     
     def generate_constant(self, shape:list[int], value:float = 0.0) -> np.ndarray:
         """
@@ -125,7 +127,7 @@ class BaseInitializer(Initializer):
         `np.ndarray`
             numpy array populated with the specified constant value.
         """
-        return np.full(shape, value, dtype=np.float32)
+        return np.full(shape, value, dtype=settings.default_dtype)
 
     def generate_binary_mask(self, shape:list[int])-> np.ndarray:
         """
@@ -143,8 +145,8 @@ class BaseInitializer(Initializer):
             numpy array populated with binary values (1.0 or 0.0) representing the sparsity mask.
         """
         if (self.connection_density) >= 1.0:
-            return np.ones(shape, dtype=np.float32)
-        return (np.random.rand(*shape) < self.connection_density).astype(np.float32)
+            return np.ones(shape, dtype=settings.default_dtype)
+        return (np.random.rand(*shape) < self.connection_density).astype(settings.default_dtype)
 
     def get_config(self)->dict[str,Any]:
         """
@@ -178,8 +180,8 @@ class RandomNormal(BaseInitializer):
     """
     def __init__(self, mean:float=0.0, stddev:float=0.05, connection_density:float=None):
         super().__init__(connection_density)
-        self.mean = mean
-        self.stddev = stddev
+        self.mean = np.array(mean,dtype=settings.default_dtype)
+        self.stddev = np.array(stddev,dtype=settings.default_dtype)
     
     def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
@@ -202,7 +204,7 @@ class RandomNormal(BaseInitializer):
         `np.ndarray`
             numpy array populated with values drawn from the statistical distribution.
         """
-        return np.random.normal(self.mean, self.stddev, shape).astype(np.float32)
+        return np.random.normal(self.mean, self.stddev, shape).astype(settings.default_dtype)
     
     def get_config(self)->dict[str,Any]:
         """
@@ -247,8 +249,8 @@ class RandomUniform(BaseInitializer):
     """
     def __init__(self, min_val:float=-0.05, max_val:float=0.05,connection_density:float=None):
         super().__init__(connection_density)
-        self.min_val = min_val
-        self.max_val = max_val
+        self.min_val = np.array(min_val,dtype=settings.default_dtype)
+        self.max_val = np.array(max_val,dtype=settings.default_dtype)
     
     def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
@@ -271,7 +273,7 @@ class RandomUniform(BaseInitializer):
         `np.ndarray`
             numpy array populated with values drawn from the statistical distribution.
         """
-        return np.random.uniform(self.min_val, self.max_val, shape).astype(np.float32)
+        return np.random.uniform(self.min_val, self.max_val, shape).astype(settings.default_dtype)
 
     def get_config(self)->dict[str,Any]:
         """
@@ -330,7 +332,7 @@ class XavierUniform(BaseInitializer):
             numpy array populated with values drawn from the statistical distribution.
         """
         limit = np.sqrt(6 / (fan_in + fan_out))
-        return np.random.uniform(-limit, limit, shape).astype(np.float32)
+        return np.random.uniform(-limit, limit, shape).astype(settings.default_dtype)
 
 class XavierNormal(BaseInitializer):
     """
@@ -364,7 +366,7 @@ class XavierNormal(BaseInitializer):
             numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(2 / (fan_in + fan_out))
-        return np.random.normal(0, stddev, shape).astype(np.float32)
+        return np.random.normal(0, stddev, shape).astype(settings.default_dtype)
 
 class HeUniform(BaseInitializer):
     """
@@ -398,7 +400,7 @@ class HeUniform(BaseInitializer):
             numpy array populated with values drawn from the statistical distribution.
         """
         limit = np.sqrt(6 / fan_in)
-        return np.random.uniform(-limit, limit, shape).astype(np.float32)
+        return np.random.uniform(-limit, limit, shape).astype(settings.default_dtype)
 
 class HeNormal(BaseInitializer):
     """
@@ -432,7 +434,7 @@ class HeNormal(BaseInitializer):
             numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(2 / fan_in)
-        return np.random.normal(0, stddev, shape).astype(np.float32)
+        return np.random.normal(0, stddev, shape).astype(settings.default_dtype)
 
 class LecunNormal(BaseInitializer):
     """
@@ -466,7 +468,7 @@ class LecunNormal(BaseInitializer):
             numpy array populated with values drawn from the statistical distribution.
         """
         stddev = np.sqrt(1 / fan_in)
-        return np.random.normal(0, stddev, shape).astype(np.float32)
+        return np.random.normal(0, stddev, shape).astype(settings.default_dtype)
 
 class Orthogonal(BaseInitializer):
     """
@@ -483,7 +485,7 @@ class Orthogonal(BaseInitializer):
     """
     def __init__(self, gain:float=1.0,connection_density:float=None):
         super().__init__(connection_density)
-        self.gain = gain
+        self.gain = np.array(gain,dtype=settings.default_dtype)
 
     def generate_from_distribution(self, shape:list[int],fan_in: int, fan_out: int) -> np.ndarray:
         """
@@ -510,7 +512,7 @@ class Orthogonal(BaseInitializer):
         a = np.random.normal(0.0, 1.0, flat_shape)
         u, _, v = np.linalg.svd(a, full_matrices=False)
         q = u if u.shape == flat_shape else v
-        return (self.gain * q).reshape(shape).astype(np.float32)
+        return (self.gain * q).reshape(shape).astype(settings.default_dtype)
 
     def get_config(self)->dict[str,Any]:
         """

@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Literal, Union, Optional, Any, Sequence
 import warnings
+import inspect
 
 from ...Backend import hardware as HW
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
@@ -170,17 +171,40 @@ class BaseNetwork:
             if (len(node_configs) != num_nodes):
                 raise LayerConfigurationError(f"Error in Layer {i}: {num_nodes} nodes defined in 'network_structure', but there are {len(node_configs)} activation configurations.")
 
+            sig = inspect.signature(layer_class)
+
+            required_arguments = set()
+            all_accepted_arguments = set()
+
+            for name, param in sig.parameters.items():
+                all_accepted_arguments.add(name)
+                if param.default == inspect.Parameter.empty and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    required_arguments.add(name)
+
+            required_arguments.discard('self')
+            all_accepted_arguments.discard('self')
+
+            total_provided = set(extra_param.keys()) | {"num_inputs", "layer_configuration", "batch_size", "Gpu_id"}
+
+            missing = required_arguments - total_provided
+            wrong = total_provided - all_accepted_arguments
+
+            if missing:
+                raise LayerConfigurationError(
+                    f"Layer {i} is missing {len(missing)} required parameters: {missing}."
+                )
+
+            if wrong:
+                raise LayerConfigurationError(
+                    f"Layer {i} received {len(wrong)} unrecognized parameters: {wrong}."
+                )
+
+                                              
             layer_init = self._initializers[i]
 
             layer_config: LayerConstruction = (node_configs, layer_init)
-            try:
-                self._LAYERS.append(layer_class(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID,**extra_param))
-            except TypeError as e:
-                if ("positional argument" in str(e)):
-                    temp_splice = str(e).split(":")
-                    num_missing = int(temp_splice[0].split("missing ")[1][0])
-                    missing = temp_splice[1]
-                    raise LayerConfigurationError(f"Layer {i} was not given {num_missing} required extra parameters, that are {missing}.")
+
+            self._LAYERS.append(layer_class(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID,**extra_param))
 
         self.history_losses = []    
     
@@ -446,17 +470,19 @@ class BaseNetwork:
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
-        if ((new_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
+        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             if (settings.warning_level == "error"):
                 raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
             elif (settings.warning_level == "warn"):
                 warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_JIT"
-        if ((new_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
+        if ((new_method == "CPU_JIT")):
             if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
                 raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
             elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                #warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 new_method = "CPU_PYTHON"
 
         if(new_method != self._COMPUTATIONAL_METHOD):
