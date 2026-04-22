@@ -25,21 +25,21 @@ class Optimizer:
     def __init__(self, learning_rate: float = None, computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
         self.DEVICE_ID = device_id
         self.CURRENT_DEVICE = "CPU"
-        self.COMPUTACIONAL_DEVICE = settings.default_compute_method.split("_")[0]
+        self.COMPUTATIONAL_DEVICE = settings.default_compute_method.split("_")[0]
         self.be = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
         self._thread_pool = None
 
         if (computational_device != None):
-            self.COMPUTACIONAL_DEVICE = computational_device
+            self.COMPUTATIONAL_DEVICE = computational_device
             if ((computational_device == "GPU") and not (HW.GPU_ENABLED)):
                 if (settings.warning_level == "error"):
                     raise BackendNotAvailableError("Trying to define the GPU as the computational device when there is no GPU available.")
                 elif (settings.warning_level == "warn"):
                     warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
-                    self.COMPUTACIONAL_DEVICE = "CPU"
+                    self.COMPUTATIONAL_DEVICE = "CPU"
 
-            if (self.COMPUTACIONAL_DEVICE == "GPU"):
+            if (self.COMPUTATIONAL_DEVICE == "GPU"):
                 self.be = HW.cp
                 self._ASNUMPY = HW.cp.asnumpy
             else:
@@ -90,8 +90,8 @@ class Optimizer:
                 warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
                 device = "CPU"
         
-        if (self.COMPUTACIONAL_DEVICE != device):
-            self.COMPUTACIONAL_DEVICE = device
+        if (self.COMPUTATIONAL_DEVICE != device):
+            self.COMPUTATIONAL_DEVICE = device
             if ((device == "GPU")and(HW.GPU_ENABLED)):
                 self.be = HW.cp
                 self._ASNUMPY = HW.cp.asnumpy
@@ -132,7 +132,7 @@ class Optimizer:
         if not(device in ["GPU","CPU"]):
             raise ValueError("Device not recognized. Expecting GPU or CPU.")
         
-        if ((device == "GPU")and(self.COMPUTACIONAL_DEVICE == "CPU")):
+        if ((device == "GPU")and(self.COMPUTATIONAL_DEVICE == "CPU")):
             if (settings.warning_level == "error"):
                 raise BackendNotAvailableError("Tried to send the paramters to the GPU when the CPU was set as the computational device.")
             elif (settings.warning_level == "warn"):
@@ -180,7 +180,7 @@ class Optimizer:
         layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers to update.
         """
-        self._to_device(self.COMPUTACIONAL_DEVICE)
+        self._to_device(self.COMPUTATIONAL_DEVICE)
         
         if self.CURRENT_DEVICE == "GPU":
             for layer in layers:

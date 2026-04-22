@@ -156,7 +156,9 @@ class SymbolicJITCompiler:
         for_subs = {}
         sorted_constants = sorted(constants)
         for id, key in enumerate(sorted_constants):
-            for_subs[sp.symbols(key)] = sp.symbols(f"params[offset+{id}]")
+            temp = sp.symbols(key)
+            for_subs[temp] = sp.symbols(f"params[offset+{id}]")
+            local_dict[key] = temp
 
         # 1. Exact Match Fallback (e.g., user just types "relu" with no arguments)
         if func_str in codegen.COMMON_FORMULAS:

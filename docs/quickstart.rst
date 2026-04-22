@@ -68,17 +68,17 @@ To achieve this granular control, use the node-level configuration arrays:
     # Define a small network: 2 inputs, a hidden layer with 3 neurons, 1 output
     # We explicitly define the math for each of the 3 hidden neurons:
     hidden_activations = [
-        ("sin(num)",{}),                        # Neuron 1: Periodic sine wave
-        ("Max(0, num)",{}),                     # Neuron 2: Standard ReLU
-        ("exp(num * beta)", {"beta": -0.5})     # Neuron 3: Parameterized Exponential
-    ]
+        ["sin(num)",{}],                        # Neuron type 1: Periodic sine wave
+        ["Max(0, num)",{}],                     # Neuron type 2: Standard ReLU
+        ["exp(num * beta)", {"beta": -0.5}]    # Neuron type 3: Parameterized Exponential
+    ]*4
 
     # The output layer (1 neuron) uses a standard linear activation
-    output_activations = ["num"]
+    output_activations = [["num",{}]]
 
     # Construct the fully heterogeneous network
     hetero_model = HeteroDense(
-        nodes_structure=[2, 3, 1],
+        nodes_structure=[2, 12, 1],
         detailed_activations=[hidden_activations, output_activations]
     )
 

@@ -451,13 +451,13 @@ class BaseNetwork:
         gpu_id : int, optional
             GPU ID to use if the new method is "GPU_CUDA". If not provided, the current GPU ID of the network will be used., by default None
         
-        Raises
+       Raises
         ------
         ValueError
             If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
-        RuntimeError
+        :exc:`~HeteroSymNN.exceptions.BackendNotAvailableError`
             If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
-        RuntimeError
+        :exc:`~HeteroSymNN.exceptions.MethodMigrationError`
             In the case the loss function or any of the layers could not change to the new computational method will show a runtime error.
         
         .. Warning::
@@ -494,7 +494,7 @@ class BaseNetwork:
                     self._ASNUMPY = np.array
                 elif ("GPU" in new_method):
                     self._CALCULATION_MANAGER = HW.cp
-                    self._ASNUMPY = HW.cp.array
+                    self._ASNUMPY = HW.cp.asnumpy
                 
                 temp_result = self._LOSS_FUNCTION._change_COMPUTATIONAL_METHOD(self._COMPUTATIONAL_METHOD,self._GPU_ID)
                 if (temp_result != self._COMPUTATIONAL_METHOD):
@@ -508,6 +508,35 @@ class BaseNetwork:
                 if (laye_calc_method != expected):
                     raise MethodMigrationError(f"Couldn't change the computational method due to one or more layers couldn't change. Layer methods list: {laye_calc_method}")
 
+    def to(self,backend:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->None:
+        """
+        Change the computational method used by the network. This will also change the device of the network parameters if needed.
+
+        Parameters
+        ----------
+        backend : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
+            New computational method to set.
+        gpu_id : int, optional
+            GPU ID to use if the new method is "GPU_CUDA". If not provided, the current GPU ID of the network will be used., by default None
+        
+        Raises
+        ------
+        ValueError
+            If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
+        :exc:`~HeteroSymNN.exceptions.BackendNotAvailableError`
+            If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
+        :exc:`~HeteroSymNN.exceptions.MethodMigrationError`
+            In the case the loss function or any of the layers could not change to the new computational method will show a runtime error.
+        
+        .. Warning::
+            When changing computational methods it will force a kernel recompilation for all layers and reallocation of all parameters. Depending on the size of the network this could take a while.
+        """
+        warnings.warn(
+        f"Initiating engine migration to {backend}. This requires JIT recompilation and memory transfers.",
+        PerformanceWarning,
+        stacklevel=2
+        )
+        self._change_COMPUTATIONAL_METHOD(new_method=backend, gpu_id=gpu_id)
 
     def change_device(self, device:Literal["CPU","GPU"])->None:
         """
@@ -743,7 +772,6 @@ class BaseNetwork:
         dict[Union[str,int],dict[str,np.ndarray]]
             Dictionary containing the parameters of each layer.
         """
-        self.change_device("CPU")
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self._LAYERS)}
 
     def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]])->None:

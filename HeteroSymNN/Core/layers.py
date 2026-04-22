@@ -300,7 +300,7 @@ class BaseLayer:
                 self.param_offsets = self._CALCULATION_MANAGER.array(self.param_offsets)
             elif ("GPU" in self._COMPUTATIONAL_METHOD):
                 self._CALCULATION_MANAGER = HW.cp
-                self._ASNUMPY = HW.cp.array
+                self._ASNUMPY = HW.cp.asnumpy
                 with HW.be.cuda.Device(self._GPU_ID):
                     self.param_offsets = self._CALCULATION_MANAGER.array(self.param_offsets)
 
