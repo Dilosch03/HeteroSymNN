@@ -14,7 +14,7 @@ import hashlib
 from ..Backend import hardware as HW
 from . import codegen
 from ..types import NodeConfig
-from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,InvalidDeviceIDError
+from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,InvalidDeviceIDError,BackendNotAvailableError
 from ..config import settings
 
 
@@ -122,7 +122,12 @@ class SymbolicJITCompiler:
             self.func_ids = self.func_ids_gpu
 
         elif (calculation_method == "CPU_JIT"):
-            self._compile_cpp_kernels(configs)
+            if (settings.warning_level == "error"):
+                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
+            elif (settings.warning_level == "warn"):
+                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+            self.calculation_method = "CPU_PYTHON"
+            self._compile_py_kernels(configs)
 
         elif ( calculation_method == "CPU_PYTHON"):
             self._compile_py_kernels(configs)
@@ -140,7 +145,9 @@ class SymbolicJITCompiler:
         # PRO TIP: Replaced `mth.e` and `mth.pi` with `sp.E` and `sp.pi`. 
         # Using Python float math constants causes SymPy to prematurely calculate 
         # floating point values, ruining your symbolic derivatives!
-        local_dict = {'e': sp.E, 'pi': sp.pi, 'tau': 2 * sp.pi, 'phi': (1 + sp.sqrt(5)) / 2}
+        local_dict = {}
+        general_constants = {'e': sp.E.evalf(), 'pi': sp.pi.evalf(), 'tau': (2 * sp.pi).evalf(), 'phi': ((1 + sp.sqrt(5)) / 2).evalf()}
+        local_dict.update(general_constants)
         
         # Populate local_dict with main_vars to preserve exact `real=True` symbol instances
         for var in self.main_vars:
@@ -219,7 +226,7 @@ class SymbolicJITCompiler:
 
         deriv_expr_subbed = sp.diff(func_expr, self.deriv_target)
 
-        return (func_expr, deriv_expr_subbed)
+        return (func_expr.evalf(), deriv_expr_subbed.evalf())
 
     
     def _generate_kernel_artifacts(self, configs: list[NodeConfig], 
@@ -622,10 +629,14 @@ class SymbolicJITCompiler:
                 self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
                 self.func_ids = self.func_ids_gpu
                     
-            elif ((new_calculatuion_method == "CPU_JIT")and(HW.CPP_JIT_ENABLED)):
+            elif ((new_calculatuion_method == "CPU_JIT")):
+                if (settings.warning_level == "error"):
+                    raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
+                elif (settings.warning_level == "warn"):
+                    warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
                 self.func_ids_cpu = []
-                self.calculation_method = "CPU_JIT"
-                self._compile_cpp_kernels(self.activation_funcs)
+                self.calculation_method = "CPU_PYTHON"
+                self._compile_py_kernels(self.activation_funcs)
                 self.func_ids = self.func_ids_cpu
             
             elif (new_calculatuion_method == "CPU_PYTHON"):

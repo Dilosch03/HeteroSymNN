@@ -10,6 +10,7 @@ import copy
 import time
 import json
 import zipfile
+from pathlib import Path
 
 from ..Core.Nets.base_classes import BaseNetwork
 from ..Core import losses, optimizers
@@ -513,7 +514,9 @@ class Wrapper():
                     while (os.path.exists(temp + f"_{offset}.symnn")):
                         offset += 1
                     full_path = temp + f"_{offset}.symnn"
-        
+
+            full_path = Path(full_path)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.model.change_device("CPU")
             architecture_config = self.model.get_config()
@@ -566,6 +569,8 @@ class Wrapper():
             npz_ram_buffer = io.BytesIO()
             np.savez_compressed(npz_ram_buffer, **flat_params)
 
+            temp = zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED)
+            temp.close()
 
             with zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
                 

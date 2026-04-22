@@ -170,8 +170,8 @@ class _Settings:
                 warnings.warn(f"{msg} Falling back to CPU.",PerformanceWarning,stacklevel=2)
             method = "CPU_JIT" if CPP_JIT_ENABLED else "CPU_PYTHON"
 
-        if method == "CPU_JIT" and not CPP_JIT_ENABLED:
-            msg = "CPU_JIT requested but C++ compiler is not available."
+        if method == "CPU_JIT":
+            msg = "CPU_JIT requested, but currently is not available."
             if self._warning_level == "error":
                 raise BackendNotAvailableError(msg)
             elif self._warning_level == "warn":

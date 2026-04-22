@@ -8,7 +8,7 @@ HeteroSymNN utilizes a declarative architecture designed for simplicity and extr
 The API provides different levels of abstraction depending on how much granular control you need over the mathematical laws of your network.
 
 1. The Standard MLP (Homogeneous Network)
---------------------------------------
+------------------------------------------
 
 If you just need a standard, high-performance neural network where all hidden layers share the same activation function, use the MLP (Multi-Layer Perceptron) class. This is the simplest builder and mirrors traditional deep learning frameworks.
 
@@ -90,6 +90,7 @@ Notice the variables `a`` and `beta`` in the examples above. You are not forced 
 HeteroSymNN treats these symbolic constants as mutable kernel arguments. This means you can update these hyperparameters dynamically on the fly without triggering a slow C++/CUDA recompilation.
 
 .. code-block:: python
+
     # Update the 'beta' constant for a specific layer/neuron in real-time
     # The framework routes this directly to the compiled C++ kernel memory.
 
