@@ -95,7 +95,7 @@ class _Registry:
         return self._loss_fn_map
     
     @property
-    def optimiers_map(self):
+    def optimizers_map(self):
         """
         Propery to the de dictionary translation for the optimizers. Read-only.
         

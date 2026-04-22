@@ -150,7 +150,7 @@ class BaseLayer:
         return self._CURRENT_DEVICE
     
     @property
-    def inicial_nodes_layer_configs(self)->Sequence[NodeConfig]:
+    def initial_nodes_layer_configs(self)->Sequence[NodeConfig]:
         """
         Property to get the initial layer node configurations used during layer construction.
 
@@ -370,40 +370,40 @@ class BaseLayer:
 
     @property
     def working_parameters(self) -> dict[str, BackendArray]:
-        """Returns the live parameter arrays on the active computational device.
+        """Returns the live, mutable parameter arrays (e.g., weights, biases) currently stored on the active computational device.
 
-            The implementation detiles would be the responsability of the subclasses.
+            These are the actual arrays used and updated during training. The implementation details are the responsibility of the subclasses.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the parameters by name.
+                Dictionary mapping parameter names to their current :type:`~HeteroSymNN.types.BackendArray` objects.
         """
         return {}
 
     @property
     def working_gradients(self) -> dict[str, BackendArray]:
-        """Returns the live gradient arrays on the active computational device.
+        """Returns the live gradient arrays accumulated during the backward pass, stored on the active computational device.
 
-            The implementation detiles would be the responsability of the subclasses.
+            These gradients are directly consumed by Optimizers to update the working parameters. The implementation details are the responsibility of the subclasses.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the parameters gradients by name.
+                Dictionary mapping parameter names to their corresponding gradient :type:`~HeteroSymNN.types.BackendArray` objects.
         """
         return {}
         
     @property
     def working_masks(self) -> dict[str, BackendArray]:
-        """Returns the live sparsity masks on the active computational device.
+        """Returns the live sparsity or structural masks on the active computational device.
 
-            The implementation detiles would be the responsability of the subclasses.
+            These masks define fixed constraints (like inactive connections) that multiply the parameters during forward passes. The implementation details are the responsibility of the subclasses.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the masks of the parameters by name.
+                Dictionary mapping parameter names to their mask :type:`~HeteroSymNN.types.BackendArray` objects.
         """
         return {}
 
@@ -577,12 +577,12 @@ class LinearLayer(BaseLayer):
     
     @property
     def working_parameters(self) -> dict[str, BackendArray]:
-        """Returns the live parameter arrays on the active computational device.
+        """Returns the live, mutable parameter arrays currently stored on the active computational device.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the parameters by name.
+                Dictionary mapping parameter names to their current :type:`~HeteroSymNN.types.BackendArray` objects.
 
                 "weights": :type:`~HeteroSymNN.types.BackendArray`
                 "biases": :type:`~HeteroSymNN.types.BackendArray`
@@ -594,12 +594,12 @@ class LinearLayer(BaseLayer):
 
     @property
     def working_gradients(self) -> dict[str, BackendArray]:
-        """Returns the live gradient arrays on the active computational device.
+        """Returns the live gradient arrays accumulated during the backward pass, stored on the active computational device.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the parameters gradients by name.
+                Dictionary mapping parameter names to their corresponding gradient :type:`~HeteroSymNN.types.BackendArray` objects.
 
                 "weights": :type:`~HeteroSymNN.types.BackendArray`
                 "biases": :type:`~HeteroSymNN.types.BackendArray`
@@ -611,12 +611,12 @@ class LinearLayer(BaseLayer):
         
     @property
     def working_masks(self) -> dict[str, BackendArray]:
-        """Returns the live sparsity masks on the active computational device.
+        """Returns the live sparsity or structural masks on the active computational device.
 
             Return
             ------
             dict[str, :type:`~HeteroSymNN.types.BackendArray`]
-                Dictionary of the masks of the parameters by name.
+                Dictionary mapping parameter names to their mask :type:`~HeteroSymNN.types.BackendArray` objects.
 
                 'weights': :type:`~HeteroSymNN.types.BackendArray`
         """

@@ -259,9 +259,9 @@ class BaseNetwork:
 
         optimizer_config = general_configs['optimizer_config']
         opt_class_name:str = optimizer_config.pop('class_name')
-        if (opt_class_name not in registry_module.optimiers_map):
+        if (opt_class_name not in registry_module.optimizers_map):
             raise LoadingError(f"Unknown optimizer: {opt_class_name}.")
-        optimizer = registry_module.optimiers_map[opt_class_name](**optimizer_config)
+        optimizer = registry_module.optimizers_map[opt_class_name](**optimizer_config)
         
         instance._LOSS_FUNCTION = loss_fn
         instance._UPDATE_METHOD = optimizer
