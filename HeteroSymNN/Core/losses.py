@@ -7,7 +7,8 @@ from ..Backend import hardware as HW
 from ..JIT.compiler import SymbolicJITCompiler
 from ..types import BackendArray
 from ..config import settings
-from ..exceptions import PerformanceWarning,BackendNotAvailableError
+from ..exceptions import BackendNotAvailableWarning
+from ..error_handlers import clean_traceback
 
 
 class Loss:
@@ -112,6 +113,7 @@ class FlexibleLoss(Loss):
     ...        activation="sigmoid",
     ...        loss_function=FlexibleLoss("abs(y_pred - y_true)"))
     """
+    @clean_traceback
     def __init__(self, loss_expression: str = "(y_pred - y_true)**2", constants: dict[str, float] = None,
                  computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         self._loss_expression = loss_expression
@@ -119,20 +121,27 @@ class FlexibleLoss(Loss):
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._GPU_ID = gpu_id
 
-        if (computational_method != None):
-            if ((computational_method == "GPU_CUDA") and not(HW.GPU_ENABLED)):
-                if (settings.warning_level == "error"):
-                    raise BackendNotAvailableError("Tried to use GPU_CUDA but no GPU is available.")
-                elif (settings.warning_level == "warn"):
-                    warnings.warn("Tried to use GPU_CUDA but no GPU is available."+"Trying with CPU_JIT",PerformanceWarning,stacklevel=2)
-                    computational_method = "CPU_JIT"
+        if not(computational_method is None):
+            computational_method = computational_method.upper()
+            try_method = computational_method
+            msg_extra = ""
+            if not(computational_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
+                raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            
+            if (gpu_id == None):
+                gpu_id = self._GPU_ID
 
-            if ((computational_method == "CPU_JIT")and not(HW.CPP_JIT_ENABLED)):
-                if (settings.warning_level == "error"):
-                    raise BackendNotAvailableError("Tried to use CPU_JIT but no C++ compiler is available.")
-                elif (settings.warning_level == "warn"):
-                    warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+            if ((computational_method == "GPU_CUDA") and not(computational_method in settings.available_methods)):
+                msg_extra = ", but no GPU is available."
+                computational_method = "CPU_PYTHON"
+
+            if ((computational_method == "CPU_JIT")):
+                    msg_extra = ", but currently is not available"
                     computational_method = "CPU_PYTHON"
+
+            if (try_method != computational_method):
+                    warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {computational_method} is required",BackendNotAvailableWarning,stacklevel=2)
+
 
             self._COMPUTATIONAL_METHOD = computational_method
 
@@ -261,27 +270,25 @@ class FlexibleLoss(Loss):
             New computational method it was able to be set. In case that there was an error in the recompilation and `HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` is set to false the method that was requested will differ with the returned method.
         """
         new_method = new_method.upper()
+        try_method = new_method
+        msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("Tried to change to a not suported method. Expected GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to use GPU_CUDA but no GPU is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to use GPU_CUDA but no GPU is available."+"Trying with CPU_JIT",PerformanceWarning,stacklevel=2)
-                new_method = "CPU_JIT"
+            msg_extra = ", but no GPU is available."
+            new_method = "CPU_PYTHON"
 
         if ((new_method == "CPU_JIT")):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
-                raise BackendNotAvailableError("Tried to use CPU_JIT but no C++ compiler is available.")
-            elif (settings.warning_level == "warn"):
-                #warnings.warn("Tried to use CPU_JIT but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
-                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                msg_extra = ", but currently is not available"
                 new_method = "CPU_PYTHON"
+
+        if (try_method != new_method):
+                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
+
         
         if (new_method != self._COMPUTATIONAL_METHOD):
             self._COMPUTATIONAL_METHOD = new_method
@@ -290,6 +297,7 @@ class FlexibleLoss(Loss):
             self._COMPUTATIONAL_METHOD = self._compiler._change_method(self._COMPUTATIONAL_METHOD,self._GPU_ID)
         return self._COMPUTATIONAL_METHOD
 
+    @clean_traceback
     def forward(self, y_pred:BackendArray, y_true:BackendArray):
         """
         Forward pass of the loss function.
@@ -310,6 +318,7 @@ class FlexibleLoss(Loss):
         self._compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
         return self._be.mean(loss_vec) 
 
+    @clean_traceback
     def backward(self, y_pred:BackendArray, y_true:BackendArray):
         """
         Backward pass of the loss function.
@@ -329,7 +338,7 @@ class FlexibleLoss(Loss):
         grad_vec = self._be.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         return grad_vec * (2.0 / y_pred.size) 
-
+    
     def get_constants(self)->dict[str,float]:
         """
         Method to get the constants values of the loss function if it has any.
@@ -385,6 +394,7 @@ class MSELoss(FlexibleLoss):
     gpu_id : int, optional
         The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
     """
+    @clean_traceback
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("mse",computational_method=computational_method,gpu_id=gpu_id) 
 
@@ -399,6 +409,7 @@ class MAELoss(FlexibleLoss):
     gpu_id : int, optional
         The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
     """
+    @clean_traceback
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("mae",computational_method=computational_method,gpu_id=gpu_id)
 
@@ -416,6 +427,7 @@ class HuberLoss(FlexibleLoss):
     gpu_id : int, optional
         The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
     """
+    @clean_traceback
     def __init__(self, delta:float=1.0,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         formula = "Piecewise((0.5 * (y_pred - y_true)**2, Abs(y_pred - y_true) <= delta), (delta * (Abs(y_pred - y_true) - 0.5 * delta), True))"
         super().__init__(formula, constants={"delta": delta},computational_method=computational_method,gpu_id=gpu_id)
@@ -431,5 +443,6 @@ class BinaryCrossEntropy(FlexibleLoss):
     gpu_id : int, optional
         The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
     """
+    @clean_traceback
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("bce",computational_method=computational_method,gpu_id=gpu_id)

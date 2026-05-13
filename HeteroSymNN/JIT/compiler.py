@@ -122,10 +122,7 @@ class SymbolicJITCompiler:
             self.func_ids = self.func_ids_gpu
 
         elif (calculation_method == "CPU_JIT"):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+            warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
             self.calculation_method = "CPU_PYTHON"
             self._compile_py_kernels(configs)
 
@@ -135,16 +132,11 @@ class SymbolicJITCompiler:
         else:
             raise ValueError("Calculation Method given isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
-
-    def _get_ccode_from_config(self, func_str: str, constants: dict[str, float]):
+    def _get_ccode_from_config(self, func_str: str, provided_constants: tuple = ()):
         """
         Internal method that parses a string expression into SymPy expressions.
+        Extracts free variables as required constants and returns the base function and derivative.
         """
-        constants = constants or {}
-        
-        # PRO TIP: Replaced `mth.e` and `mth.pi` with `sp.E` and `sp.pi`. 
-        # Using Python float math constants causes SymPy to prematurely calculate 
-        # floating point values, ruining your symbolic derivatives!
         local_dict = {}
         general_constants = {'e': sp.E.evalf(), 'pi': sp.pi.evalf(), 'tau': (2 * sp.pi).evalf(), 'phi': ((1 + sp.sqrt(5)) / 2).evalf()}
         local_dict.update(general_constants)
@@ -153,82 +145,110 @@ class SymbolicJITCompiler:
         for var in self.main_vars:
             local_dict[str(var)] = var
 
-        for_subs = {}
-        sorted_constants = sorted(constants)
-        for id, key in enumerate(sorted_constants):
-            temp = sp.symbols(key)
-            for_subs[temp] = sp.symbols(f"params[offset+{id}]")
-            local_dict[key] = temp
+        # Protect user-provided constants and notoriously problematic SymPy built-ins (like 'beta')
+        # from being parsed as mathematical functions.
+        safe_symbols = list(provided_constants) + ['beta', 'alpha', 'sigma', 'mu']
+        for var_name in safe_symbols:
+            if var_name not in local_dict:
+                local_dict[var_name] = sp.symbols(var_name, real=True)
 
-        # 1. Exact Match Fallback (e.g., user just types "relu" with no arguments)
         if func_str in codegen.COMMON_FORMULAS:
             func_str = codegen.COMMON_FORMULAS[func_str]
 
-        # 2. THE FIX: Create SymPy Callables for nested string parsing
         temp_callables = {}
-        
-        # Extract the exact symbols from local_dict (or create fallbacks)
-        # This ensures we don't accidentally mix a generic `y_pred` with a `y_pred(real=True)`
         y_pred_sym = local_dict.get('y_pred', sp.symbols('y_pred', real=True))
         y_true_sym = local_dict.get('y_true', sp.symbols('y_true', real=True))
         num_sym = local_dict.get('num', sp.symbols('num', real=True))
         
         for key, expr_string in codegen.COMMON_FORMULAS.items():
-            # Parse the base formula string into an expression (e.g., Max(0, num))
             base_expr = sp.parse_expr(expr_string, local_dict=local_dict)
-            
-            # Check variable names as strings to safely handle real=True metadata
             free_sym_names = [str(s) for s in base_expr.free_symbols]
             
-            # Determine if it's a Loss function (uses y_pred/y_true) or Activation (uses num)
             if "y_pred" in free_sym_names or "y_true" in free_sym_names:
-                # Create a lambda that takes two arguments and subs them in
                 temp_callables[key] = lambda pred, true, e=base_expr, yp=y_pred_sym, yt=y_true_sym: e.subs({yp: pred, yt: true})
             else:
-                # Create a lambda that takes one argument and subs it into 'num'
                 temp_callables[key] = lambda val, e=base_expr, n=num_sym: e.subs({n: val})
         
-        # Merge the lambdas into the local parsing dictionary
         local_dict = local_dict | temp_callables
 
-        # 3. Parse the final expression
-        func_expr = sp.parse_expr(func_str, local_dict=local_dict, evaluate=False)
-        func_expr = func_expr.subs(for_subs)
-        free_symb = func_expr.free_symbols
-
-        # 4. Mode-specific Free Variable Validation
-        if self.mode == "activation":
-            x_sym, z_sym = sp.symbols("x z")
-            main_vars_found = []
-            
-            if num_sym in free_symb:
-                main_vars_found.append(num_sym)
-            if (x_sym in free_symb) and not ("z" in constants.keys()):
-                main_vars_found.append(x_sym)
-            if (z_sym in free_symb) and not ("x" in constants.keys()):
-                main_vars_found.append(z_sym)
-
-            if len(main_vars_found) > 1:
-                if settings.warning_level == "error":
-                    raise ValueError(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables. Must have only one.")
-                elif settings.warning_level == "warn":
-                    warnings.warn(f"Function {func_str} has {', '.join([str(x) for x in main_vars_found])} as free variables.", CompilationWarning, stacklevel=4)
-            
-            # Map aliases back to the main activation variable
-            func_expr = func_expr.subs({x_sym: num_sym, z_sym: num_sym})
-            
-        elif self.mode == "loss":
-            # In loss mode, multiple main variables (y_pred and y_true) are expected.
-            # We bypass the "must have only one" restriction entirely.
-            pass
+        constat_sub = []
+        for key in provided_constants:
+            temp = sp.symbols(key, real=True)
+            constat_sub.append(temp)
+            local_dict[key] = temp
         
-        # If the parsed result is a lambda (e.g., user typed just "mse"), unpack main_vars into it
+        
+        # Safely parse the user's string and catch mathematical syntax errors (like "sin * num")
+        try:
+            func_expr = sp.parse_expr(func_str, local_dict=local_dict, evaluate=False)
+        except (TypeError, sp.SympifyError) as e:
+            if "FunctionClass" in str(e) or isinstance(e, sp.SympifyError) or "unsupported operand" in str(e):
+                raise FormulaParsingError(f"Malformed function in '{func_str}'.") from e
+            raise FormulaParsingError(f"Type error while parsing '{func_str}': {e}") from e
+        except SyntaxError as e:
+            raise FormulaParsingError(f"Invalid mathematical syntax in '{func_str}'. Please check your operators and parentheses.") from e
+        except Exception as e:
+            raise FormulaParsingError(f"Failed to parse the formula '{func_str}'. Original error: {e}") from e
+
         if callable(func_expr):
             func_expr = func_expr(*self.main_vars)
 
+        free_symb = func_expr.free_symbols
+        required_constants = set()
+
+        if self.mode == "activation":
+            x_sym, z_sym = sp.symbols("x z")
+            
+            # Alias Resolution: If 'num' isn't explicitly used, check if 'x' or 'z' are meant to be the main variable
+            has_num = num_sym in free_symb
+            if not has_num:
+                if x_sym in free_symb:
+                    func_expr = func_expr.subs(x_sym, num_sym)
+                elif z_sym in free_symb:
+                    func_expr = func_expr.subs(z_sym, num_sym)
+            
+            # Refresh free symbols after alias substitution
+            free_symb = func_expr.free_symbols
+            
+            # Any remaining variable that isn't 'num' or a math constant is a required parameter
+            for sym in free_symb:
+                if sym != num_sym and str(sym) not in general_constants:
+                    required_constants.add(str(sym))
+            
+        elif self.mode == "loss":
+            # For loss, any symbol not y_pred, y_true, or math constants is a required parameter
+            for sym in free_symb:
+                if sym not in self.main_vars and str(sym) not in general_constants:
+                    required_constants.add(str(sym))
+
+        # Because we already substituted aliases for num_sym above, diffing against deriv_target works perfectly
         deriv_expr_subbed = sp.diff(func_expr, self.deriv_target)
 
-        return (func_expr.evalf(), deriv_expr_subbed.evalf())
+        # Evaluate the expressions to force SymPy to resolve delayed structural math (like sqrt(-1) becoming 1.0*I)
+        func_eval = func_expr.evalf()
+        deriv_eval = deriv_expr_subbed.evalf()
+
+        # Check if SymPy failed to resolve the derivative (e.g., unknown custom functions)
+        if deriv_expr_subbed.has(sp.Derivative):
+            raise FormulaParsingError(f"SymPy could not compute the derivative of the formula '{func_str}'. This usually happens with unknown custom functions or non-differentiable operations.")
+
+        # Check for imaginary/complex numbers which C++ float kernels cannot handle
+        if func_eval.has(sp.I) or deriv_eval.has(sp.I) or func_expr.has(sp.I) or deriv_expr_subbed.has(sp.I):
+            raise FormulaParsingError(f"Formula '{func_str}' results in complex/imaginary numbers (e.g., sqrt(-1)), which are not supported by the float32 kernels.")
+
+        # Check for infinities or NaN (e.g., division by zero literal in the formula)
+        if func_eval.has(sp.zoo, sp.oo, sp.nan) or deriv_eval.has(sp.zoo, sp.oo, sp.nan) or func_expr.has(sp.zoo, sp.oo, sp.nan) or deriv_expr_subbed.has(sp.zoo, sp.oo, sp.nan):
+            raise FormulaParsingError(f"Formula '{func_str}' evaluates to an invalid mathematical state (Infinity or NaN). Please check for division by zero.")
+
+        # Apply array fetch substitutions here since we already have the keys
+        for_subs = {}
+        for id, key in enumerate(constat_sub):
+            for_subs[key] = sp.symbols(f"params[offset+{id}]")
+            
+        func_final = func_eval.subs(for_subs)
+        deriv_final = deriv_eval.subs(for_subs)
+
+        return (func_final, deriv_final, required_constants)
 
     
     def _generate_kernel_artifacts(self, configs: list[NodeConfig], 
@@ -236,75 +256,113 @@ class SymbolicJITCompiler:
                                  user_funcs: dict = None, float_regex: re.Pattern = None):
         """
         Internal method that generates the core logic for the kernels, either as C++/CUDA code strings or Python lambdas.
-
-        This method handles the translation from SymPy expressions to the target language and manages 
-        the kernel cache to avoid re-parsing identical expressions.
-
-        Parameters
-        ----------
-        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
-            List of function configurations.
-        target_key : Literal["CPP", "PY", "GPU"]
-            Key suffix for the cache to distinguish between backends.
-        mode : Literal['string', 'lambda']
-            Output format: 'string' for C++/CUDA code, 'lambda' for Python functions.
-        user_funcs : dict, optional
-            Dictionary mapping SymPy functions to target language functions (e.g., {'sin': 'sinf'}).
-        float_regex : re.Pattern, optional
-            Regex to enforce float literals (e.g., 1.0 -> 1.0f) for C++/CUDA.
-
-        Returns
-        -------
-        tuple[str, str] or dict
-            If mode is 'string', returns (forward_cases, backward_cases) strings for a switch statement.
-            If mode is 'lambda', returns a dictionary mapping IDs to (forward_func, backward_func).
         """
-
         unique_funcs = {} 
         compiled_code = {} 
+        parsed_funcs_cache = {} # Cache parsed equations during a single compilation run
+        compilation_errors = [] # Collect errors for a comprehensive report
 
-        for func_str, consts in configs:
-            consts_key = frozenset(consts.items())
-            func_key = (func_str, consts_key, target_key,self.mode)
+        for idx, (func_str, consts) in enumerate(configs):
+            consts = consts or {}
+            consts_keys = tuple(sorted(consts.keys()))
             
-            if not(func_key in unique_funcs):
-                new_id = len(unique_funcs)
-                unique_funcs[func_key] = new_id
-                
-                if ((settings.use_kernel_cache) and (func_key in settings.kernel_cache)):
-                    compiled_code[new_id] = settings.kernel_cache[func_key]
-                else:
-                    # Generar código base
-                    func_expr, deriv_expr = self._get_ccode_from_config(func_str, consts)
+            # The relative offsets depend on the full dictionary provided
+            func_key = (func_str, consts_keys, target_key, self.mode)
+            
+            try:
+                if not(func_key in unique_funcs):
+                    new_id = len(unique_funcs)
                     
-                    if (mode == 'string'):
-                        func_expr = func_expr.rewrite(sp.Piecewise)
-                        deriv_expr = deriv_expr.rewrite(sp.Piecewise)
+                    if ((settings.use_kernel_cache) and (func_key in settings.kernel_cache)):
+                        compiled_code[new_id] = settings.kernel_cache[func_key]
+                        unique_funcs[func_key] = new_id
+                    else:
+                        # 1. Parse ONLY ONCE per unique string + dictionary keys combo
+                        # We pass consts_keys down so 'beta' or custom variables are shielded from SymPy built-ins
+                        parse_cache_key = (func_str, consts_keys)
+                        if parse_cache_key not in parsed_funcs_cache:
+                            parsed_funcs_cache[parse_cache_key] = self._get_ccode_from_config(func_str, consts_keys)
                         
-                        ccode_fwd = sp.printing.ccode(func_expr, user_functions=user_funcs)
-                        ccode_bwd = sp.printing.ccode(deriv_expr, user_functions=user_funcs)
+                        func_expr, deriv_expr, required_constants = parsed_funcs_cache[parse_cache_key]
                         
-                        if float_regex:
-                            ccode_fwd = float_regex.sub(r"\1f", ccode_fwd)
-                            ccode_bwd = float_regex.sub(r"\1f", ccode_bwd)
+                        # 2. Validate that the current neuron provides all required constants for this formula
+                        missing_consts = [c for c in required_constants if c not in consts]
+                        if missing_consts:
+                            raise FormulaParsingError(f"Missing constants detected in formula '{func_str}'. The variables {missing_consts} were found in the equation but not provided in the constants dictionary.")
+
+                        # 2.5 Reserved keyword check & Unused constant warning
+                        reserved_words = {'params', 'offset', 'num', 'y_pred', 'y_true', 'z_val', 'e', 'pi', 'tau', 'phi'}
+                        invalid_keys = [k for k in consts_keys if k in reserved_words]
+                        if invalid_keys:
+                            raise FormulaParsingError(f"Cannot use reserved keywords {invalid_keys} as constant names in formula '{func_str}'. Please rename them.")
+                        
+                        if settings.warning_level != "ignore":
+                            unused_consts = [c for c in consts_keys if c not in required_constants]
+                            if unused_consts:
+                                warnings.warn(f"Node {idx} - Unused constants {unused_consts} provided for formula '{func_str}'. This needlessly consumes memory in the parameter arrays.", CompilationWarning, stacklevel=4)
+
+                        # 3. Generate backend-specific code
+                        try:
+                            if (mode == 'string'):
+                                func_expr = func_expr.rewrite(sp.Piecewise)
+                                deriv_expr = deriv_expr.rewrite(sp.Piecewise)
+                                
+                                ccode_fwd = sp.printing.ccode(func_expr, user_functions=user_funcs)
+                                ccode_bwd = sp.printing.ccode(deriv_expr, user_functions=user_funcs)
+                                
+                                if float_regex:
+                                    ccode_fwd = float_regex.sub(r"\1f", ccode_fwd)
+                                    ccode_bwd = float_regex.sub(r"\1f", ccode_bwd)
+                                    
+                                compiled_code[new_id] = (ccode_fwd, ccode_bwd)
+
+                            elif (mode == 'lambda'):
+                                p_sym = sp.symbols('params')
+                                off_sym = sp.symbols('offset')
+
+                                lambda_args = self.main_vars + [p_sym, off_sym]
+                                ccode_fwd = sp.lambdify(lambda_args, func_expr, 'numpy')
+                                ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
+                                compiled_code[new_id] = (ccode_fwd, ccode_bwd)
+                                try:
+                                    dummy_args = [np.array([0.5], dtype=np.float32) for _ in self.main_vars] + [np.array([0.5]), 0]
+                                    ccode_fwd(*dummy_args)
+                                    ccode_bwd(*dummy_args)
+                                    
+                                except NameError as e:
+                                    # NameError triggers when lambdify leaves an unmapped function name in the executable string.
+                                    match = re.search(r"name '(.*)' is not defined", str(e))
+                                    unsupported = match.group(1) if match else "an unknown/custom function"
+                                    raise FormulaParsingError(
+                                        f"Formula '{func_str}' contains '{unsupported}', which is not natively supported by the 'CPU_PYTHON' (NumPy) backend."
+                                    ) from e
+                                    
+                                except AttributeError as e:
+                                    # AttributeError triggers if SymPy falls back to an object without NumPy array methods.
+                                    raise FormulaParsingError(
+                                        f"Formula '{func_str}' uses an operation that the 'CPU_PYTHON' (NumPy) backend cannot process. Error: {e}"
+                                    ) from e
+                        except Exception as e:
+                            raise FormulaParsingError(f"Failed to generate executable code for '{func_str}'. SymPy found the derivative but cannot translate it to the target backend ({mode}). This usually happens with advanced math functions (like factorial or gamma) that lack direct C++/CUDA equivalents. Original error: {str(e)}") from e
+                        
+                        if (settings.use_kernel_cache):
+                            settings.kernel_cache[func_key] = compiled_code[new_id]
                             
-                        compiled_code[new_id] = (ccode_fwd, ccode_bwd)
+                        # Only map the ID if compilation was 100% successful
+                        unique_funcs[func_key] = new_id
 
-                    elif (mode == 'lambda'):
-                        p_sym = sp.symbols('params')
-                        off_sym = sp.symbols('offset')
-
-                        lambda_args = self.main_vars + [p_sym, off_sym]
-                        ccode_fwd = sp.lambdify(lambda_args, func_expr, 'numpy')
-                        ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
-                        compiled_code[new_id] = (ccode_fwd, ccode_bwd)
+                # Only build the ID list if we haven't encountered any errors yet
+                if not compilation_errors:
+                    self.func_ids_cpu.append(unique_funcs[func_key])
                     
-                    if (settings.use_kernel_cache):
-                        #validar si funciona
-                        settings.kernel_cache[func_key] = compiled_code[new_id]
+            except FormulaParsingError as e:
+                # Catch the error, append to our report, and continue to the next node
+                compilation_errors.append(f"Node {idx}: {str(e)}")
 
-            
-            self.func_ids_cpu.append(unique_funcs[func_key])
+        # Raise the final comprehensive report if any errors were accumulated
+        if compilation_errors:
+            error_report = f"Found {len(compilation_errors)} error(s) during kernel generation:\n" + "\n".join([f"  - {err}" for err in compilation_errors])
+            raise FormulaParsingError(error_report)
         
         if(mode == 'string'):
             fwd_cases = "\n".join([f"        case {fid}: return {code[0]};" for fid, code in compiled_code.items()])
@@ -382,7 +440,7 @@ class SymbolicJITCompiler:
                 try:
                     compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
                     if compile_result.returncode != 0:
-                        raise JITCompilationError(f"C++ JIT compilation failed. {compile_result.stderr}")
+                        raise JITCompilationError(f"C++ JIT compilation failed.\nCompiler Output:\n{compile_result.stderr}\nEnsure your custom formula has valid C++ syntax and MSVC/GCC is installed correctly.")
                 except JITCompilationError:
                     compiler_path = shutil.which(HW.CPP_INSTALLED_COMPILER)
                     try:
@@ -392,7 +450,7 @@ class SymbolicJITCompiler:
                         os.environ['PATH'] = dlls_dir + os.pathsep + os.environ['PATH']
                     compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
                     if compile_result.returncode != 0:
-                        raise JITCompilationError(f"C++ JIT compilation failed. {compile_result.stderr}") 
+                        raise JITCompilationError(f"C++ JIT compilation failed.\nCompiler Output:\n{compile_result.stderr}\nEnsure your custom formula has valid C++ syntax and MSVC/GCC is installed correctly.")
 
             try:
                 lib = ctypes.CDLL(lib_path)
@@ -463,13 +521,8 @@ class SymbolicJITCompiler:
             self.backward_kernel = b_wrapper
 
         except Exception as e:
-            if (settings.warning_level == "error"):
-                raise JITCompilationError("JIT compilation fatal error!") from e
-            elif (settings.warning_level == "warn"):
-                full_warning = f"JIT compilation fatal error! {e} "+"Check if compiler is in the PATH variable."
-                full_warning += " Using 'CPU_PYTHON' backend as fallback."
-                warnings.warn(full_warning,PerformanceWarning,stacklevel=4)
-                self._change_method("CPU_PYTHON") # Fallback
+            full_warning = f"JIT compilation fatal error! {e}\nCheck if compiler is in the PATH variable.\nUsing 'CPU_PYTHON' backend as fallback."
+            warnings.warn(full_warning,PerformanceWarning,stacklevel=4)
 
     def _compile_py_kernels(self,configs:list[NodeConfig]):
         """
@@ -561,15 +614,15 @@ class SymbolicJITCompiler:
             with HW.be.cuda.Device(self.device_id):
                 fwd_k = HW.be.RawKernel(template, kernel_names[0])
                 bwd_k = HW.be.RawKernel(template, kernel_names[1])
+                fwd_k.compile()
+                bwd_k.compile()
         
         except Exception as e:
-            error_message = "JIT compilation fatal error!"
+            error_message = f"CUDA JIT compilation fatal error for {len(configs)} functions (Mode: {self.mode})!"
             if (settings.warning_level == "error"):
                 raise JITCompilationError(error_message) from e
             elif (settings.warning_level == "warn"):
-                full_warning = (error_message + 
-                                e +
-                                " Using the CPU as fallback.")
+                full_warning = f"{error_message}\n{e}\nUsing the CPU as fallback."
                 warnings.warn(full_warning,PerformanceWarning,stacklevel=4)  
                 self._change_method("CPU_JIT")
                 return 

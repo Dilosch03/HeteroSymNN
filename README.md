@@ -1,13 +1,18 @@
 # HeteroSymNN: The Heterogeneous Activation Engine
-A symbolic JIT-Compliled Deep Learning framework for Heterogeneous Neural Networks.
+[![PyPI version](https://badge.fury.io/py/HeteroSymNN.svg)](https://pypi.org/project/HeteroSymNN/)
+[![Python versions](https://img.shields.io/pypi/pyversions/HeteroSymNN.svg)](https://pypi.org/project/HeteroSymNN/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/heterosymnn/badge/?version=latest)](https://heterosymnn.readthedocs.io/en/latest/?badge=latest)
+
+A symbolic JIT-Compiled Deep Learning framework for Heterogeneous Neural Networks.
 
 ## What is it?
 
 HeteroSymNN is a specialized Deep Learning engine built for Neuroevolution, Control Systems, and Scientific Machine Learning.
 
-Unlike standard frameworks (PyTorch, TensorFlow) that optimize for homogeneous layers, HeteroNN uses a Symbolic JIT Compiler to generate fused kernels at runtime. This allows every single neuron in a layer to have a distinct, custom mathematical activation function (e.g., ```sin(x)```, ```tanh(x)```, ```alpha * x + beta```) with zero computational overhead.
+Unlike standard frameworks (PyTorch, TensorFlow) that optimize for homogeneous layers, HeteroNN uses a Symbolic JIT Compiler to generate fused kernels at runtime. This allows every single neuron in a layer to have a distinct, custom mathematical activation function (e.g., ```sin(num)```, ```tanh(num)```, ```alpha * num + beta```) with zero computational overhead.
 
-Good framework for Neuroevolution (NEAT) or Scientific ML projects but not excusive to them.
+Good framework for Neuroevolution (NEAT) or Scientific ML projects but not exclusive to them.
 
 ## Table of Contents
 
@@ -40,28 +45,33 @@ pip install HeteroSymNN[gpu]
 
 HeteroNN follows a Scikit-Learn style API. Here is how to create a "Cocktail Layer" that mixes periodic and linear features.
 
-```sh
-from HeteroSymNN.API.wrappers import Wrapper
-from HeteroSymNN.Core.Nets.dense import Dense
+```python
+from HeteroSymNN.API import Wrapper
+from HeteroSymNN.Core.Nets import Dense
 
 model = Dense(
     nodes_structure=[10, 25, 25, 1],
-    activation_config=["sin(x)", "num", ("tanh(z)*a", {"a": 2})],
-    training_mode="mini-batch",
-    batch_size=32,
-    num_training_iter=200
+    activation_config=["sin(num)", "num", ("tanh(num)*a", {"a": 2.0})]
 )
 
 agent = Wrapper(model, work_type="reg")
-agent.load_training(X_train, y_train)
-agent.run_training(num_iterations=100, batch_size=64)
+agent.fit(X_train, y_train, epochs=100, batch_size=64)
 ```
 
 ## How It Works
 
 HeteroNN acts as a Differentiable Compiler:
 
-1. Parse: It accepts mathematical strings (```"alpha * sin(x)"```) and parses it for compilation using SymPy.
+```mermaid
+flowchart TD
+    A[String Input: 'alpha * sin(num)'] --> B(1. Parse: SymPy AST)
+    B --> C(2. Derive: Symbolic Derivative)
+    C --> D(3. Compile: JIT C++/CUDA)
+    D --> E(4. Fuse: Unified Hardware Kernel)
+    E --> F[BackendArray Execution]
+```
+
+1. Parse: It accepts mathematical strings (```"alpha * sin(num)"```) and parses it for compilation using SymPy.
 
 2. Derive: It automatically calculates the symbolic derivative for backpropagation.
 

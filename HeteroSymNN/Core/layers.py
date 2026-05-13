@@ -8,7 +8,8 @@ from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
 from .initializers import Initializer
 from ..config import settings
-from ..exceptions import LayerConfigurationError,BackendNotAvailableError,PerformanceWarning,HardwareWarning, InvalidDeviceIDError, RuntimeStateError
+from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError
+from ..error_handlers import clean_traceback
 
 class BaseLayer:
     """
@@ -34,6 +35,7 @@ class BaseLayer:
         z:  :type:`HeteroSymnn.types.BackendArray`
             values per neuron of the input of the layer after applying the mask and the biases.
     """
+    @clean_traceback
     def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
         
         self._CALCULATION_MANAGER = settings.default_manager
@@ -59,8 +61,10 @@ class BaseLayer:
             self._funcs_constats,self.param_offsets = self._generate_constant_array(layer_configuration[0])
 
         self.batch_size_change(batch_size)
-
-        self._act_funcions_manager = SymbolicJITCompiler(layer_configuration[0],self._COMPUTATIONAL_METHOD,self._GPU_ID)
+        try:
+            self._act_funcions_manager = SymbolicJITCompiler(layer_configuration[0],self._COMPUTATIONAL_METHOD,self._GPU_ID)
+        except JITError as e:
+            raise LayerConfigurationError(f"Error in layer setup due to a problem during kernel creation: {str(e)}")
 
     @property
     def initializer(self)->Initializer:
@@ -247,7 +251,8 @@ class BaseLayer:
                 raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
             self._GPU_ID = new_id
             self._act_funcions_manager.set_gpu_id(self._GPU_ID)
-                
+    
+    @clean_traceback
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Method to force the layer to use a specific computational method. *WARNING*, this will forece a kernel recompilation.
@@ -265,6 +270,8 @@ class BaseLayer:
             The computational method that was set. This could be different from the requested one if the requested one is not available or encontered an error with out :attr:`~HeteroSymNN.config.settings.warning_level` been set to "error".
         """
         new_method = new_method.upper()
+        try_method = new_method
+        msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
             raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
@@ -272,19 +279,15 @@ class BaseLayer:
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
-                new_method = "CPU_JIT"
+            msg_extra = ", but no GPU is available."
+            new_method = "CPU_PYTHON"
+
         if ((new_method == "CPU_JIT")):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT',but currently is not available.")
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
-                #warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                msg_extra = ", but currently is not available"
                 new_method = "CPU_PYTHON"
+
+        if (try_method != new_method):
+                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
 
         if(new_method != self._COMPUTATIONAL_METHOD):
             self._COMPUTATIONAL_METHOD = self._act_funcions_manager._change_method(new_method,self._GPU_ID)
@@ -322,20 +325,14 @@ class BaseLayer:
         
         new_vector_format = self._CALCULATION_MANAGER.array
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Trying to send the parameters to GPU but no GPU is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Trying to send the parameters to GPU but no GPU is available."+"Using CPU instead.",HardwareWarning,stacklevel=2)
+                warnings.warn("Trying to send the parameters to GPU but no GPU is available."+"Using CPU instead.",BackendNotAvailableWarning,stacklevel=2)
         if (((device == "GPU") and not(HW.GPU_ENABLED)) or (device == "CPU")):
             new_vector_format = self._ASNUMPY
             device = "CPU"
 
         if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to send the parameters to the GPU when the CPU was set as the computational device.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to send the parameters to the GPU when the CPU was set as the computational device."+"Ignoring the request for safety.",HardwareWarning,stacklevel=3)
-                device = "CPU"
+            warnings.warn("Tried to send the parameters to the GPU when the CPU was set as the computational device."+"Data routing is restricted to 'CPU'.",HardwareWarning,stacklevel=3)
+            device = "CPU"
 
         if(device != self._CURRENT_DEVICE):
             self._CURRENT_DEVICE = device

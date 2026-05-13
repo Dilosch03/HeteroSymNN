@@ -29,12 +29,17 @@ API Reference (Base Class)
 Developer Contract: Extending Optimizers
 ----------------------------------------
 
-If you are building a custom optimization algorithm (e.g., a custom variant of Adam or RMSprop), your subclass must inherit from :class:`~HeteroSymNN.Core.optimizers.Optimizer` and fulfill three distinct operational lifecycles to ensure stability within the framework:
+If you are building a custom optimization algorithm (e.g., a custom variant of Adam or RMSprop), your subclass must inherit from :class:`~HeteroSymNN.Core.optimizers.Optimizer` and fulfill the following operational lifecycles to ensure stability within the framework:
+
+.. admonition:: Phase 0: Initialization
+   :class: note
+
+   If you override ``__init__``, you **must** call ``super().__init__(learning_rate, computational_device, device_id)``.
 
 .. admonition:: Phase 1: Gradient Application
    :class: note
 
-   You must override the primary update loop. The framework will pass you the physical layer arrays and their calculated gradients. You must apply your mathematical scaling (e.g., momentum, velocity) and safely update the primary parameter matrices in-place.
+   You must override the primary ``_single_update(self, layer, param_name, param, grad, mask)`` loop. You must read the layer's ``working_gradients``, apply your mathematical scaling (e.g., momentum, velocity), and safely update the primary ``working_parameters`` directly in-place on the active device using the framework's backend execution routing ``self.be``.
 
 .. admonition:: Phase 2: Serialization & State Management
    :class: note

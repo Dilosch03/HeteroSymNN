@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 
 from .Backend.hardware import GPU_ENABLED,CPP_JIT_ENABLED
-from .exceptions import BackendNotAvailableError,PerformanceWarning,PathWarning,PathError
+from .exceptions import BackendNotAvailableError,PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings
 from .Backend import hardware as HW
 
 class _Settings:
@@ -23,6 +23,7 @@ class _Settings:
             "uint8": np.uint8
         }
     def __init__(self):
+        self.debug_mode = False
         self._num_cpu_threads = os.cpu_count()
         self._warning_level = "warn"
         self._use_kernel_cache = True
@@ -43,8 +44,9 @@ class _Settings:
         else:
             self._default_manager = np
             self._default_asnumpy = np.array
-        
-        
+
+        self._warning_level = "default"
+        warnings.simplefilter("default",HeteroSymNNWarnings)      
         self._default_dtype = np.float32
 
     @property
@@ -89,19 +91,23 @@ class _Settings:
         
         Options are:
             *"ignore"*
-            *"warn"*
+            *"always"*
+            *"default"*
+            *"module"*
+            *"once"*
             *"error"*
 
-        Default is "warn".
+        Default is "default".
         """
         return self._warning_level
 
-    def set_warning_level(self, value: Literal["ignore","warn","error"]):
+    def set_warning_level(self, value: Literal["error", "ignore", "always", "default", "module","once"]):
         value = value.lower()
-        if (value in ["ignore","warn","error"]):
+        if (value in ["error", "ignore", "always", "default", "module","once"]):
             self._warning_level = value
+            warnings.simplefilter(value,HeteroSymNNWarnings)   
         else:
-            raise ValueError(f"Invalid warning level: {value}. Must be one of {["ignore","warn","error"]}")
+            raise ValueError(f"Invalid warning level: {value}. Must be one of {["error", "ignore", "always", "default", "module","once"]}")
         
     @property
     def cpu_cache_dir(self) -> Path:
@@ -156,28 +162,23 @@ class _Settings:
         method : {"GPU_CUDA", "CPU_JIT", "CPU_PYTHON"}
             The method to set as default.
         """
-        method = method.upper()
-        valid_methods = ["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
-        
-        if method not in valid_methods:
-            raise ValueError(f"Invalid compute method: {method}. Must be one of {valid_methods}")
+        new_method = method.upper()
+        try_method = new_method
+        msg_extra = ""
+        if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
+            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
-        if method == "GPU_CUDA" and not GPU_ENABLED:
-            msg = "GPU_CUDA requested but GPU is not enabled."
-            if self._warning_level == "error":
-                raise BackendNotAvailableError(msg)
-            elif self._warning_level == "warn":
-                warnings.warn(f"{msg} Falling back to CPU.",PerformanceWarning,stacklevel=2)
-            method = "CPU_JIT" if CPP_JIT_ENABLED else "CPU_PYTHON"
+        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
+            msg_extra = ", but no GPU is available."
+            new_method = "CPU_PYTHON"
 
-        if method == "CPU_JIT":
-            msg = "CPU_JIT requested, but currently is not available."
-            if self._warning_level == "error":
-                raise BackendNotAvailableError(msg)
-            elif self._warning_level == "warn":
-                warnings.warn(f"{msg} Falling back to CPU_PYTHON.",PerformanceWarning,stacklevel=2)
-            method = "CPU_PYTHON"
-            
+        if ((new_method == "CPU_JIT")):
+                msg_extra = ", but currently is not available"
+                new_method = "CPU_PYTHON"
+
+        if (try_method != new_method):
+                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
+
         self._default_compute_method = method
         if (method == "GPU_CUDA"):
             self._default_manager = HW.cp

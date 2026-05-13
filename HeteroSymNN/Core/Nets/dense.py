@@ -6,6 +6,7 @@ from ..layers import LinearLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ...exceptions import NetworkStructureError
+from ...error_handlers import clean_traceback
 
 class HeteroDense(BaseNetwork):
     """
@@ -82,6 +83,7 @@ class HeteroDense(BaseNetwork):
         ... )
         
     """
+    @clean_traceback
     def __init__(self, nodes_structure:list[int], detailed_activations:list[list[NodeConfig]], initial_values: Optional[list[LayerValues]]= None, 
                  initializer: Optional[list[InitC.Initializer]]= None, learning_rate:float = 0.001, batch_size:int = 32, training_mode:str = "mini-batch", 
                  loss_function: Optional[lossC.Loss]= None, optimizer: Optional[OptiC.Optimizer]= None, num_training_iter:int = 1000):
@@ -150,6 +152,7 @@ class Dense(HeteroDense):
         ...     training_mode="mini-batch"
         ... )
     """
+    @clean_traceback
     def __init__(self, nodes_structure: list[int], activation_config: list[FlexibleNodeConfig],initial_values: Optional[list[LayerValues]] = None,initializer: Optional[Union[InitC.Initializer,list[InitC.Initializer]]] = None,
                  learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic", batch_size: int = 32,
                  loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):
@@ -285,6 +288,7 @@ class MLP(Dense):
         ...     training_mode="mini-batch"
         ... )
     """
+    @clean_traceback
     def __init__(self, nodes_structure: list[int], activation: FlexibleNodeConfig = "relu", output_activation: FlexibleNodeConfig = "num",initializer: Optional[InitC.Initializer] = None,
                  learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic",
                  batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):

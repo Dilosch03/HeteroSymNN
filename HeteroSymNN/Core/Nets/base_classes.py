@@ -8,7 +8,8 @@ from ...Backend import hardware as HW
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
 from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
-from ...exceptions import NetworkStructureError, LayerConfigurationError, BackendNotAvailableError, PerformanceWarning, MethodMigrationError, HardwareWarning, ShapeMismatchError, InvalidDeviceIDError,LoadingError
+from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError, InvalidDeviceIDError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning
+from ...error_handlers import clean_traceback
 from ...config import settings
 
 class BaseNetwork:
@@ -89,6 +90,7 @@ class BaseNetwork:
         ... loss_function=custom_loss_func
         ... )       
     """
+    @clean_traceback
     def __init__(self, network_structure: list[tuple[int,type[BaseLayer]]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializers: Optional[list[InitC.Initializer]] = None,
                  learning_rate: float = 0.001,batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch",
                  loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_epochs: int = 1000):
@@ -99,7 +101,7 @@ class BaseNetwork:
         self.num_completed_epochs = 0
 
         if len(network_structure) < 2:
-            raise NetworkStructureError("network_structure most have at least 2 layers (input and output).)")
+            raise NetworkStructureError("network_structure most have at least 2 values (input and output).)")
         
         num_layers = len(network_structure) - 1
         if (len(detailed_activations) != num_layers):
@@ -203,12 +205,15 @@ class BaseNetwork:
             layer_init = self._initializers[i]
 
             layer_config: LayerConstruction = (node_configs, layer_init)
-
-            self._LAYERS.append(layer_class(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID,**extra_param))
+            try:
+                self._LAYERS.append(layer_class(num_inputs, layer_config, self._BATCH_SIZE, self._GPU_ID,**extra_param))
+            except LayerConfigurationError as e:
+                raise LayerConfigurationError(f"Error in Layer {i}: {e}")
 
         self.history_losses = []    
     
     @classmethod
+    @clean_traceback
     def from_config(cls, general_configs: dict[str,Any], registry_module) -> "BaseNetwork":
         """
         Machine Resurrection Method.
@@ -416,6 +421,7 @@ class BaseNetwork:
     def learning_rate(self,new_learning_rate:float):
         self._UPDATE_METHOD.learning_rate = new_learning_rate
 
+    @clean_traceback
     def set_gpu_id(self,new_id:int)->None:
         """
         Method to set a new GPU ID for the network. This will change the device of the network parameters if currently on GPU.
@@ -440,6 +446,7 @@ class BaseNetwork:
             for layer in self._LAYERS:
                 layer.set_gpu_id(new_id)
 
+    @clean_traceback
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->None:
         """
         Change the computational method used by the network. This will also change the device of the network parameters if needed.
@@ -464,26 +471,24 @@ class BaseNetwork:
             When changing computational methods it will force a kernel recompilation for all layers and reallocation of all parameters. Depending on the size of the network this could take a while.
         """
         new_method = new_method.upper()
+        try_method = new_method
+        msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("Tried to change to a not suported method. Expected GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'GPU_CUDA', but no GPU is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'GPU_CUDA', but no GPU is available. tying with CPU_JIT",PerformanceWarning,stacklevel=2)
-                new_method = "CPU_JIT"
+            msg_extra = ", but no GPU is available."
+            new_method = "CPU_PYTHON"
+
         if ((new_method == "CPU_JIT")):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
-                raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but no C++ compiler is available.")
-            elif (settings.warning_level == "warn"):
-                #warnings.warn("Tried to change to use 'CPU_JIT', but no C++ compiler is available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
-                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                msg_extra = ", but currently is not available"
                 new_method = "CPU_PYTHON"
+
+        if (try_method != new_method):
+                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
 
         if(new_method != self._COMPUTATIONAL_METHOD):
                 self._to("CPU")
@@ -508,6 +513,7 @@ class BaseNetwork:
                 if (laye_calc_method != expected):
                     raise MethodMigrationError(f"Couldn't change the computational method due to one or more layers couldn't change. Layer methods list: {laye_calc_method}")
 
+    @clean_traceback
     def to(self,backend:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->None:
         """
         Change the computational method used by the network. This will also change the device of the network parameters if needed.
@@ -538,6 +544,7 @@ class BaseNetwork:
         )
         self._change_COMPUTATIONAL_METHOD(new_method=backend, gpu_id=gpu_id)
 
+    @clean_traceback
     def change_device(self, device:Literal["CPU","GPU"])->None:
         """
         Change location of the network parameters to the specified device.
@@ -548,22 +555,19 @@ class BaseNetwork:
             Device to move the network parameters to.
         """
         device = device.upper()
+        requested_device = device
+        current_method = self._COMPUTATIONAL_METHOD.split("_")[0]
         if not(device in ["CPU","GPU"]):
             raise ValueError("Specify device is not GPU or CPU.")
         
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to change to use 'GPU', but no GPU is available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to change to use 'GPU', but no GPU is available. Using CPU instead.",PerformanceWarning,stacklevel=2)
-                device = "CPU"
+            warnings.warn("Tried to change to use 'GPU', but no GPU is available. CPU is required.",BackendNotAvailableWarning,stacklevel=2)
+            device = "CPU"
 
         if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to chemge the devce to GPU when it was set as computational device the CPU.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to chemge the devce to GPU when it was set as computational device the CPU."+"Ignoring the recuest for security.",HardwareWarning,stacklevel=2)
-                device = "CPU"
+            warnings.warn(f"Tried to send the parameters to the GPU when the CPU was set as the computational device. Data routing is restricted to 'CPU'.",HardwareWarning,stacklevel=2)
+            device = "CPU"
+
         if(device != self._CURRENT_DEVICE):
                 self._CURRENT_DEVICE = device
                 self._to(device)
@@ -618,10 +622,10 @@ class BaseNetwork:
             Error values propagated back to the input layer.
         """
         self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
-        next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
+        self.next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
         
         for layer in reversed(self._LAYERS):
-            next_layer_error_sum = layer.backward(next_layer_error_sum)
+            self.next_layer_error_sum = layer.backward(self.next_layer_error_sum)
 
     def train_step(self, x_input: BackendArray, y_target: BackendArray)->float:
         """
@@ -724,6 +728,7 @@ class BaseNetwork:
 
         return self.history_losses
     
+    @clean_traceback
     def predict(self,input_values:Union[list,list[list]],to_cpu:bool = True)->Union[np.ndarray,BackendArray]:
         """
         Make predictions using the neural network.
@@ -762,7 +767,8 @@ class BaseNetwork:
             return self._ASNUMPY(prediction).T
         
         return prediction
-
+    
+    @clean_traceback
     def get_parameters(self)->dict[Union[str,int],dict[str,np.ndarray]]:
         """
         Get the parameters (weights and biases) of the network.
@@ -774,6 +780,7 @@ class BaseNetwork:
         """
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self._LAYERS)}
 
+    @clean_traceback
     def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]])->None:
         """
         Set the parameters (weights and biases) of the network.
@@ -789,6 +796,7 @@ class BaseNetwork:
                 index = int(key.split("_")[-1])
             self._LAYERS[index].set_parameters(params[key])
 
+    @clean_traceback
     def change_constants(self,new_constants:dict[int,Union[list[ConstantToUpdate],ConstantToUpdate]])->None:
         """
         Change the constants in the activation functions of the network layers.

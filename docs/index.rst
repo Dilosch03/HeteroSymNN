@@ -3,7 +3,7 @@ Welcome to HeteroSymNN
 
 **HeteroSymNN** is a symbolic JIT-Compiled Deep Learning framework designed specifically for Heterogeneous Neural Networks.
 
-Unlike standard deep learning frameworks that optimize for homogeneous layer matrices, HeteroSymNN utilizes a Symbolic JIT Compiler to generate dynamically fused kernels at runtime. This architecture allows for profound mathematical flexibility—from assigning custom symbolic activation functions (e.g., ``sin(x)``, ``tanh(x)``, ``alpha * x + beta``) per layer, all the way down to customizing individual neurons, with **minimal computational overhead**.
+Unlike standard deep learning frameworks that optimize for homogeneous layer matrices, HeteroSymNN utilizes a Symbolic JIT Compiler to generate dynamically fused kernels at runtime. This architecture allows for profound mathematical flexibility—from assigning custom symbolic activation functions (e.g., ``sin(num)``, ``tanh(num)``, ``alpha * num + beta``) per layer, all the way down to customizing individual neurons, with **minimal computational overhead**.
 
 .. note::
    This framework is explicitly tailored for Neuroevolution (NEAT architectures), Advanced Control Systems, and Scientific Machine Learning (SciML) where architectural flexibility supersedes rigid matrix multiplications.
@@ -53,7 +53,7 @@ The Architecture: How It Works
 
 HeteroSymNN operates as a **Differentiable Compiler** rather than a standard tensor operations library. The pipeline consists of four distinct phases:
 
-1. **Parse**: Accepts human-readable mathematical strings (e.g., ``"alpha * sin(x)"``) and parses them into abstract syntax trees using SymPy.
+1. **Parse**: Accepts human-readable mathematical strings (e.g., ``"alpha * sin(num)"``) and parses them into abstract syntax trees using SymPy.
 2. **Derive**: Automatically computes the exact symbolic derivative for backpropagation, eliminating the need for autograd tracking at runtime.
 3. **Compile**: Generates low-level C++ or CUDA code Just-In-Time. 
 4. **Fuse**: Fuses all memory access and execution logic into a single hardware kernel launch, drastically reducing memory bandwidth bottlenecks.

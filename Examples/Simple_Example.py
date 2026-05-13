@@ -1,3 +1,4 @@
+globals().clear()
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -53,5 +54,4 @@ def run_simple_demo():
     plt.legend()
     plt.show()
 
-if __name__ == "__main__":
-    run_simple_demo()
+run_simple_demo()

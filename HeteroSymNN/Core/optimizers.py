@@ -5,9 +5,10 @@ import warnings
 import concurrent.futures
 
 from ..Backend import hardware as HW
-from ..exceptions import PerformanceWarning,BackendNotAvailableError,InvalidDeviceIDError
+from ..exceptions import PerformanceWarning,BackendNotAvailableError,InvalidDeviceIDError,BackendNotAvailableWarning
 from ..config import settings
 from ..types import BackendArray
+from ..error_handlers import clean_traceback
 
 class Optimizer:
     """
@@ -31,13 +32,26 @@ class Optimizer:
         self._thread_pool = None
 
         if (computational_device != None):
-            self.COMPUTATIONAL_DEVICE = computational_device
-            if ((computational_device == "GPU") and not (HW.GPU_ENABLED)):
-                if (settings.warning_level == "error"):
-                    raise BackendNotAvailableError("Trying to define the GPU as the computational device when there is no GPU available.")
-                elif (settings.warning_level == "warn"):
-                    warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
-                    self.COMPUTATIONAL_DEVICE = "CPU"
+            computational_device = computational_device.upper()
+            try_method = computational_device
+            msg_extra = ""
+            if not(computational_device in ["GPU","CPU"]):
+                raise ValueError("Device not recognized. Expecting GPU or CPU.")
+            
+            if (device_id == None):
+                self._GPU_ID = 0
+
+            if ((computational_device == "GPU")):
+                flag = sum([computational_device == method.split("_")[0] for method in settings.available_methods])
+                if (flag == 0):
+                    msg_extra = ", but no GPU is available."
+                    computational_device = "CPU"
+
+            if (try_method != computational_device):
+                    warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {computational_device} is required",BackendNotAvailableWarning,stacklevel=2)
+
+
+            self._computational_device = computational_device
 
             if (self.COMPUTATIONAL_DEVICE == "GPU"):
                 self.be = HW.cp
@@ -519,7 +533,7 @@ class AdamOptimizer(Optimizer):
             m_hat = m_t / (1 - self.t_pow_beta1)
             v_hat = v_t / (1 - self.t_pow_beta2)
             
-            param -= self.learning_rate * m_hat / (self.be.sqrt(v_hat) + self.epsilon)
+            param -= self.learning_rate * (m_hat / (self.be.sqrt(v_hat) + self.epsilon))*mask
 
     def step(self, layers: list):
         """

@@ -30,7 +30,12 @@ API Reference (Base Class)
 Developer Contract: Custom Initializers
 ---------------------------------------
 
-If you are building a custom weight initialization algorithm (e.g., a custom variant of He or Glorot), your subclass must inherit from :class:`~HeteroSymNN.Core.initializers.Initializer` and fulfill the following two operational lifecycles:
+If you are building a custom weight initialization algorithm (e.g., a custom variant of He or Glorot), your subclass must inherit from :class:`~HeteroSymNN.Core.initializers.Initializer` and fulfill the following operational lifecycles:
+
+.. admonition:: Phase 0: Initialization
+   :class: note
+   
+   If you override ``__init__`` to accept custom hyperparameters, you **must** call ``super().__init__()`` to ensure the base initializer properties are correctly set up before the generation phase.
 
 .. admonition:: Phase 1: Generation Logic
    :class: note
@@ -40,7 +45,7 @@ If you are building a custom weight initialization algorithm (e.g., a custom var
    * **``generate_from_distribution(self, shape, fan_in, fan_out)``**: Implement this if your initialization relies on statistical variance scaling (using the incoming/outgoing node counts).
    * **``generate_constant(self, shape, value)``**: Implement this for initializations that require the exact same value across the entire tensor.
    * **``generate_binary_mask(self, shape)``**: Implement this for the creation of topological boolean masks.
-   * *Requirement:* All methods must return a correctly shaped :data:`~HeteroSymNN.types.BackendArray` (cast to the correct floating precision).
+   * *Hardware Rule:* Initializers execute **strictly on the CPU**. All methods must generate and return standard ``np.ndarray`` (NumPy) objects. The calling Layer is responsible for pushing these arrays to the active device as ``BackendArray`` structures.
 
 .. admonition:: Phase 2: Serialization 
    :class: note

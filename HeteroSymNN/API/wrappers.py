@@ -16,8 +16,10 @@ from ..Core.Nets.base_classes import BaseNetwork
 from ..Core import losses, optimizers
 from . import data_transformers, registries
 from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,WrapperError,SavingError
+from ..error_handlers import apply_clean_tracebacks
 from ..config import settings
 
+@apply_clean_tracebacks
 class Wrapper():
     """
     A high-level wrapper for managing the lifecycle of a :class:`~HeteroSymNN.Core.Nets.BaseNetwork` or subclass of :class:`~HeteroSymNN.Core.Nets.BaseNetwork`
@@ -87,16 +89,10 @@ class Wrapper():
             
             expected_x = new_model.layers[0].num_inputs
             if X_norm.ndim == 2 and X_norm.shape[1] != expected_x:
-                if (settings.warning_level=="error"):
-                    raise ShapeMismatchError(f"The model new is expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.")
-                elif(settings.warning_level == "warn"):
-                    warnings.warn(f"The model new is expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.",ShapeMismatchError,stacklevel=2)
+                warnings.warn(f"The model new is expecting {expected_x} features, but the loaded data has {X_norm.shape[1]} features.",ShapeMismatchError,stacklevel=2)
             expected_y = new_model.layers[-1].num_nodes
             if Y_norm.ndim == 2 and Y_norm.shape[1] != expected_y:
-                if (settings.warning_level=="error"):
-                    raise ShapeMismatchError(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.")
-                elif(settings.warning_level == "warn"):
-                    warnings.warn(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.",ShapeMismatchError,stacklevel=2)
+                warnings.warn(f"The model new is expecting {expected_y} features, but the loaded data has {Y_norm.shape[1]} targets.",ShapeMismatchError,stacklevel=2)
             
     @property
     def input_transformer(self)->Union[data_transformers.DataTransformer, None]:
@@ -180,42 +176,28 @@ class Wrapper():
         Y_raw = np.array(expected_results)
         
         if X_raw.ndim == 1:
-            if (settings.warning_level=="error"):
-                raise ShapeMismatchError("The shape of the inputs are 1D.")
-            elif(settings.warning_level == "warn"):
-                warnings.warn("The shape of the inputs are 1D. Resheaping it to (num features, 1).",ShapeWarning,stacklevel=2)
-                X_raw = X_raw.reshape(-1, 1)
+            warnings.warn("The shape of the inputs are 1D. Resheaping it to (num samples, 1).",ShapeWarning,stacklevel=2)
+            X_raw = X_raw.reshape(-1, 1)
             
         if Y_raw.ndim == 1:
-            if (settings.warning_level=="error"):
-                raise ShapeMismatchError("The shape of the outputs are 1D.")
-            elif(settings.warning_level == "warn"):
-                warnings.warn("The shape of the outputs are 1D. Resheaping it to (num targets, 1).",ShapeWarning,stacklevel=2)
-                Y_raw = Y_raw.reshape(-1, 1)
+            warnings.warn("The shape of the outputs are 1D. Resheaping it to (num samples, 1).",ShapeWarning,stacklevel=2)
+            Y_raw = Y_raw.reshape(-1, 1)
         
         if (self._model != None):
             expected_x_features = self.model.layers[0].num_inputs
             if X_raw.ndim == 2 and X_raw.shape[1] != expected_x_features:
-                if X_raw.shape[0] == expected_x_features:
-                    if (settings.warning_level=="error"):
-                        raise ShapeMismatchError(f"The input data looks to be in the format (features, samples).")
-                    elif(settings.warning_level == "warn"):
-                        warnings.warn("The input data looks to be in the format (features, samples).Transposing to (samples, features).",ShapeWarning,stacklevel=2)
-                        X_raw = X_raw.T
-                else:
-                    raise ShapeMismatchError(f"The shape of the inputs are {X_raw.shape}, but the model expects {expected_x_features} features.")
+                raise ShapeMismatchError(
+                    f"Input matrix orientation mismatch. Network expects {expected_x_features} features, "
+                    f"but got {X_raw.shape[1]}."
+                )
 
             expected_y_features = self.model.layers[-1].num_nodes      
             if Y_raw.ndim == 2 and Y_raw.shape[1] != expected_y_features:
-                if Y_raw.shape[0] == expected_y_features:
-                    if (settings.warning_level=="error"):
-                        raise ShapeMismatchError("The output data looks to be in the format (outputs, samples).")
-                    elif(settings.warning_level == "warn"):
-                        warnings.warn("The output data looks to be in the format (outputs, samples).Transposing to (samples, outputs).",ShapeWarning,stacklevel=2)
-                        Y_raw = Y_raw.T 
-                else:
-                    raise ShapeMismatchError(f"The shape of the outputs are {Y_raw.shape}, but the model expects {expected_y_features} outputs.")
+                raise ShapeMismatchError(f"Target shape mismatch. The network's final layer is configured to output {expected_y_features} values, but the target data (y) provides {Y_raw.shape[1]} values. Ensure y is shaped (n_samples, {expected_y_features})")
             
+        if (X_raw.shape[0] != Y_raw.shape[0]):
+            raise ShapeMismatchError(f"Sample count mismatch. The training features (X) contain {X_raw.shape[0]} samples, but the training targets (y) contain {Y_raw.shape[0]} samples. Both matrices must have an identical number of rows.")
+        
         self.training_data = (X_raw, Y_raw)
         X_norm = X_raw
 

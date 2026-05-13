@@ -2,6 +2,7 @@ import numpy as np
 from typing import Any
 
 from ..exceptions import RuntimeStateError
+from ..error_handlers import clean_traceback
 
 class DataTransformer:
     """
@@ -168,10 +169,12 @@ class MinMaxScaler(DataTransformer):
         self._max = np.max(data)
         super().fit(data)
 
+    @clean_traceback
     def transform(self, data:np.ndarray)->np.ndarray:
         super().transform(data)
         return (data - self._min) / (self._max - self._min)
 
+    @clean_traceback
     def inverse_transform(self, data:np.ndarray)->np.ndarray:
         super().inverse_transform(data)
         return data * (self._max - self._min) + self._min

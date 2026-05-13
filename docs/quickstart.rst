@@ -25,7 +25,7 @@ If you just need a standard, high-performance neural network where all hidden la
     )
 
     # Wrap the model for Scikit-Learn style training
-    agent = Wrapper(model, work_type="reg") # "reg" for Regressixon
+    agent = Wrapper(model, work_type="reg") # "reg" for Regression
 
     # Train instantly
     agent.fit(X_train, y_train, epochs=100)
@@ -82,10 +82,10 @@ To achieve this granular control, use the node-level configuration arrays:
         detailed_activations=[hidden_activations, output_activations]
     )
 
-1. Zero-Recompile Tuning (Dynamic Constants)
+4. Zero-Recompile Tuning (Dynamic Constants)
 --------------------------------------------
 
-Notice the variables `a`` and `beta`` in the examples above. You are not forced to hard-code numerical constraints in your strings.
+Notice the variables ``a`` and ``beta`` in the examples above. You are not forced to hard-code numerical constraints in your strings.
 
 HeteroSymNN treats these symbolic constants as mutable kernel arguments. This means you can update these hyperparameters dynamically on the fly without triggering a slow C++/CUDA recompilation.
 
@@ -99,3 +99,24 @@ HeteroSymNN treats these symbolic constants as mutable kernel arguments. This me
     hetero_model.update_constant({0: (2, "beta", -0.9)})
 
 This feature is exceptionally powerful for hyperparameter grid searching or Evolutionary Algorithms, where constants must mutate thousands of times per second.
+
+5. Saving & Loading Custom Models (The Registry)
+------------------------------------------------
+
+HeteroSymNN allows you to easily serialize your wrapped models to disk. 
+
+However, if you extended the framework by building a **custom class** (e.g., a custom Loss function or custom Layer) and used it in your model, you **must register the class pointer** before loading the model back from disk. This teaches the deserializer how to rebuild your custom architecture.
+
+.. code-block:: python
+
+    from HeteroSymNN.API import Wrapper
+    from HeteroSymNN.API.registries import registry
+    from my_custom_code import MyCustomLoss
+
+    # 1. Register your custom class pointer (NOT an instance!) BEFORE loading
+    registry.add_loss_func(MyCustomLoss)
+
+    # 2. Safely load the model that was trained with MyCustomLoss
+    loaded_agent = Wrapper.load("my_custom_model.symnn")
+
+The `registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
