@@ -13,14 +13,13 @@ Upcoming: v0.4.0 (Security & Persistence)
 -----------------------------------------
 * **Lexical Analyzer & Global Registry**: Moving constant extraction and string expansion into the ``SymbolicJITCompiler``.
 
-  * Implementing the Global Function Registry (``settings.register_shortcut()``) for alias expansion before SymPy compilation.
+  * Implementing the Global Function Registry (``settings.register_funtions()``) for alias expansion before SymPy compilation.
 
 * **API Quality of Life** (SSOT Enforcement):
 
   * Deprecating ``training_mode`` and strictly enforcing ``batch_size`` as the Single Source of Truth.
   * Deprecating the ``num_nodes`` parameter in ``HeteroDense`` and inferring it dynamically from ``len(detailed_activations)``.
   * Converting magic routing strings (like ``"GPU_CUDA"``) into strict String-Enums to enable IDE autocomplete and prevent typos.
-  * Adding the ``available_computational_methods`` property to ``GlobalSettings``.
 
 * **Asynchronous Data Bus**: Building the ``DatasetStreamer`` to feed the GPU in chunks without overflowing CPU RAM.
 * **JIT Compiler Evolution**: Implementing AST Safeguards and Dynamic Loop Unrolling for recursive math.
@@ -28,8 +27,8 @@ Upcoming: v0.4.0 (Security & Persistence)
   * Making a modular architecture for expansion of capabilities.
 
 * **Modular Evaluation**: Moving the metrics calculations out of the wrappers and making them into their own modular methods.
-* **Internal Normalization**: Adding BatchNorm and LayerNorm natively into the JIT pipeline to prevent exploding gradients in deeper topologies.
-* **Memory Orchestrators**: Advanced automated RAM/VRAM paging.
+* **Internal Normalization**: Adding internal layer normalization methods for numerical stability.
+* **Memory Orchestrators**: Advanced automated RAM/VRAM paging and methods for clearing temporary memory.
 * **Heterogeneous Optimizers**: Adding the ability to set per-neuron the type of optimizer that is going to be used to update it.
 * **Heterogeneous Initializer**: Adding the ability to set different initializer functions depending on the data type being requested.
 * **Hierarchical Scope Resolution (4-Tier Constants):** Implementing a strict 4-tier scope resolution pipeline for the Lexical Analyzer to gracefully handle variables during Symbolic JIT compilation and reduction of possible ram/vram usage.
@@ -38,6 +37,10 @@ Upcoming: v0.4.0 (Security & Persistence)
   * **Tier 2 - Global (Network-Wide):** Universal hyperparameters shared across the entire network.
   * **Tier 3 - Environment (Per-Layer):** Layer hyperparameter constant that will be shared for all neurons in the layer.
   * **Tier 4 - Per-Node (Current):** Current Implementation of the Dynamic constants.
+  
+* **Evaluation Suite:** Classes to get tendencies metrics of how an architecture is performing across multiple instances.
+* **Constants Tuner:** Method or function to find the best values of the dynamic constant in the network.
+* **Expansion of classes:** Adding more types of initializers, optimizers, losses and data transformers.
   
 Upcoming: v0.5.0 (Backend Optimization)
 ----------------------------------------
@@ -52,6 +55,7 @@ Upcoming: v0.6.0 (Advanced Topologies & Hardware Control)
 * **Recurrent Networks (RNNs):** Implementing Backpropagation Through Time (BPTT) math natively on the Heavy Forge (C++ JIT) to verify gradients perfectly.
 * **Internal Normalization:** Adding BatchNorm and LayerNorm natively into the JIT pipeline to prevent exploding gradients in deeper topologies.
 * **The Memory Orchestrator:** Advanced automated RAM/VRAM paging.
+* **Extrenal compatibility:** Adding functions and wrappers for compatibility of the networks with other frameworks.
 
 Upcoming: v0.7.0 (Dual-Engine Architecture)
 --------------------------------------------

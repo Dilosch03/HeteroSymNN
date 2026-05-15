@@ -33,7 +33,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 
 * **AI & Documentation Integrations:**
 
-  * Added ``LLMs.rst`` (LLM Context File) to provide a strict dependency and architectural map for AI code assistants interacting with the framework.
+  * Added ``LLMs_coding.rst`` and ``LLMs_dev.rst`` (LLM Context files) to provide a strict dependency and architectural map for AI code assistants interacting with the framework.
   * Massive extensions to the Sphinx documentation suite, including quickstarts, module-specific API breakdowns, and robust autoclass mock object typing in ``types.py``.
 
 **Changed / Refactored**
