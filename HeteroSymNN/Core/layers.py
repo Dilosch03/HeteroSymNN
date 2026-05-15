@@ -11,6 +11,8 @@ from ..config import settings
 from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError
 from ..error_handlers import clean_traceback
 
+__all__ = ["BaseLayer", "LinearLayer"]
+
 class BaseLayer:
     """
         Base layer class for all layer types.
@@ -445,7 +447,7 @@ class BaseLayer:
         new_values: Union[list[:type:`~HeteroSymNN.types.ConstantToUpdate`], :type:`~HeteroSymNN.types.ConstantToUpdate`]
             New value or list of new values to set. Each value is a tuple containing the node index, the constant name, and the new value.
         """
-        if (type(new_values[0]) == int):
+        if (isinstance(new_values[0], (int, np.integer))):
             new_values = [new_values]
         
         for value in new_values:

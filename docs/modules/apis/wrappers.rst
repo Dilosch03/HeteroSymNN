@@ -18,7 +18,7 @@ Use the ``Wrapper`` class for all day-to-day model training, evaluation, and dat
 .. code-block:: python
 
     from HeteroSymNN.Core.Nets import Dense
-    from HeteroSymNN.API.wrappers import Wrapper
+    from HeteroSymNN.API import Wrapper
 
     # 1. Define your raw engine
     model = Dense(nodes_structure=[10, 25, 1], activation_config=["sin(num)", "num"])
@@ -50,21 +50,23 @@ Because HeteroSymNN treats mathematical constants (like ``alpha`` or ``beta``) a
 
 .. code-block:: python
 
-    from HeteroSymNN.API.wrappers import GridSearchManager
-    from HeteroSymNN.Core.optimizers import Adam, SGD
+    from HeteroSymNN.API import GridSearchManager
+    from HeteroSymNN.Core.optimizers import AdamOptimizer, SgdOptimizer
 
     # 1. Define the parameter grid to test
     param_grid = {
         'learning_rate': [0.01, 0.001],
         'batch_size': [32, 64],
-        'optimizer': [Adam(), SGD()]
+        'optimizer': [AdamOptimizer(), SgdOptimizer()]
     }
 
     # 2. Initialize the search across the wrapped model
-    searcher = GridSearchManager(agent, param_grid)
+    searcher = GridSearchManager(agent, param_grid, validation_split=0.2)
     
     # 3. Execute the search and return the best performing wrapper
-    best_agent, best_params = searcher.search(X_train, y_train, metric_to_optimize="r2")
+    searcher.load_data(X_train, y_train)
+    best_agent, best_params, results = searcher.execute_search(metric_to_optimize="R2")
+
 
 .. autoclass:: HeteroSymNN.API.wrappers.GridSearchManager
    :members:

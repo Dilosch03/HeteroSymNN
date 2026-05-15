@@ -19,6 +19,21 @@ from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,
 from ..error_handlers import apply_clean_tracebacks
 from ..config import settings
 
+__all__ = ["Wrapper", "GridSearchManager"]
+
+class _NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that converts numpy types to native Python types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)
+
 @apply_clean_tracebacks
 class Wrapper():
     """
@@ -375,7 +390,8 @@ class Wrapper():
             evals["TPR"] = results_compare["correc_pos"] / (results_compare["correc_pos"] + results_compare["false_neg"])
         except ZeroDivisionError: pass
         try:
-            evals["F1"] = 2 * evals["Press"] * evals["TPR"] / (evals["Press"] + evals["TPR"])
+            if (evals["Press"] >= 0 and evals["TPR"] >= 0):
+                evals["F1"] = 2 * evals["Press"] * evals["TPR"] / (evals["Press"] + evals["TPR"])
         except ZeroDivisionError: pass
 
         return (evals, results_compare)
@@ -473,6 +489,9 @@ class Wrapper():
         if (model_name is None):
             model_name = self.model_name
         
+        if  (path.startswith("/")):
+            path = os.path.join(os.getcwd(), path)
+        
         is_directory = os.path.isdir(path) or path.endswith("/") or path.endswith(os.sep)
 
         if is_directory:
@@ -556,7 +575,7 @@ class Wrapper():
 
             with zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
                 
-                archive.writestr("config.json", json.dumps(config_to_save, indent=4))
+                archive.writestr("config.json", json.dumps(config_to_save, indent=4, cls=_NumpyEncoder))
                 archive.writestr("weights.npz", npz_ram_buffer.getvalue())
 
             return full_path
@@ -582,13 +601,13 @@ class Wrapper():
         """
         model,input_transformer,output_transformer,metadata = self._extract_symnn_archive(path)
         self._model = model
-        self._input_transformer = input_transformer,
+        self._input_transformer = input_transformer
         self._output_transformer = output_transformer
         self.model_name = metadata.get('model_name')
         self.work_type = metadata.get('work_type')
         
     @classmethod
-    def load(cls, path: str) -> "Wrapper":
+    def load_model(cls, path: str) -> "Wrapper":
         """
         Creates a brand new Wrapper and populates it directly from a .symnn archive.
         
@@ -785,7 +804,25 @@ class GridSearchManager:
         Wrapper
             Fresh wrapper with the mutated configuration.
         """
-        base_config = self.template_wrapper.get_config()
+        self.template_wrapper.model.change_device("CPU")
+        architecture_config = self.template_wrapper.model.get_config()
+
+        base_config = {
+            'architecture': architecture_config,
+            'metadata': {
+                'model_class': self.template_wrapper.model.__class__.__name__,
+                'work_type': self.template_wrapper.work_type,
+                'input_transformer': self.template_wrapper.input_transformer.__class__.__name__ if self.template_wrapper.input_transformer else None,
+                'output_transformer': self.template_wrapper.output_transformer.__class__.__name__ if self.template_wrapper.output_transformer else None,
+            },
+            'transformation_configs': {},
+            'optimizer_config': self.template_wrapper.model._UPDATE_METHOD.get_config(),
+        }
+        if self.template_wrapper.input_transformer is not None:
+            base_config['transformation_configs']['inputs'] = self.template_wrapper.input_transformer.get_config()
+        if self.template_wrapper.output_transformer is not None:
+            base_config['transformation_configs']['outputs'] = self.template_wrapper.output_transformer.get_config()
+
         mutated = copy.deepcopy(base_config)
         
         for k, v in new_config.items():

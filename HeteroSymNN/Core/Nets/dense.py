@@ -1,12 +1,14 @@
 from __future__ import annotations
 from typing import Optional,Literal,Union
 
-from ...types import NodeConfig,LayerValues,FlexibleNodeConfig,NodeConfig
+from ...types import NodeConfig,LayerValues,FlexibleNodeConfig
 from ..layers import LinearLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ...exceptions import NetworkStructureError
 from ...error_handlers import clean_traceback
+
+__all__ = ["HeteroDense", "Dense", "MLP"]
 
 class HeteroDense(BaseNetwork):
     """

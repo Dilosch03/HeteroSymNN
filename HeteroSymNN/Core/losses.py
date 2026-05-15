@@ -10,6 +10,11 @@ from ..config import settings
 from ..exceptions import BackendNotAvailableWarning
 from ..error_handlers import clean_traceback
 
+__all__ = [
+    "Loss", "FlexibleLoss",
+    "MSELoss", "MAELoss", "HuberLoss", "BinaryCrossEntropy",
+]
+
 
 class Loss:
     """
@@ -120,6 +125,8 @@ class FlexibleLoss(Loss):
         self._constants = constants or {}
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._GPU_ID = gpu_id
+        self._be = settings.default_manager
+        self._asnumpy = settings.default_asnumpy
 
         if not(computational_method is None):
             computational_method = computational_method.upper()
@@ -142,6 +149,12 @@ class FlexibleLoss(Loss):
             if (try_method != computational_method):
                     warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {computational_method} is required",BackendNotAvailableWarning,stacklevel=2)
 
+            if (computational_method == "GPU_CUDA"):
+                self._be = HW.cp
+                self._asnumpy = HW.cp.asnumpy
+            else:
+                self._be = np
+                self._asnumpy = np.array
 
             self._COMPUTATIONAL_METHOD = computational_method
 
@@ -153,19 +166,6 @@ class FlexibleLoss(Loss):
             device_id=self._GPU_ID, 
             mode="loss"
         )
-
-    @property
-    def _be(self):
-        """
-        Internal property to get the computational manager used (CuPy or Numpy).
-        
-        Returns
-        -------
-        CuPy or Numpy module
-        """
-        if (("GPU" in self._COMPUTATIONAL_METHOD) and HW.GPU_ENABLED):
-            return HW.cp
-        return np
     
     @property
     def LOSS_EXPRESSION(self)->str:
@@ -293,8 +293,18 @@ class FlexibleLoss(Loss):
         if (new_method != self._COMPUTATIONAL_METHOD):
             self._COMPUTATIONAL_METHOD = new_method
             self._GPU_ID = gpu_id
-
+            temp = self._asnumpy(self.arr_constants)
+            
             self._COMPUTATIONAL_METHOD = self._compiler._change_method(self._COMPUTATIONAL_METHOD,self._GPU_ID)
+            if (self._COMPUTATIONAL_METHOD == "GPU_CUDA"):
+                self._asnumpy = HW.cp.asnumpy
+                self._be = HW.cp
+            else:
+                self._asnumpy = np.array
+                self._be = np
+
+            self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
+
         return self._COMPUTATIONAL_METHOD
 
     @clean_traceback

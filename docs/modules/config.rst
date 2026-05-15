@@ -26,19 +26,19 @@ You can interact directly with the ``settings`` object or use the module-level h
 
 .. code-block:: python
 
-    from HeteroSymNN import config
+    from HeteroSymNN import settings
 
     # 1. Hardware Forcing
     # Force the engine to bypass the JIT compiler and use standard Python/NumPy
-    config.settings.set_default_compute_method("CPU_PYTHON")
+    settings.set_default_compute_method("CPU_PYTHON")
 
-    # 2. Thread Management
-    # Limit the framework to exactly 4 CPU threads
-    config.settings.n_jobs = 4
+    # 2. Warning Management
+    # How warnings are treated.
+    settings.set_warning_level("error")
 
     # 3. Cache Management
     # Clear all compiled C++ and CUDA binaries from the local disk cache
-    config.clear_kernel_cache(cache_type="ALL")
+    settings.clear_kernel_cache(cache_type="ALL")
 
 API Reference
 -------------

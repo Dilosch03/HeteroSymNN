@@ -66,9 +66,9 @@ def run_symbolic_demo():
     # so that the input passes directly into the activation function unaltered.
     layer0 = model.layers[0]
     layer_params = {
-        '_weights': np.eye(1000, dtype=np.float32),
-        '_biases': np.zeros((1, 1000), dtype=np.float32),
-        '_connection_mask': np.ones((1000, 1000), dtype=np.float32)
+        'weights': np.eye(1000, dtype=np.float32),
+        'biases': np.zeros((1, 1000), dtype=np.float32),
+        'connection_mask': np.ones((1000, 1000), dtype=np.float32)
     }
     layer0.set_parameters(layer_params)
 

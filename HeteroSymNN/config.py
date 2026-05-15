@@ -10,6 +10,8 @@ from .Backend.hardware import GPU_ENABLED,CPP_JIT_ENABLED
 from .exceptions import BackendNotAvailableError,PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings
 from .Backend import hardware as HW
 
+__all__ = ["settings"]
+
 class _Settings:
     
     """
@@ -74,13 +76,10 @@ class _Settings:
         """
         return self._num_cpu_threads
     
-    n_jobs.setter
+    @n_jobs.setter
     def n_jobs(self, value: int):
         if (value > os.cpu_count()):
-            if (self._warning_level == "error"):
-                raise ValueError("Tried to use more threads than available.")
-            elif (self._warning_level == "warn"):
-                warnings.warn("Tried to use more threads than available. Using all available threads")
+            warnings.warn("Tried to use more threads than available. Using all available threads",PerformanceWarning,stacklevel=3)
         self._num_cpu_threads = value
 
     
@@ -179,8 +178,8 @@ class _Settings:
         if (try_method != new_method):
                 warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
 
-        self._default_compute_method = method
-        if (method == "GPU_CUDA"):
+        self._default_compute_method = new_method
+        if (new_method == "GPU_CUDA"):
             self._default_manager = HW.cp
             self._default_asnumpy = HW.cp.asnumpy
         else:
@@ -305,10 +304,5 @@ class _Settings:
                     
                 except Exception as e:
                     warnings.warn(f"Failed to move some cache files: {e}. New cache is active but might be empty.",PathWarning,stacklevel=2)
-
-        
         
 settings = _Settings()
-
-clear_kernel_cache = settings.clear_kernel_cache
-set_precision = settings.set_precision

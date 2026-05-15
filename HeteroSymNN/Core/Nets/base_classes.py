@@ -12,6 +12,8 @@ from ...exceptions import NetworkStructureError, LayerConfigurationError, Method
 from ...error_handlers import clean_traceback
 from ...config import settings
 
+__all__ = ["BaseNetwork"]
+
 class BaseNetwork:
     """
         Base class of all networks with customizable architecture, activation functions, and training parameters.
@@ -256,17 +258,17 @@ class BaseNetwork:
         
 
         loss_fn_config = architecture_config['loss_config']
-        loss_class_name:str = loss_fn_config.pop('class_name')
+        loss_class_name:str = loss_fn_config['class_name']
         if loss_class_name not in registry_module.loss_fn_map:
             raise LoadingError(f"Unknown loss function: {loss_class_name}.")
-        loss_fn = registry_module.loss_fn_map[loss_class_name](**loss_fn_config) 
+        loss_fn = registry_module.loss_fn_map[loss_class_name](**{k: v for k, v in loss_fn_config.items() if k != 'class_name'}) 
         
 
         optimizer_config = general_configs['optimizer_config']
-        opt_class_name:str = optimizer_config.pop('class_name')
+        opt_class_name:str = optimizer_config['class_name']
         if (opt_class_name not in registry_module.optimizers_map):
             raise LoadingError(f"Unknown optimizer: {opt_class_name}.")
-        optimizer = registry_module.optimizers_map[opt_class_name](**optimizer_config)
+        optimizer = registry_module.optimizers_map[opt_class_name](**{k: v for k, v in optimizer_config.items() if k != 'class_name'})
         
         instance._LOSS_FUNCTION = loss_fn
         instance._UPDATE_METHOD = optimizer
@@ -792,6 +794,7 @@ class BaseNetwork:
         """
         self.change_device("CPU")
         for key in params:
+            index = key
             if (type(key) != int):
                 index = int(key.split("_")[-1])
             self._LAYERS[index].set_parameters(params[key])

@@ -29,13 +29,13 @@ Instead of manually configuring Python's native warnings module, HeteroSymNN pro
     from HeteroSymNN import config
 
     # Escalate all HeteroSymNN warnings to fatal exceptions to catch silent bottlenecks
-    config.settings.warning_level = "error"
+    config.settings.set_warning_level("error")
 
     # Completely silence all framework warnings for clean production logs
-    config.settings.warning_level = "ignore"
+    config.settings.set_warning_level("ignore")
     
     # Revert to the default behavior (print warnings to console)
-    config.settings.warning_level = "warn"
+    config.settings.set_warning_level("default")
 
 Code Example: Safe Fallbacks
 ----------------------------

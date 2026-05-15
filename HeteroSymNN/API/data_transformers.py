@@ -4,6 +4,8 @@ from typing import Any
 from ..exceptions import RuntimeStateError
 from ..error_handlers import clean_traceback
 
+__all__ = ["DataTransformer", "MinMaxScaler", "StandardScaler"]
+
 class DataTransformer:
     """
     Base class for data transformations.
@@ -172,7 +174,11 @@ class MinMaxScaler(DataTransformer):
     @clean_traceback
     def transform(self, data:np.ndarray)->np.ndarray:
         super().transform(data)
-        return (data - self._min) / (self._max - self._min)
+        range_val = self._max - self._min
+        if np.any(range_val == 0):
+            with np.errstate(invalid='ignore', divide='ignore'):
+                return np.where(range_val == 0, 0.0, (data - self._min) / range_val)
+        return (data - self._min) / range_val
 
     @clean_traceback
     def inverse_transform(self, data:np.ndarray)->np.ndarray:
@@ -204,3 +210,127 @@ class MinMaxScaler(DataTransformer):
         super().set_config(config)
         self._min = config["min"]
         self._max = config["max"]
+
+class StandardScaler(DataTransformer):
+    """
+    Transformer class that standardizes data by removing the mean and scaling to unit variance.
+
+    Applies the z-score normalization formula per feature (column):
+
+    .. math::
+        z = \\frac{x - \\mu}{\\sigma}
+
+    where :math:`\\mu` is the mean and :math:`\\sigma` is the standard deviation
+    computed from the training data.
+
+    This is equivalent to ``sklearn.preprocessing.StandardScaler``.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._mean = None
+        self._std = None
+
+    @property
+    def mean(self)->np.ndarray:
+        """
+        Property to get the per-feature mean computed during fitting.
+
+        Returns
+        -------
+        np.ndarray or None
+        """
+        return self._mean
+    
+    @property
+    def std(self)->np.ndarray:
+        """
+        Property to get the per-feature standard deviation computed during fitting.
+
+        Returns
+        -------
+        np.ndarray or None
+        """
+        return self._std
+    
+    def fit(self, data:np.ndarray)->None:
+        """
+        Computes the mean and standard deviation per feature from the training data.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to extract the mean and standard deviation of. 
+            Shape should be ``(n_samples,)`` or ``(n_samples, n_features)``.
+        """
+        self._mean = np.mean(data, axis=0)
+        self._std = np.std(data, axis=0)
+        super().fit(data)
+
+    @clean_traceback
+    def transform(self, data:np.ndarray)->np.ndarray:
+        """
+        Standardizes data using the fitted mean and standard deviation.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to transform.
+        
+        Returns
+        -------
+        np.ndarray
+            Standardized data with zero mean and unit variance.
+        """
+        super().transform(data)
+        if np.any(self._std == 0):
+            with np.errstate(invalid='ignore', divide='ignore'):
+                return np.where(self._std == 0, 0.0, (data - self._mean) / self._std)
+        return (data - self._mean) / self._std
+
+    @clean_traceback
+    def inverse_transform(self, data:np.ndarray)->np.ndarray:
+        """
+        Reverses the standardization, recovering the original scale.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Standardized data to inverse-transform.
+        
+        Returns
+        -------
+        np.ndarray
+            Data in the original scale.
+        """
+        super().inverse_transform(data)
+        return data * self._std + self._mean
+    
+    def get_config(self)->dict[str, Any]:
+        """
+        Method to get the configuration of the instance.
+        
+        Returns
+        -------
+        dict[str, Any]
+            Mean and standard deviation values of the instance.
+        """
+        config = super().get_config()
+        config.update({
+            "mean": self._mean.tolist() if self._mean is not None else None,
+            "std": self._std.tolist() if self._std is not None else None,
+        })
+        return config
+    
+    def set_config(self, config:dict[str, Any])->None:
+        """
+        Method to set the configuration of the instance.
+        
+        Parameters
+        ----------
+        config : dict[str, Any]
+            Mean and standard deviation values of the instance.
+        """
+        super().set_config(config)
+        self._mean = np.array(config["mean"]) if config["mean"] is not None else None
+        self._std = np.array(config["std"]) if config["std"] is not None else None

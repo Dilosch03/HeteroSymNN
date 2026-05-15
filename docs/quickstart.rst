@@ -64,17 +64,17 @@ To achieve this granular control, use the node-level configuration arrays:
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets.dense import HeteroDense
+    from HeteroSymNN.Core.Nets import HeteroDense
     # Define a small network: 2 inputs, a hidden layer with 3 neurons, 1 output
     # We explicitly define the math for each of the 3 hidden neurons:
     hidden_activations = [
-        ["sin(num)",{}],                        # Neuron type 1: Periodic sine wave
-        ["Max(0, num)",{}],                     # Neuron type 2: Standard ReLU
-        ["exp(num * beta)", {"beta": -0.5}]    # Neuron type 3: Parameterized Exponential
+        ("sin(num)",{}),                        # Neuron type 1: Periodic sine wave
+        ("Max(0, num)", {}),                     # Neuron type 2: Standard ReLU
+        ("exp(num * beta)", {"beta": -0.5})    # Neuron type 3: Parameterized Exponential
     ]*4
 
     # The output layer (1 neuron) uses a standard linear activation
-    output_activations = [["num",{}]]
+    output_activations = [("num", {})]
 
     # Construct the fully heterogeneous network
     hetero_model = HeteroDense(
@@ -96,7 +96,7 @@ HeteroSymNN treats these symbolic constants as mutable kernel arguments. This me
 
     # Example: Update the 'beta' parameter we defined in the HeteroDense model
     # Format: {Layer_Index: list or single of (Node_Index, Constant_Name, New_Value))}
-    hetero_model.update_constant({0: (2, "beta", -0.9)})
+    hetero_model.change_constants({0: (2, "beta", -0.9)})
 
 This feature is exceptionally powerful for hyperparameter grid searching or Evolutionary Algorithms, where constants must mutate thousands of times per second.
 
@@ -109,14 +109,13 @@ However, if you extended the framework by building a **custom class** (e.g., a c
 
 .. code-block:: python
 
-    from HeteroSymNN.API import Wrapper
-    from HeteroSymNN.API.registries import registry
+    from HeteroSymNN.API import Wrapper, registry
     from my_custom_code import MyCustomLoss
 
     # 1. Register your custom class pointer (NOT an instance!) BEFORE loading
     registry.add_loss_func(MyCustomLoss)
 
     # 2. Safely load the model that was trained with MyCustomLoss
-    loaded_agent = Wrapper.load("my_custom_model.symnn")
+    loaded_agent = Wrapper.load_model("my_custom_model.symnn")
 
 The `registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.

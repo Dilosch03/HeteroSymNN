@@ -7,6 +7,8 @@ from ..Core import losses, optimizers,initializers,layers, Nets
 from . import data_transformers
 from ..exceptions import DataTypeError
 
+__all__ = ["registry", "_Registry"]
+
 class _Registry:
     """
     Class to manage the dictionaries for the loading of saved models.
@@ -245,16 +247,16 @@ class _Registry:
         
         Parameters
         ----------
-        custom_data_transformer : type[utilities.DataTransformer]
+        custom_data_transformer : type[data_transformers.DataTransformer]
             Class object of the new class.
 
         Raises
         ------
         :obj:`~HeteroSymNN.exceptions.DataTypeError`
-            If the given class is not a sub class of the base Data Transformer class (utilities.DataTransformer).
+            If the given class is not a sub class of the base Data Transformer class (data_transformers.DataTransformer).
         """
         if not(issubclass(custom_data_transformer,data_transformers.DataTransformer)):
-            raise DataTypeError("The class that was given is not a child of the base data transformer class (utilities.DataTransformer).")
-        self._net_map[custom_data_transformer.__name__] = custom_data_transformer
+            raise DataTypeError("The class that was given is not a child of the base data transformer class (data_transformers.DataTransformer).")
+        self._transformers_map[custom_data_transformer.__name__] = custom_data_transformer
 
 registry = _Registry()

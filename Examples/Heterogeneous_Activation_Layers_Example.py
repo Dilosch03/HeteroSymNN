@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from HeteroSymNN.Core.Nets.dense import HeteroDense
 from HeteroSymNN.Backend import hardware as HW
 
@@ -36,7 +37,7 @@ def run_mixed_activation_demo():
         model._change_COMPUTATIONAL_METHOD("CPU_JIT")
         print("✅ Compiled mixed C++ kernel.")
 
-    print("\n-> Testing Neuron Behavior (Input = 2.0)...")
+    print("\n-> Testing Neuron Behavior with range of inputs...")
     
     layer0 = model.layers[0]
     
@@ -53,27 +54,38 @@ def run_mixed_activation_demo():
         for i in range(5):
             layer0._weights[i, i] = 1.0
 
-    test_input = np.full((1, 10), 2.0).astype(np.float32)
+    # Generate a range of inputs from -5 to 5
+    x_vals = np.linspace(-5, 5, 100).astype(np.float32)
+    # We need to test the 5 active neurons. So we copy x_vals into 5 columns
+    # and pad the rest to 10 (since layer has 10 inputs)
+    test_input = np.zeros((100, 10), dtype=np.float32)
+    for i in range(5):
+        test_input[:, i] = x_vals
     
     print("-> Running Layer 0 Forward...")
     if HW.GPU_ENABLED:
         import cupy as cp
         gpu_in = cp.array(test_input.T)
         gpu_out = layer0.forward(gpu_in)
-        activations = cp.asnumpy(gpu_out).flatten()
+        activations = cp.asnumpy(gpu_out) # Shape should be (10, 100) or similar
     else:
         out = layer0.forward(test_input.T)
-        activations = out.flatten()
-
-    print(f"\nInput Value: 2.0")
-    print("-" * 30)
-    print(f"Neuron 0 (ReLU):    {activations[0]:.4f}  (Expected: 2.0)")
-    print(f"Neuron 1 (Sigmoid): {activations[1]:.4f}  (Expected: {1/(1+np.exp(-2)):.4f})")
-    print(f"Neuron 2 (Cos):     {activations[2]:.4f}  (Expected: {np.cos(2):.4f})")
-    print(f"Neuron 3 (Swish):   {activations[3]:.4f}  (Expected: {2/(1+np.exp(-2)):.4f})")
-    print(f"Neuron 4 (Square):  {activations[4]:.4f}  (Expected: 4.0)")
-    print("-" * 30)
+        activations = out
+        
+    print("-> Plotting results...")
+    plt.figure(figsize=(12, 8))
     
+    labels = ["Neuron 0: ReLU", "Neuron 1: Sigmoid", "Neuron 2: Cosine", "Neuron 3: Swish", "Neuron 4: Square (x^2)"]
+    for i in range(5):
+        plt.plot(x_vals, activations[i, :], label=labels[i], linewidth=2)
+        
+    plt.title("Heterogeneous Layer Forward Pass (1 Layer, 5 Functions)")
+    plt.xlabel("Input Value")
+    plt.ylabel("Neuron Output")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
     print("\n✅ DEMO COMPLETE: The single kernel executed 5 different math functions in parallel.")
 
 if __name__ == "__main__":

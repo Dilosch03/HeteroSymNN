@@ -43,10 +43,11 @@ If you wish to contribute to the framework or run the bleeding-edge version, you
 Verifying Your Backend
 ----------------------
 
-Once installed, you can quickly verify which hardware backend HeteroSymNN has selected by checking the configuration matrix:
+Once installed, you can quickly verify which hardware backend HeteroSymNN has selected and all the available options by checking the settings:
 
 .. code-block:: python
 
-    from HeteroSymNN import config
+    from HeteroSymNN import settings
 
-    print(config.settings.default_compute_method})
+    print(settings.available_methods)
+    print(settings.default_compute_method)

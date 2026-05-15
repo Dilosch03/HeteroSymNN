@@ -10,6 +10,8 @@ from ..config import settings
 from ..types import BackendArray
 from ..error_handlers import clean_traceback
 
+__all__ = ["Optimizer", "SgdOptimizer", "AdamOptimizer"]
+
 class Optimizer:
     """
     Base class for all optimizers.
@@ -51,7 +53,7 @@ class Optimizer:
                     warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {computational_device} is required",BackendNotAvailableWarning,stacklevel=2)
 
 
-            self._computational_device = computational_device
+            self.COMPUTATIONAL_DEVICE = computational_device
 
             if (self.COMPUTATIONAL_DEVICE == "GPU"):
                 self.be = HW.cp
@@ -98,11 +100,8 @@ class Optimizer:
             raise ValueError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU") and (not(HW.GPU_ENABLED))):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Trying to define the GPU as the computational device when there is no GPU available.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"Using the CPU as fallback.",PerformanceWarning,stacklevel=3)
-                device = "CPU"
+            warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"CPU is required.",PerformanceWarning,stacklevel=3)
+            device = "CPU"
         
         if (self.COMPUTATIONAL_DEVICE != device):
             self.COMPUTATIONAL_DEVICE = device
@@ -147,15 +146,12 @@ class Optimizer:
             raise ValueError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU")and(self.COMPUTATIONAL_DEVICE == "CPU")):
-            if (settings.warning_level == "error"):
-                raise BackendNotAvailableError("Tried to send the paramters to the GPU when the CPU was set as the computational device.")
-            elif (settings.warning_level == "warn"):
-                warnings.warn("Tried to send the paramters to the GPU when the CPU was set as the computational device."+"Using the CPU as fallback for safety.",PerformanceWarning,stacklevel=3)
-                device = "CPU"
+            warnings.warn("Tried to send the paramters to the GPU when the CPU was set as the computational device."+"CPU is required.",PerformanceWarning,stacklevel=3)
+            device = "CPU"
 
         if (device != self.CURRENT_DEVICE):
             self.CURRENT_DEVICE = device
-            
+                
             if device == "GPU":
                 with HW.be.cuda.Device(self.DEVICE_ID):
                     self._refresh_parameters(self.be.array)

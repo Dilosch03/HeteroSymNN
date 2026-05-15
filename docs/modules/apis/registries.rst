@@ -48,7 +48,7 @@ API Reference
    * ``registry._layers_map``: Available layer structures.
 
 .. autoclass:: _Registry
-   :members: add_net, add_data_transformer
+   :members: add_net, add_data_transformer,add_loss_func,add_optimizer,add_initializer,add_layer
    :undoc-members:
 
    .. note::

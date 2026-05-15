@@ -5,6 +5,11 @@ import warnings
 
 from ..exceptions import HardwareWarning
 
+__all__ = [
+    "GPU_ENABLED", "NUM_GPUS", "CPP_JIT_ENABLED", "NUM_CPU_THREADS",
+    "be", "cp", "asnumpy", "CPP_INSTALLED_COMPILER",
+]
+
 GPU_ENABLED = False
 be = np
 asnumpy = np.array 
@@ -12,6 +17,7 @@ NUM_GPUS = 0
 cp = None
 CPP_JIT_ENABLED = False
 NUM_CPU_THREADS = os.cpu_count()
+CPP_INSTALLED_COMPILER = None
 
 try: 
     import cupy
@@ -23,7 +29,7 @@ try:
         GPU_ENABLED = True
         asnumpy = cp.asnumpy
 except Exception as e:
-    warnings.warn("Cupy not installed. Training would be done in the CPU")
+    warnings.warn("There was a problem with the loading of CuPy and training will be done in the CPU.",HardwareWarning,stacklevel=2)
 
 def _check_cpp_compiler()->bool:
     """

@@ -1,5 +1,11 @@
 from string import Template
 
+__all__ = [
+    "CUDA_USER_FUNCS", "CPP_USER_FUNCS", "COMMON_FORMULAS",
+    "CUDA_KERNEL_TEMPLATE_ACTIVATION", "CUDA_KERNEL_TEMPLATE_LOSS",
+    "CPP_KERNEL_TEMPLATE_ACTIVATION", "CPP_KERNEL_TEMPLATE_LOSS",
+]
+
 CUDA_USER_FUNCS = {
     # Funciones básicas
     "exp": "expf",

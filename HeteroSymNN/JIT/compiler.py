@@ -14,8 +14,10 @@ import hashlib
 from ..Backend import hardware as HW
 from . import codegen
 from ..types import NodeConfig
-from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,InvalidDeviceIDError,BackendNotAvailableError
+from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,BackendNotAvailableError
 from ..config import settings
+
+__all__ = ["SymbolicJITCompiler"]
 
 
 class SymbolicJITCompiler:
@@ -118,8 +120,6 @@ class SymbolicJITCompiler:
                 raise InvalidDeviceIDError(f"ID given ({device_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
             self._compile_cuda_kernels(configs)
             
-            self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
-            self.func_ids = self.func_ids_gpu
 
         elif (calculation_method == "CPU_JIT"):
             warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
@@ -161,7 +161,11 @@ class SymbolicJITCompiler:
         num_sym = local_dict.get('num', sp.symbols('num', real=True))
         
         for key, expr_string in codegen.COMMON_FORMULAS.items():
-            base_expr = sp.parse_expr(expr_string, local_dict=local_dict)
+            try:
+                base_expr = sp.parse_expr(expr_string, local_dict=local_dict)
+            except Exception as e:
+                warnings.warn(f"Error parsing expression for key '{key}': {e}")
+                continue
             free_sym_names = [str(s) for s in base_expr.free_symbols]
             
             if "y_pred" in free_sym_names or "y_true" in free_sym_names:
@@ -436,12 +440,9 @@ class SymbolicJITCompiler:
             if not (os.path.exists(lib_path)):
                 with open(src_path, 'w') as f:
                     f.write(cpp_template)
-                
-                try:
-                    compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
-                    if compile_result.returncode != 0:
-                        raise JITCompilationError(f"C++ JIT compilation failed.\nCompiler Output:\n{compile_result.stderr}\nEnsure your custom formula has valid C++ syntax and MSVC/GCC is installed correctly.")
-                except JITCompilationError:
+
+                compile_result = subprocess.run(compile_cmd, check=False, capture_output=True, text=True)
+                if compile_result.returncode != 0:
                     compiler_path = shutil.which(HW.CPP_INSTALLED_COMPILER)
                     try:
                         dlls_dir = os.path.dirname(compiler_path)
@@ -619,13 +620,10 @@ class SymbolicJITCompiler:
         
         except Exception as e:
             error_message = f"CUDA JIT compilation fatal error for {len(configs)} functions (Mode: {self.mode})!"
-            if (settings.warning_level == "error"):
-                raise JITCompilationError(error_message) from e
-            elif (settings.warning_level == "warn"):
-                full_warning = f"{error_message}\n{e}\nUsing the CPU as fallback."
-                warnings.warn(full_warning,PerformanceWarning,stacklevel=4)  
-                self._change_method("CPU_JIT")
-                return 
+            full_warning = f"{error_message}\n{e}\nCPU is required."
+            warnings.warn(full_warning,PerformanceWarning,stacklevel=4)  
+            self._change_method("CPU_PYTHON")
+            return 
 
         # Wrappers
         if self.mode == "activation":
@@ -651,10 +649,12 @@ class SymbolicJITCompiler:
 
         self.forward_kernel = f_k_wrapper
         self.backward_kernel = b_k_wrapper
+        self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
+        self.func_ids = self.func_ids_gpu
             
         
 
-    def _change_method(self,new_calculatuion_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int):
+    def _change_method(self,new_calculatuion_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
         """
         Internal method to change the calculation backend.
 
@@ -675,6 +675,8 @@ class SymbolicJITCompiler:
         new_calculatuion_method = new_calculatuion_method.upper()
         if(new_calculatuion_method != self.calculation_method):
             if ((new_calculatuion_method == "GPU_CUDA") and (HW.GPU_ENABLED)):
+                if (gpu_id is None):
+                    gpu_id = self.device_id
                 if (gpu_id >= HW.NUM_GPUS):
                     raise InvalidDeviceIDError(f"ID given ({gpu_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
                 self.device_id = gpu_id
@@ -685,10 +687,7 @@ class SymbolicJITCompiler:
                 self.func_ids = self.func_ids_gpu
                     
             elif ((new_calculatuion_method == "CPU_JIT")):
-                if (settings.warning_level == "error"):
-                    raise BackendNotAvailableError("Tried to change to use 'CPU_JIT', but currently is not available.")
-                elif (settings.warning_level == "warn"):
-                    warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
+                warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"CPU_PYTHON is required.",PerformanceWarning,stacklevel=4)
                 self.func_ids_cpu = []
                 self.calculation_method = "CPU_PYTHON"
                 self._compile_py_kernels(self.activation_funcs)
@@ -719,6 +718,7 @@ class SymbolicJITCompiler:
         if (new_id != self.device_id):
             self.device_id = new_id
             if (self.calculation_method == "GPU_CUDA"):
+                self.func_ids_cpu = []
                 self._compile_cuda_kernels(self.activation_funcs)
                 self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
                 self.func_ids = self.func_ids_gpu
