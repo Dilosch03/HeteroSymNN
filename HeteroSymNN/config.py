@@ -6,8 +6,8 @@ import shutil
 import warnings
 import numpy as np
 
-from .Backend.hardware import GPU_ENABLED,CPP_JIT_ENABLED
-from .exceptions import BackendNotAvailableError,PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings
+from .Backend.hardware import GPU_ENABLED
+from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning
 from .Backend import hardware as HW
 
 __all__ = ["settings"]

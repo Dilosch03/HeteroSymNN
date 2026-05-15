@@ -5,10 +5,9 @@ import warnings
 import concurrent.futures
 
 from ..Backend import hardware as HW
-from ..exceptions import PerformanceWarning,BackendNotAvailableError,InvalidDeviceIDError,BackendNotAvailableWarning
+from ..exceptions import PerformanceWarning,InvalidDeviceIDError,BackendNotAvailableWarning
 from ..config import settings
 from ..types import BackendArray
-from ..error_handlers import clean_traceback
 
 __all__ = ["Optimizer", "SgdOptimizer", "AdamOptimizer"]
 

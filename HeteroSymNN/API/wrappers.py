@@ -17,7 +17,6 @@ from ..Core import losses, optimizers
 from . import data_transformers, registries
 from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,WrapperError,SavingError
 from ..error_handlers import apply_clean_tracebacks
-from ..config import settings
 
 __all__ = ["Wrapper", "GridSearchManager"]
 
