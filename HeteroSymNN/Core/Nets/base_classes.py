@@ -101,6 +101,7 @@ class BaseNetwork:
         self._ASNUMPY = settings.default_asnumpy
         self.num_completed_train_iterations = 0
         self.num_completed_epochs = 0
+        self._input_gradient = None
 
         if len(network_structure) < 2:
             raise NetworkStructureError("network_structure most have at least 2 values (input and output).)")
@@ -302,6 +303,17 @@ class BaseNetwork:
             instance._LAYERS.append(rebuilt_layer)
             
         return instance
+    
+    @property
+    def input_gradient(self)->np.ndarray:
+        """
+        Property to get the input gradient of the network. Read-only.
+        
+        Returns
+        -------
+        np.ndarray
+        """
+        return self._ASNUMPY(self._input_gradient)
     
     @property
     def layers(self)->Sequence[BaseLayer]:
@@ -624,11 +636,13 @@ class BaseNetwork:
             Error values propagated back to the input layer.
         """
         self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
-        self.next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
+        next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
         
         for layer in reversed(self._LAYERS):
-            self.next_layer_error_sum = layer.backward(self.next_layer_error_sum)
-
+            next_layer_error_sum = layer.backward(self.next_layer_error_sum)
+        self._input_gradient = next_layer_error_sum
+        return next_layer_error_sum
+    
     def train_step(self, x_input: BackendArray, y_target: BackendArray)->float:
         """
         Perform a single training step (forward pass, loss computation, backward pass, and parameter update).

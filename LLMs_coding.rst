@@ -83,6 +83,10 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 - `inverse_transform(data: np.ndarray) -> np.ndarray`
 - `get_config() -> dict[str, float]`
 - `set_config(config: dict[str, float]) -> None`
+
+*Available PreprocessingTransformers:*
+    - `MinMaxScaler`
+    - `StandardScaler`
 </transformers_api>
 
 <optimizers_api>
