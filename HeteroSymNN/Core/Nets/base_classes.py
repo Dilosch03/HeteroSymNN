@@ -639,7 +639,7 @@ class BaseNetwork:
         next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
         
         for layer in reversed(self._LAYERS):
-            next_layer_error_sum = layer.backward(self.next_layer_error_sum)
+            next_layer_error_sum = layer.backward(next_layer_error_sum)
         self._input_gradient = next_layer_error_sum
         return next_layer_error_sum
     
