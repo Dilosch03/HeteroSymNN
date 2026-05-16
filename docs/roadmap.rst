@@ -56,6 +56,7 @@ Upcoming: v0.6.0 (Advanced Topologies & Hardware Control)
 * **Internal Normalization:** Adding BatchNorm and LayerNorm natively into the JIT pipeline to prevent exploding gradients in deeper topologies.
 * **The Memory Orchestrator:** Advanced automated RAM/VRAM paging.
 * **Extrenal compatibility:** Adding functions and wrappers for compatibility of the networks with other frameworks.
+* **Learnable constants:** Adding the ability for the optimizers to tweak the value of the dynamic constants.
 
 Upcoming: v0.7.0 (Dual-Engine Architecture)
 --------------------------------------------
