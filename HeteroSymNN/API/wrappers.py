@@ -417,18 +417,12 @@ class Wrapper():
             raise ShapeMismatchError(f"The expected results are not in the expected shape, Resived {expected_results.shape} and expected {results.shape}.")
 
         mean = np.mean(expected_results)
-        rss = 0
-        ssr = 0
-        mae = 0
-        mape = 0
-        
-        for i in range(len(results)):
-            rss += (expected_results[i] - results[i])**2
-            ssr += (results[i] - mean)**2
-            mae += abs(expected_results[i] - results[i]) 
-            try:
-                mape += abs((expected_results[i] - results[i]) / expected_results[i])
-            except ZeroDivisionError: pass
+        rss = np.sum((expected_results - results)**2)
+        ssr = np.sum((results- mean)**2)
+        mae = np.sum(np.abs(expected_results - results))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mape_array = np.where(expected_results != 0,np.abs((expected_results - results) / expected_results),0)
+            mape = np.sum(mape_array)
 
         if (np.isnan(mape)):
             mape = 0

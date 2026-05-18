@@ -14,7 +14,7 @@ Additionally, a fifth internal benchmark is included to demonstrate the framewor
 
 Testing Environment
 --------------------
-The tests were conducted on a Windows WSL2 environment (Ubuntu), utilizing an Intel Core i9-13900HX CPU and an NVIDIA RTX 4060 Laptop GPU (8GB VRAM) running CUDA 13.x.
+The tests were conducted on Windows WSL2 environment (Ubuntu), utilizing an Intel Core i9-13900HX CPU and an NVIDIA RTX 4060 Laptop GPU (8GB VRAM) running CUDA 13.x.
 
 Each scenario was executed three times in isolation. We report the mean and standard deviation to eliminate potential OS background noise and thermal throttling artifacts.
 

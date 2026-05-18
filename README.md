@@ -8,11 +8,11 @@ A symbolic JIT-Compiled Deep Learning framework for Heterogeneous Neural Network
 
 ## What is it?
 
-HeteroSymNN is a specialized Deep Learning engine built for Neuroevolution, Control Systems, and Scientific Machine Learning.
+HeteroSymNN is a specialized Deep Learning engine built Control Systems and Scientific Machine Learning.
 
-Unlike standard frameworks (PyTorch, TensorFlow) that optimize for homogeneous layers, HeteroSymNN uses a Symbolic JIT Compiler to generate fused kernels at runtime. This allows every single neuron in a layer to have a distinct, custom mathematical activation function (e.g., ```sin(num)```, ```tanh(num)```, ```alpha * num + beta```) with zero computational overhead.
+Unlike standard frameworks (PyTorch, TensorFlow) that optimize for homogeneous layers, HeteroSymNN uses a Symbolic JIT Compiler to generate fused kernels at runtime. This allows every single neuron in a layer to have a distinct, custom mathematical activation function (e.g., ```sin(num)```, ```tanh(num)```, ```alpha * num + beta```) with minimal computational overhead.
 
-Good framework for Neuroevolution (NEAT) or Scientific ML projects but not exclusive to them.
+Good framework for Neuroevolution (`In planing stages`)  or Scientific ML projects but not exclusive to them.
 
 ## Table of Contents
 
@@ -80,10 +80,10 @@ model = HeteroDense(
 
 ## Key Features
 
-### 🔬 Per-Neuron Heterogeneity
+### Per-Neuron Heterogeneity
 Assign a unique mathematical activation to every single neuron. The JIT compiler fuses all distinct instructions into a single kernel launch.
 
-### ⚡ Zero-Recompile Tuning
+### Zero-Recompile Tuning
 Symbolic constants (like `alpha`, `beta`) are treated as mutable kernel arguments. Update them dynamically without triggering C++/CUDA recompilation:
 
 ```python
@@ -91,7 +91,7 @@ Symbolic constants (like `alpha`, `beta`) are treated as mutable kernel argument
 model.change_constants({0: [(2, "beta", -0.9)]})
 ```
 
-### 💾 Save & Load Models
+### Save & Load Models
 Serialize your entire model (architecture, weights, optimizer state, and scaler config) into a portable `.symnn` archive:
 
 ```python
@@ -102,7 +102,7 @@ agent.save_model("my_model.symnn")
 loaded_agent = Wrapper.load_model("my_model.symnn")
 ```
 
-### 🔍 Hyperparameter Grid Search
+### Hyperparameter Grid Search
 Automatically clone and test different configurations to find the optimal model:
 
 ```python

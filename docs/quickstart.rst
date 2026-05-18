@@ -118,4 +118,4 @@ However, if you extended the framework by building a **custom class** (e.g., a c
     # 2. Safely load the model that was trained with MyCustomLoss
     loaded_agent = Wrapper.load_model("my_custom_model.symnn")
 
-The `registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
+The `:class:~HeteroSymNN.API.registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
