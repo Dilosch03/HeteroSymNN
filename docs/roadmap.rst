@@ -57,6 +57,7 @@ Upcoming: v0.6.0 (Advanced Topologies & Hardware Control)
 * **The Memory Orchestrator:** Advanced automated RAM/VRAM paging.
 * **Extrenal compatibility:** Adding functions and wrappers for compatibility of the networks with other frameworks.
 * **Learnable constants:** Adding the ability for the optimizers to tweak the value of the dynamic constants.
+* **MoELayer:** Adding a new layer type that uses a Mixture of Experts architecture.
 
 Upcoming: v0.7.0 (Dual-Engine Architecture)
 --------------------------------------------
@@ -70,6 +71,8 @@ Future: v0.8.0+
   * *Buffer and Flush Architecture:* Implementing the ``_is_dirty`` flag. Mutating the entire next generation's math in CPU NumPy arrays, and flushing it to the GPU in a single massive PCIe payload.
 
 * **N-Dimensional Support:** Upgrading the kernels to support the Z-axis (Population Index) and executing evaluations via Batched Matrix Multiplication (BMM).
+* **Framework compatibility:** Adding functions and wrappers for compatibility of the networks with other frameworks.
+* **Reinforcement Learning Suite:** Set up of the required states, methods, wrappers and tooks for doing Reinforcement Learning.
 * Model Quantization.
 * Compatibility with ONNX files.
 * Full model compilation for edge devices. 
