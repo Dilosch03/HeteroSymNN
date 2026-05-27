@@ -32,12 +32,12 @@ Here is a brief example of how easy it is to instantiate a network that seamless
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.Core.Nets import LinearNet
     from HeteroSymNN.API import Wrapper
 
     # Define a network with 10 inputs, two hidden layers of 25 nodes, and 1 output.
     # The activation_config assigns a specific symbolic function to each layer.
-    model = Dense(
+    model = LinearNet(
         nodes_structure=[10, 25, 25, 1],
         activation_config=["sin(num)", "num", ("tanh(num)*a", {"a": 2.0})]
     )
@@ -64,6 +64,7 @@ HeteroSymNN operates as a **Differentiable Compiler** rather than a standard ten
 
    installation
    quickstart
+   custom_training_loop
 
 .. toctree::
    :maxdepth: 1

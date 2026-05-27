@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from HeteroSymNN.Core.Nets.dense import HeteroDense
+from HeteroSymNN.Core.Nets.linear_net import HeteroLinearNet
 from HeteroSymNN.Backend import hardware as HW
 
 def run_mixed_activation_demo():
@@ -22,8 +22,8 @@ def run_mixed_activation_demo():
     detailed_activations = [mixed_layer_config, output_config]
     
     print("-> Building Model with Heterogeneous Neurons...")
-    model = HeteroDense(
-        nodes_structure=nodes,
+    model = HeteroLinearNet(
+        num_inputs=nodes[0],
         detailed_activations=detailed_activations,
         batch_size=4
     )

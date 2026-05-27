@@ -24,7 +24,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 * **Network & Layer Modularity:**
 
   * Added ``Core/Nets/base_classes.py`` to provide strict abstract base classes for network definitions.
-  * Added ``Core/Nets/dense.py`` for specialized dense network implementations.
+  * Added ``Core/Nets/linear_net.py`` for specialized linear_net network implementations.
   * Added ``Core/Nets/evo.py`` laying the structural foundation for the upcoming Evolutionary Networks (EvoNets) pipeline.
 
 * **JIT Pipeline:**
@@ -40,9 +40,9 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 
 * **Name Changes:**
 
-  * Changed ``SimpleNN`` class name to :class:`~HeteroSymNN.Core.Nets.dense.MLP`.
-  * Changed ``FlaxibleNN`` class name to :class:`~HeteroSymNN.Core.Nets.dense.Dense`.
-  * Changed ``ConfigurableNN`` class name to :class:`~HeteroSymNN.Core.Nets.dense.HeteroDense`.
+  * Changed ``SimpleNN`` class name to :class:`~HeteroSymNN.Core.Nets.linear_net.MLP`.
+  * Changed ``FlaxibleNN`` class name to :class:`~HeteroSymNN.Core.Nets.linear_net.LinearNet`.
+  * Changed ``ConfigurableNN`` class name to :class:`~HeteroSymNN.Core.Nets.linear_net.HeteroLinearNet`.
   * Changed ``Layer`` class name to :class:`~HeteroSymNN.Core.layers.LinearLayer`.
 
 * **Kernel Allocation Optimization:**
@@ -67,7 +67,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 **Removed**
 
 * Currently the ``CPU_JIT`` method has been deactivated due to performance issues.
-* Removed ``Core/Nets/neural_nets.py`` (Logic has been modularized and distributed into ``base_classes.py``, ``dense.py``, and ``evo.py``).
+* Removed ``Core/Nets/neural_nets.py`` (Logic has been modularized and distributed into ``base_classes.py``, ``linear_net.py``, and ``evo.py``).
 * Removed ``JIT/templates.py`` (Replaced by the more robust and flexible AST generation pipeline in ``codegen.py``).
 * Removed legacy pickle-based config loading in favor of standard JSON serialization for ``.symnn`` wrapper creation.
 * Removed ``learning_mode`` network parameter.
@@ -75,7 +75,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 [0.2.0] - Alpha Releases
 ------------------------
 * Initial implementation of the Symbolic JIT Compiler.
-* Introduction of the ``HeteroDense`` node-level customization builder.
+* Introduction of the ``HeteroLinearNet`` node-level customization builder.
 * CuPy and NVIDIA NVRTC integration.
 
 [0.1.0] - Proof of Concept

@@ -34,7 +34,7 @@ If you are building a custom layer topology, your subclass must inherit from :cl
    
    * **Initialization**: You **must** call ``super().__init__(num_inputs, layer_configuration, batch_size, gpu_id)`` to initialize the base architecture.
    * **Hardware Rule:** You must respect the layer's current hardware state. Use ``self._CALCULATION_MANAGER`` to allocate arrays, ensuring they are placed in CPU RAM or GPU VRAM appropriately based on the user's global settings.
-   * **Masking Rule:** The structural masks (e.g., connection topologies) and mathematical parameters (weights) MUST be saved as separate arrays. Mask parameters must ALWAYS be dense arrays, not sparse matrix structures.
+   * **Masking Rule:** The structural masks (e.g., connection topologies) and mathematical parameters (weights) MUST be saved as separate arrays. Mask parameters must ALWAYS be linear_net arrays, not sparse matrix structures.
 
 .. admonition:: Phase 2: Mathematical Routing (Forward/Backward)
    :class: note

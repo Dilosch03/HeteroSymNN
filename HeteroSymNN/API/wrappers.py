@@ -134,7 +134,7 @@ class Wrapper():
         if(self._loaded_train_data):
             self.training_data_norm[1] = new_transformer.fit_transform(self.training_data[1])
 
-    def fit(self, training_data: list, expected_results: list, epochs: int = None,training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
+    def fit(self, training_data: list, expected_results: list, epochs: int = None, batch_size: int = None)->list[float]:
         """
         Method like Scikit Learn for training the model.
 
@@ -146,10 +146,8 @@ class Wrapper():
             Target labels/values (Y). Shape should be (n_samples, n_outputs).
         epochs : int, optional
             Number of epochs to train. If None, uses the model's configured default.
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training strategy. If None, uses the model's configured default.
         batch_size : int, optional
-            Size of the batch for "mini-batch" mode. If not pass, uses the model's configured default.
+            Size of the batch. If not pass, uses the model's configured default.
 
         Returns
         -------
@@ -162,7 +160,7 @@ class Wrapper():
             If dimensions do not match the model's expected input/output size.
         """
         self.load_training(training_data, expected_results)
-        return self.run_training(epochs, training_mode, batch_size)
+        return self.run_training(epochs, batch_size=batch_size)
 
     def load_training(self, training_data: list, expected_results: list)->None:
         """
@@ -225,7 +223,7 @@ class Wrapper():
         
         self.training_data_norm = (X_norm, Y_norm)
 
-    def run_training(self, num_iterations:int = None, training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
+    def run_training(self, num_iterations:int = None, batch_size: int = None)->list[float]:
         """
         Executes the training loop on the loaded data.
 
@@ -233,10 +231,8 @@ class Wrapper():
         ----------
         num_iterations : int, optional
             Number of epochs to train. If None, uses the model's configured default.
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training strategy. If None, uses the model's configured default.
         batch_size : int, optional
-            Size of the batch for "mini-batch" mode. If not pass, uses the model's configured default.
+            Size of the batch. If not pass, uses the model's configured default.
 
         Returns
         -------
@@ -250,7 +246,6 @@ class Wrapper():
             self.training_data_norm[0],
             self.training_data_norm[1],
             num_iterations=num_iterations,
-            training_mode=training_mode,
             batch_size=batch_size
         )
         return losses
@@ -512,7 +507,7 @@ class Wrapper():
             full_path = Path(full_path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self.model.change_device("CPU")
+            self.model.to("CPU")
             architecture_config = self.model.get_config()
             architecture_config.pop("network_structure")
 

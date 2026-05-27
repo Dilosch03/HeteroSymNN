@@ -48,10 +48,10 @@ HeteroSymNN follows a Scikit-Learn style API. Here is how to create a "Cocktail 
 
 ```python
 from HeteroSymNN.API import Wrapper
-from HeteroSymNN.Core.Nets import Dense
+from HeteroSymNN.Core.Nets import LinearNet
 
 # Each layer gets its own symbolic activation function
-model = Dense(
+model = LinearNet(
     nodes_structure=[10, 25, 25, 1],
     activation_config=["sin(num)", "Max(0, num)", ("tanh(num)*a", {"a": 2.0})]
 )
@@ -60,10 +60,10 @@ agent = Wrapper(model, work_type="reg")
 agent.fit(X_train, y_train, epochs=100, batch_size=64)
 ```
 
-Need per-neuron control? Use `HeteroDense` to assign a unique function to every single neuron:
+Need per-neuron control? Use `HeteroLinearNet` to assign a unique function to every single neuron:
 
 ```python
-from HeteroSymNN.Core.Nets import HeteroDense
+from HeteroSymNN.Core.Nets import HeteroLinearNet
 
 # 3 neurons, each with a different math function, repeated 4x = 12 neurons
 hidden_activations = [
@@ -72,7 +72,7 @@ hidden_activations = [
     ("exp(num * beta)", {"beta": -0.5})     # Parameterized Exponential
 ] * 4
 
-model = HeteroDense(
+model = HeteroLinearNet(
     nodes_structure=[2, 12, 1],
     detailed_activations=[hidden_activations, [("num", {})]]
 )

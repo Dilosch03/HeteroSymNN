@@ -1,9 +1,9 @@
 .. _dense-network:
 
-Dense (The "Cocktail" Network)
+LinearNet (The "Cocktail" Network)
 ============================
 
-The ``Dense`` class expands the capabilities of the standard :class:`~HeteroSymNN.Core.Nets.MLP` by allowing you to define completely different activation functions on a per-layer basis. 
+The ``LinearNet`` class expands the capabilities of the standard :class:`~HeteroSymNN.Core.Nets.MLP` by allowing you to define completely different activation functions on a per-layer basis. 
 
 When to Use
 -----------
@@ -15,11 +15,11 @@ Instantiating the class stays relatively simple, just changing the activation pa
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.Core.Nets import LinearNet
     from HeteroSymNN.API import Wrapper
 
     # 10 inputs, two hidden layers (25 nodes each), 1 output
-    baseline_model = Dense(
+    baseline_model = LinearNet(
         nodes_structure=[10, 25, 25, 1],
         activation_config=["sin(num)", "num", ("tanh(num)*a", {"a": 2.0})],
         learning_rate=0.01,
@@ -33,7 +33,7 @@ Instantiating the class stays relatively simple, just changing the activation pa
 API Reference
 -------------
 
-.. autoclass:: HeteroSymNN.Core.Nets.Dense
+.. autoclass:: HeteroSymNN.Core.Nets.LinearNet
    :members:
    :undoc-members:
    :show-inheritance:

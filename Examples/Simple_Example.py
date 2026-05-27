@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from HeteroSymNN.Core.Nets.dense import MLP
+from HeteroSymNN.Core.Nets.linear_net import MLP
 from HeteroSymNN.API.wrappers import Wrapper
 from HeteroSymNN.API import data_transformers as utils
 
@@ -15,7 +15,6 @@ def run_simple_demo():
         nodes_structure=[1, 64, 64, 1], 
         activation=("relu(x)*alfa", {"alfa": 0.1}), 
         output_activation="num", # Linear output
-        training_mode="mini-batch",
         batch_size=32
     )
 

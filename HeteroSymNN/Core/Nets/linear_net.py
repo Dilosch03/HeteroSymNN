@@ -8,11 +8,11 @@ from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ...exceptions import NetworkStructureError
 from ...error_handlers import clean_traceback
 
-__all__ = ["HeteroDense", "Dense", "MLP"]
+__all__ = ["HeteroLinearNet", "LinearNet", "MLP"]
 
-class HeteroDense(BaseNetwork):
+class HeteroLinearNet(BaseNetwork):
     """
-        Base class for creating a dense neural network with customizable activation functions per neuron, and training parameters.
+        Base class for creating a linear_net neural network with customizable activation functions per neuron, and training parameters.
         
         Parameters
         ----------
@@ -27,9 +27,7 @@ class HeteroDense(BaseNetwork):
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
-            Batch size to use during training, by default 32 if training_mode is "mini-batch", 1 if "stochastic" and size of the dataset if "batch".
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". By default "mini-batch".
+            Batch size to use during training, by default 32. If set to -1, it uses the full dataset size for batch training.
         loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
             Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
         optimizer : Optional[:class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
@@ -39,40 +37,37 @@ class HeteroDense(BaseNetwork):
 
         Attributes
         ----------
-        num_training_iterations : int, read-write
+        num_training_epochs : int, read-write
             Number of training iterations (epochs) for the network.
-        training_mode : Literal["batch", "mini-batch", "stochastic"], read-write
-            Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
         batch_size : int, read-write
             Batch size to use during training.
-        histogram_losses : list[float], read-only
+        history_losses : list[float], read-only
             List of loss values recorded at each epoch during training.
-        num_complited_train_iterations : int, read-only
+        num_completed_train_iterations : int, read-only
             Number of completed training steps.
         num_completed_epochs : int, read-only
             Number of completed training epochs.
         
         Examples
         --------
-        >>> from HeteroSymNN.Core.Nets.Dense import HeteroDense
-        >>> CNN = HeteroDense(
+        >>> from HeteroSymNN.Core.Nets.LinearNet import HeteroLinearNet
+        >>> CNN = HeteroLinearNet(
         ...     nodes_structure=[3, 5, 2],
         ...     detailed_activations=[
         ...         [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
         ...         [("sigmoid", {}), ("sigmoid", {})]
         ...     ],
         ...     learning_rate=0.01,
-        ...     batch_size=16,
-        ...     training_mode="mini-batch"
+        ...     batch_size=16
         ... )
 
         
-        >>> from HeteroSymNN.Core.Nets.Dense import HeteroDense
+        >>> from HeteroSymNN.Core.Nets.LinearNet import HeteroLinearNet
         >>> from HeteroSymNN.Core import losses as lossC, optimizers as OptiC, initializers as InitC
         >>> custom_loss = lossC.CrossEntropyLoss()
         >>> custom_optimizer = OptiC.SGDOptimizer(learning_rate=0.01)
         >>> custom_initializers = [InitC.XavierUniform(),InitC.XavierUniform()]
-        >>> CNN = HeteroDense(
+        >>> CNN = HeteroLinearNet(
         ...     nodes_structure=[4, 6, 3],
         ...     detailed_activations=[
         ...         [("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {})],
@@ -80,27 +75,25 @@ class HeteroDense(BaseNetwork):
         ...     ],
         ...     initializer=custom_initializers,
         ...     loss_function=custom_loss,
-        ...     optimizer=custom_optimizer,
-        ...     training_mode="batch"
+        ...     optimizer=custom_optimizer
         ... )
         
     """
     @clean_traceback
-    def __init__(self, nodes_structure:list[int], detailed_activations:list[list[NodeConfig]], initial_values: Optional[list[LayerValues]]= None, 
-                 initializer: Optional[list[InitC.Initializer]]= None, learning_rate:float = 0.001, batch_size:int = 32, training_mode:str = "mini-batch", 
+    def __init__(self, num_inputs:int, detailed_activations:list[list[NodeConfig]], 
+                 initializer: Optional[list[InitC.Initializer]]= None, learning_rate:float = 0.001, batch_size:int = 32, 
                  loss_function: Optional[lossC.Loss]= None, optimizer: Optional[OptiC.Optimizer]= None, num_training_iter:int = 1000):
-        layer_types = [LinearLayer] * (len(nodes_structure)-1)
-        network_structure = list(zip(nodes_structure[1:], layer_types))
-        network_structure = [(nodes_structure[0], None)] + network_structure
+        network_structure = [LinearLayer] * (len(detailed_activations))
+
         extra_parameters = [{}]*len(detailed_activations)
-        super().__init__(network_structure, extra_parameters, detailed_activations, initial_values, initializer, learning_rate, batch_size, training_mode, loss_function, optimizer, num_training_iter)
+        super().__init__(num_inputs,network_structure, extra_parameters, detailed_activations, initializer, learning_rate, batch_size, loss_function, optimizer, num_training_iter)
 
 
 
-class Dense(HeteroDense):
+class LinearNet(HeteroLinearNet):
     """
-    Intermediate class for creating dense neural networks with diferent activation functions per layer.
-    Child class of :obj:`~HeteroSymNN.Core.Nets.Dense.HeteroDense`.
+    Intermediate class for creating linear_net neural networks with diferent activation functions per layer.
+    Child class of :obj:`~HeteroSymNN.Core.Nets.LinearNet.HeteroLinearNet`.
     
     Parameters
     ----------
@@ -114,10 +107,8 @@ class Dense(HeteroDense):
         Initializer to use for initializing weights and biases. If not provided, :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
     learning_rate : float, optional
         Learning rate for the network., by default 0.001
-    training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-        Training mode to use during training. In case of "batch" or "stochastic" the batch size attribute will be ignored., by default "stochastic"
     batch_size : int, optional
-        Batch size to use during training. In the case of using "stochastic" or "batch" training mode this attribute will be ignored and in training time the batch size will be set to 1 or to the full dataset size respectively., by default 32
+        Batch size to use during training. If set to -1, it uses the full dataset size for batch training., by default 32
     loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
         Loss function to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
     optimizer : :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
@@ -127,39 +118,39 @@ class Dense(HeteroDense):
 
     Attributes
     ----------
-    num_training_iterations : int, read-write
+    num_training_epochs : int, read-write
         Number of training iterations (epochs) for the network.
-    training_mode : Literal["batch", "mini-batch", "stochastic"], read-write
-        Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
     batch_size : int, read-write
         Batch size to use during training.
-    histogram_losses : list[float], read-only
+    history_losses : list[float], read-only
         List of loss values recorded at each epoch during training.
-    num_complited_train_iterations : int, read-only
+    num_completed_train_iterations : int, read-only
         Number of completed training steps.
     num_completed_epochs : int, read-only
         Number of completed training epochs.
 
     Examples
     --------
-        >>> from HeteroSymNN.Core.Nets import Dense
-        >>> FNN = Dense(
+        >>> from HeteroSymNN.Core.Nets import LinearNet
+        >>> FNN = LinearNet(
         ...     nodes_structure=[3, 5, 2],
         ...     activation_config=[
         ...         "relu",
         ...         ("sigmoid", {})
         ...     ],
         ...     learning_rate=0.01,
-        ...     batch_size=16,
-        ...     training_mode="mini-batch"
+        ...     batch_size=16
         ... )
     """
     @clean_traceback
-    def __init__(self, nodes_structure: list[int], activation_config: list[FlexibleNodeConfig],initial_values: Optional[list[LayerValues]] = None,initializer: Optional[Union[InitC.Initializer,list[InitC.Initializer]]] = None,
-                 learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic", batch_size: int = 32,
+    def __init__(self, nodes_structure: list[int], activation_config: list[FlexibleNodeConfig],initializer: Optional[Union[InitC.Initializer,list[InitC.Initializer]]] = None,
+                 learning_rate: float = 0.001, batch_size: int = 32,
                  loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):
         
         num_layers = len(nodes_structure) - 1
+
+        if (len(nodes_structure) < 2):
+            raise NetworkStructureError("nodes_structure most have at least 2 value, the number of inputs and the number of outputs.")
         
         if not isinstance(activation_config, list):
              raise ValueError(f"activation_config must be a list but received: {type(activation_config)}")
@@ -174,12 +165,10 @@ class Dense(HeteroDense):
         detailed_activations = self._expand_to_detailed(num_layers, nodes_structure[1:], activation_config)
 
         super().__init__(
-            nodes_structure=nodes_structure,
+            num_inputs=nodes_structure[0],
             detailed_activations=detailed_activations,
-            initial_values=initial_values,
             initializer=initializer,
             learning_rate=learning_rate,
-            training_mode=training_mode,
             batch_size=batch_size,
             loss_function=loss_function,
             optimizer=optimizer, 
@@ -236,9 +225,9 @@ class Dense(HeteroDense):
         return final_config
     
 
-class MLP(Dense):
+class MLP(LinearNet):
     """
-    High-level class for creating dense neural networks with uniform activation functions across hidden layers.
+    High-level class for creating linear_net neural networks with uniform activation functions across hidden layers.
     
     Parameters
     ----------
@@ -252,10 +241,8 @@ class MLP(Dense):
         Initializer to use for initializing weights and biases. If not provided, :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
     learning_rate : float, optional
         Learning rate for the network., by default 0.001
-    training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-        Training mode to use during training. In case of "batch" or "stochastic" the batch size attribute will be ignored., by default "stochastic"
     batch_size : int, optional
-        Batch size to use during training. In the case of using "stochastic" or "batch" training mode this attribute will be ignored and in training time the batch size will be set to 1 or to the full dataset size respectively., by default 32
+        Batch size to use during training. If set to -1, it uses the full dataset size for batch training., by default 32
     loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
         Loss function to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
     optimizer : :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
@@ -265,15 +252,13 @@ class MLP(Dense):
     
     Attributes
     ----------
-    num_training_iterations : int, read-write
+    num_training_epochs : int, read-write
         Number of training iterations (epochs) for the network.
-    training_mode : Literal["batch", "mini-batch", "stochastic"], read-write
-        Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
     batch_size : int, read-write
         Batch size to use during training.
-    histogram_losses : list[float], read-only
+    history_losses : list[float], read-only
         List of loss values recorded at each epoch during training.
-    num_complited_train_iterations : int, read-only
+    num_completed_train_iterations : int, read-only
         Number of completed training steps.
     num_completed_epochs : int, read-only
         Number of completed training epochs.
@@ -286,14 +271,12 @@ class MLP(Dense):
         ...     activation="tanh",
         ...     output_activation="softmax",
         ...     learning_rate=0.01,
-        ...     batch_size=64,
-        ...     training_mode="mini-batch"
+        ...     batch_size=64
         ... )
     """
     @clean_traceback
-    def __init__(self, nodes_structure: list[int], activation: FlexibleNodeConfig = "relu", output_activation: FlexibleNodeConfig = "num",initializer: Optional[InitC.Initializer] = None,
-                 learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic",
-                 batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):
+    def __init__(self, nodes_structure: list[int], activation: FlexibleNodeConfig = "relu(x)", output_activation: FlexibleNodeConfig = "num",initializer: Optional[InitC.Initializer] = None,
+                 learning_rate: float = 0.001,batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):
 
         if len(nodes_structure) < 2:
             raise NetworkStructureError("node_structure must have at least 2 elements (input layer and output layer).")
@@ -308,7 +291,6 @@ class MLP(Dense):
             activation_config=activations_list,
             initializer=initializer, 
             learning_rate=learning_rate,
-            training_mode=training_mode,
             batch_size=batch_size,
             loss_function=loss_function,
             optimizer=optimizer,

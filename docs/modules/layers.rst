@@ -10,7 +10,7 @@ They are responsible for allocating the underlying :data:`~HeteroSymNN.types.Bac
 Why Read This Section?
 ----------------------
 
-Most researchers will never need to instantiate these classes directly—they are automatically constructed, linked, and managed by the high-level Network Builders (like :class:`~HeteroSymNN.Core.Nets.Dense` or :class:`~HeteroSymNN.Core.Nets.HeteroDense`).
+Most researchers will never need to instantiate these classes directly—they are automatically constructed, linked, and managed by the high-level Network Builders (like :class:`~HeteroSymNN.Core.Nets.LinearNet` or :class:`~HeteroSymNN.Core.Nets.HeteroLinearNet`).
 
 You should only consult this documentation if:
 

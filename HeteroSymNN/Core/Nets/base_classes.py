@@ -8,7 +8,7 @@ from ...Backend import hardware as HW
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
 from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
-from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError, InvalidDeviceIDError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning
+from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError, InvalidDeviceIDError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,HeteroSymNNDeprecationWarning,HardwareError
 from ...error_handlers import clean_traceback
 from ...config import settings
 
@@ -20,8 +20,8 @@ class BaseNetwork:
         
         Parameters
         ----------
-        network_structure : list[int,type[BaseLayer]]
-            List with the number of nodes per layer and the type of layers that will be used including input and output layers.
+        network_structure : list[type[BaseLayer]]
+            List with the type of layers that will be used for each step of the network.
         extra_layer_parameters : list[dict[str,Any]]
             list of dictionaries with the extra parameters that the layer need to work correctly.
         detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
@@ -33,22 +33,20 @@ class BaseNetwork:
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
-            Batch size to use during training, by default 32 if training_mode is "mini-batch", 1 if "stochastic" and size of the dataset if "batch".
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". By default "mini-batch".
+            Batch size to use during training, by default 32. If set to -1, it uses the full dataset size for batch training.
         loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
             Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
         optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
             Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.
         num_epochs: int, optional
             Number of Epochs to use during training, by default 1000
+        gpu_id: int, optional
+            ID of the GPU to allocate the network on initially, by default 0.
 
         Attributes
         ----------
         num_training_epochs : int, read-write
             Number of training iterations (epochs) for the network.
-        training_mode : Literal["batch", "mini-batch", "stochastic"], read-write
-            Training mode to use during training. When seting it to "mini-batch" from "stochastic" or "batch" the batch size that will be used is the one stored in the attribute batch_size.
         batch_size : int, read-write
             Batch size to use during training.
         history_losses : list[float], read-only
@@ -71,7 +69,6 @@ class BaseNetwork:
         ... ],
         ... learning_rate=0.01,
         ... batch_size=16,
-        ... training_mode="mini-batch"
         ... )
 
         
@@ -93,9 +90,9 @@ class BaseNetwork:
         ... )       
     """
     @clean_traceback
-    def __init__(self, network_structure: list[tuple[int,type[BaseLayer]]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initial_values: Optional[list[LayerValues]] = None,initializers: Optional[list[InitC.Initializer]] = None,
-                 learning_rate: float = 0.001,batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch",
-                 loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_epochs: int = 1000):
+    def __init__(self, num_inputs:int, network_structure: list[type[BaseLayer]],extra_layer_parameters:list[dict[str,Any]], detailed_activations: list[list[NodeConfig]],initializers: Optional[list[InitC.Initializer]] = None,
+                 learning_rate: float = 0.001,batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_epochs: int = 1000,
+                 gpu_id: int = 0):
         
         self._CALCULATION_MANAGER = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
@@ -103,22 +100,21 @@ class BaseNetwork:
         self.num_completed_epochs = 0
         self._input_gradient = None
 
-        if len(network_structure) < 2:
-            raise NetworkStructureError("network_structure most have at least 2 values (input and output).)")
         
-        num_layers = len(network_structure) - 1
+        if len(network_structure) < 1:
+            raise NetworkStructureError("network_structure most have at least 1 value, the class of the  output layer.")
+        
+        num_layers = len(network_structure)
         if (len(detailed_activations) != num_layers):
             raise NetworkStructureError(f"The structure is defined as {num_layers} layers, but 'detailed_activations' has {len(detailed_activations)} elements.")
 
         if (len(extra_layer_parameters) != num_layers):
             raise NetworkStructureError(f"The structure is defined as {num_layers} layers, but 'extra_layer_parameters' has {len(extra_layer_parameters)} elements.")
         
-        if ((initial_values is not None) and (len(initial_values) != num_layers)):
-            raise NetworkStructureError(f"Inical values were given, but the length ({len(initial_values)}) does not match the number of layers ({num_layers}).")
-
-        self.training_mode =training_mode
         self._BATCH_SIZE = batch_size
-        self._GPU_ID = 0
+        if (0>=gpu_id >= HW.NUM_GPUS):
+            raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+        self._GPU_ID = gpu_id
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
         self._CURRENT_DEVICE = "CPU"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
@@ -153,16 +149,14 @@ class BaseNetwork:
                 self._UPDATE_METHOD.learning_rate = learning_rate
         else:
             self._UPDATE_METHOD:OptiC.Optimizer = OptiC.AdamOptimizer(learning_rate,self._COMPUTATIONAL_METHOD.split("_")[0],device_id=self._GPU_ID)
-
-        if self.training_mode == "stochastic":
-            self._BATCH_SIZE = 1
         
         self._LAYERS: list[BaseLayer] = []
 
+        num_nodes = num_inputs
         for i in range(num_layers):
-            num_inputs = network_structure[i][0]
-            num_nodes = network_structure[i+1][0]
-            layer_class:type[BaseLayer] = network_structure[i+1][1]
+            num_inputs = num_nodes
+            num_nodes = len(detailed_activations[i])
+            layer_class:type[BaseLayer] = network_structure[i]
 
             if not(callable(layer_class)):
                 raise NetworkStructureError(f"Object given for the creation of layer {i} is not a callable class.")
@@ -173,9 +167,6 @@ class BaseNetwork:
             node_configs = detailed_activations[i]
             extra_param = extra_layer_parameters[i]
             
-            if (len(node_configs) != num_nodes):
-                raise LayerConfigurationError(f"Error in Layer {i}: {num_nodes} nodes defined in 'network_structure', but there are {len(node_configs)} activation configurations.")
-
             sig = inspect.signature(layer_class)
 
             required_arguments = set()
@@ -249,7 +240,6 @@ class BaseNetwork:
         metadata = general_configs.get('metadata', {})
 
         instance._NETWORK_STRUCTURE = architecture_config.get('network_structure', [])
-        instance.training_mode = architecture_config.get('training_mode', 'mini-batch')
         instance._BATCH_SIZE = architecture_config.get('batch_size', 32)
         instance.num_training_epochs = architecture_config.get('num_training_epochs', 1000)
         
@@ -366,7 +356,7 @@ class BaseNetwork:
         """
         Property to get the current device where the network parameters are located. Read-only.
 
-        For changing location of the network parameters use the :obj:`~change_device` method.
+        For changing location of the network parameters use the :obj:`~to` method.
         
         Returns
         -------
@@ -379,7 +369,7 @@ class BaseNetwork:
         """
         Property to get the current computational method being used by the network. Read-only.
 
-        To change the computational method use the :obj:`~_change_COMPUTATIONAL_METHOD` method.
+        To change the computational method use the :obj:`~set_backend` method.
         
         Returns
         -------
@@ -453,7 +443,7 @@ class BaseNetwork:
         if (self._GPU_ID != new_id):
             if (new_id >= HW.NUM_GPUS):
                 raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
-            self.change_device("CPU")
+            self.to("CPU")
             self._GPU_ID = new_id
             self._LOSS_FUNCTION.set_gpu_id(self._GPU_ID)
             self._UPDATE_METHOD.set_gpu_id(self._GPU_ID)
@@ -492,6 +482,9 @@ class BaseNetwork:
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
+        else:
+            if (0>=gpu_id >= HW.NUM_GPUS):
+                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."
@@ -528,7 +521,7 @@ class BaseNetwork:
                     raise MethodMigrationError(f"Couldn't change the computational method due to one or more layers couldn't change. Layer methods list: {laye_calc_method}")
 
     @clean_traceback
-    def to(self,backend:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->None:
+    def set_backend(self,backend:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->None:
         """
         Change the computational method used by the network. This will also change the device of the network parameters if needed.
 
@@ -559,7 +552,7 @@ class BaseNetwork:
         self._change_COMPUTATIONAL_METHOD(new_method=backend, gpu_id=gpu_id)
 
     @clean_traceback
-    def change_device(self, device:Literal["CPU","GPU"])->None:
+    def to(self, device:Literal["CPU","GPU"])->None:
         """
         Change location of the network parameters to the specified device.
 
@@ -569,8 +562,6 @@ class BaseNetwork:
             Device to move the network parameters to.
         """
         device = device.upper()
-        requested_device = device
-        current_method = self._COMPUTATIONAL_METHOD.split("_")[0]
         if not(device in ["CPU","GPU"]):
             raise ValueError("Specify device is not GPU or CPU.")
         
@@ -586,6 +577,55 @@ class BaseNetwork:
                 self._CURRENT_DEVICE = device
                 self._to(device)
 
+    def cast_arrays(self, *tensors: np.ndarray, gpu_id: int = None)->Union[BackendArray,tuple[BackendArray]]:
+        """
+        Method to cast one or more arrays to the target hardware backend.
+        
+        Parameters
+        ----------
+        *tensors : np.ndarray
+            Arrays to cast.
+        gpu_id : int, optional
+            GPU ID to use if computational_method of the network is "GPU_CUDA".
+        
+        Returns
+        -------
+        :obj:`~HeteroSymNN.types.BackendArray` or tuple[:obj:`~HeteroSymNN.types.BackendArray`]
+            The casted arrays using the internal computational manager of the network.
+        """
+        if (gpu_id == None):
+            gpu_id = self._GPU_ID
+        else:
+            if (0>=gpu_id >= HW.NUM_GPUS):
+                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+
+        if self._COMPUTATIONAL_METHOD == "GPU_CUDA":
+            with HW.be.cuda.Device(gpu_id):
+                result = tuple(self._CALCULATION_MANAGER.array(t, dtype=self._DEFAULT_FLOAT_TYPE) for t in tensors)
+        else:
+            result = tuple(self._CALCULATION_MANAGER.array(t, dtype=self._DEFAULT_FLOAT_TYPE) for t in tensors)
+            
+
+        return result[0] if len(result) == 1 else result
+    
+    def asnumpy(self, *tensors: BackendArray)->Union[np.ndarray,tuple[np.ndarray]]:
+        """
+        Method to bring one or more backend arrays (e.g., CuPy) back to Host RAM as standard NumPy arrays.
+        
+        Parameters
+        ----------
+        *tensors : :obj:`~HeteroSymNN.types.BackendArray`
+            Arrays to cast
+
+        Returns
+        -------
+        np.ndarray or tuple[np.ndarray]
+            The `np.ndarray` version of the arrays.
+        """
+        result = tuple(self._ASNUMPY(t) for t in tensors)
+        
+        return result[0] if len(result) == 1 else result
+        
 
     def _to(self, device:Literal["CPU","GPU"]):
         """
@@ -601,7 +641,7 @@ class BaseNetwork:
         for layer in self._LAYERS:
             layer.to(device)
 
-    def _forward(self,input_values:BackendArray)->BackendArray:
+    def forward(self,input_values:BackendArray)->BackendArray:
         """
         Internal method to perform a forward pass through the network.
         
@@ -621,7 +661,7 @@ class BaseNetwork:
 
         return current_a
 
-    def _backward(self,error_values:BackendArray)->BackendArray:
+    def backward(self,error_values:BackendArray)->BackendArray:
         """
         Internal method to perform a backward pass through the network.
         
@@ -635,7 +675,7 @@ class BaseNetwork:
         :obj:`~HeteroSymNN.types.BackendArray`
             Error values propagated back to the input layer.
         """
-        self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
         next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
         
         for layer in reversed(self._LAYERS):
@@ -659,15 +699,15 @@ class BaseNetwork:
         float
             Computed loss for the training step.
         """
-        self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
         self.num_completed_train_iterations += 1
         
-        y_pred = self._forward(x_input)
+        y_pred = self.forward(x_input)
         
         loss = self._LOSS_FUNCTION.forward(y_pred, y_target)
         error_to_propagate = self._LOSS_FUNCTION.backward(y_pred, y_target)
 
-        self._backward(error_to_propagate)
+        self.backward(error_to_propagate)
         self.update_params()
 
         return loss
@@ -676,11 +716,11 @@ class BaseNetwork:
         """
         Update the network parameters using the optimizer.
         """
-        self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
         self._UPDATE_METHOD.step(self._LAYERS) 
 
     def train(self,training_inputs: list[list[float]], training_targets: list[list[float]],num_iterations = None,
-              training_mode: Literal["batch", "mini-batch", "stochastic"] = None, batch_size: int = None)->list[float]:
+              batch_size: int = None)->list[float]:
         """
         Train the neural network using the provided training data.
 
@@ -692,35 +732,29 @@ class BaseNetwork:
             List of target output samples for training. Shape should be (num_samples, num_outputs).
         num_iterations : int, optional
             Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_training_epochs`., by default None
-        training_mode : Literal["batch", "mini-batch", "stochastic"], optional
-            Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". If not provided, uses the current value of the attribute :obj:`~training_mode`., by default None
         batch_size : int, optional
-            Batch size to use during training if training_mode is "mini-batch". If not provided, uses the current value of the attribute :obj:`~batch_size`., by default None
+            Batch size to use during training. If not provided, uses the current value of the attribute :obj:`~batch_size`., by default None
         
         Returns
         -------
         list[float]
             List of loss values recorded at each epoch during training.
         """
-        self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
         train_data = self._CALCULATION_MANAGER.array(training_inputs,dtype=np.float32).T
         train_targets = self._CALCULATION_MANAGER.array(training_targets,dtype=np.float32).T
 
-        mode = self.training_mode if training_mode is None else training_mode
         b_size = self._BATCH_SIZE if batch_size is None else batch_size
         if (num_iterations == None):
             num_iterations = self.num_training_epochs
 
-        self.training_mode = mode
+        if b_size == -1:
+            b_size = len(training_inputs)
+
         if (b_size != self._BATCH_SIZE):
             self._BATCH_SIZE = b_size
             for layer in self._LAYERS:
                 layer.batch_size_change(b_size)
-
-        if mode == "stochastic":
-            b_size = 1
-        elif mode == "batch":
-            b_size = len(training_inputs)
         
         num_samples = train_data.shape[1]
         for _ in range(num_iterations):
@@ -761,7 +795,7 @@ class BaseNetwork:
         np.ndarray or :obj:`~HeteroSymNN.types.BackendArray`
             Predicted output values.
         """
-        self.change_device(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
         if not isinstance(input_values, (np.ndarray, self._CALCULATION_MANAGER.ndarray)):
             current_a = self._CALCULATION_MANAGER.array(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
         else:
@@ -778,7 +812,7 @@ class BaseNetwork:
         else:  
             raise ShapeMismatchError(f"Shape of the input is incorrect {current_a.shape}. Were expecting {self._LAYERS[0].num_inputs} features, but none dimention matched.")
 
-        prediction = self._forward(current_a)
+        prediction = self.forward(current_a)
         if(to_cpu):
             return self._ASNUMPY(prediction).T
         
@@ -799,14 +833,14 @@ class BaseNetwork:
     @clean_traceback
     def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]])->None:
         """
-        Set the parameters (weights and biases) of the network.
+        Set the parameters of the network.
         
         Parameters
         ----------
         params : dict[Union[str,int],dict[str,np.ndarray]]
             Dictionary containing the parameters for each layer.
         """
-        self.change_device("CPU")
+        self.to("CPU")
         for key in params:
             index = key
             if (type(key) != int):
@@ -838,12 +872,11 @@ class BaseNetwork:
                 * **"network_structure"** (*list[int]*): List of number of nodes per layer and the type of layer.
                 * **"layer_configs"** (*dict[str,any]*): Configuration of each layer.
                 * **"learning_rate"** (*float*): Learning rate of the network.
-                * **"training_mode"** (*str*): Training mode ("batch", "mini-batch", "stochastic").
                 * **"batch_size"** (*int*): Batch size used during training.
                 * **"loss_config"** (*dict[str, Any]*): Configuration of the loss function.
                 * **"num_training_epochs"** (*int*): Number of training iterations (epochs).
         """
-        self.change_device("CPU")
+        self.to("CPU")
         layers_configs = {}
         for i,layer in enumerate(self._LAYERS):
             layers_configs.update({"layer_"+str(i):layer.get_config()})
@@ -851,7 +884,6 @@ class BaseNetwork:
         config = {
             'network_structure': self._NETWORK_STRUCTURE,
             'layer_configs': layers_configs,
-            'training_mode': self.training_mode,
             'batch_size': self._BATCH_SIZE
         }
 

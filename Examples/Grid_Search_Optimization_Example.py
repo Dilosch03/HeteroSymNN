@@ -3,8 +3,8 @@ sys.path.insert(0, r"C:\Users\dilos\Documents\GitHub\HeteroSymNN")
 
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets.dense import Dense, HeteroDense
-from HeteroSymNN.API.wrappers import Wrapper, GridSearchManager
+from HeteroSymNN.Core.Nets import LinearNet, HeteroLinearNet
+from HeteroSymNN.API import Wrapper, GridSearchManager
 from HeteroSymNN.Backend import hardware as HW
 
 
@@ -21,10 +21,9 @@ def run_expert_demo():
     y = np.logical_xor(X[:, 0] > 0.5, X[:, 1] > 0.5).astype(int).reshape(-1, 1)
 
     # 2. Build the Template Wrapper (The Blueprint)
-    template_model = Dense(
+    template_model = LinearNet(
         nodes_structure=[2, 16, 16, 1],
         activation_config=["relu", "relu", "sigmoid"],
-        training_mode="mini-batch",
         batch_size=64
     )
     template_wrapper = Wrapper(template_model, work_type="class")

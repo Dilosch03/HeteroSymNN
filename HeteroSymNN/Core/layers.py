@@ -8,7 +8,7 @@ from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
 from .initializers import Initializer
 from ..config import settings
-from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError
+from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError,HardwareError
 from ..error_handlers import clean_traceback
 
 __all__ = ["BaseLayer", "LinearLayer"]
@@ -38,11 +38,13 @@ class BaseLayer:
             values per neuron of the input of the layer after applying the mask and the biases.
     """
     @clean_traceback
-    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,Gpu_id:int = 0):
+    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,gpu_id:int = 0):
         
         self._CALCULATION_MANAGER = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
-        self._GPU_ID = Gpu_id
+        if (0>gpu_id >= HW.NUM_GPUS):
+            raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+        self._GPU_ID = gpu_id
         self._CURRENT_DEVICE = "CPU"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._CURRENT_VECTOR_FORMAT = self._ASNUMPY
@@ -55,6 +57,12 @@ class BaseLayer:
         self.delta = None
         self.a = None
         self.z = None
+
+        if (self._GPU_ID == None):
+            self._GPU_ID = gpu_id
+        else:
+            if (0>gpu_id >= HW.NUM_GPUS):
+                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
@@ -279,6 +287,9 @@ class BaseLayer:
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
+        else:
+            if (0>=gpu_id >= HW.NUM_GPUS):
+                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."

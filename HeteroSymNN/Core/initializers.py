@@ -167,7 +167,7 @@ class BaseInitializer(Initializer):
 
             *"class_name": for saving of the initializer.
 
-            *"connection_density": how dense the binary mask creates.
+            *"connection_density": how linear_net the binary mask creates.
         """
         return {"class_name": self.__class__.__name__, "connection_density": self.connection_density}
 
@@ -228,7 +228,7 @@ class RandomNormal(BaseInitializer):
 
             *"class_name": for saving of the initializer.
 
-            *"connection_density": how dense the binary mask creates.
+            *"connection_density": how linear_net the binary mask creates.
 
             *"stddev": standard deviation of the random values to generate.
 
@@ -297,7 +297,7 @@ class RandomUniform(BaseInitializer):
 
             *"class_name": for saving of the initializer.
 
-            *"connection_density": how dense the binary mask creates.
+            *"connection_density": how linear_net the binary mask creates.
 
             *"min_val": lower bound of the range of random values to generate.
 
@@ -536,7 +536,7 @@ class Orthogonal(BaseInitializer):
 
             *"class_name": for saving of the initializer.
 
-            *"connection_density": how dense the binary mask creates.
+            *"connection_density": how linear_net the binary mask creates.
 
             *"gain": Multiplicative factor to applied to the orthogonal matrix.
 

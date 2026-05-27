@@ -3,7 +3,7 @@
 Base Network Architecture
 =========================
 
-The ``BaseNetwork`` class is the foundational chassis of HeteroSymNN. Every high-level builder (like :class:`~HeteroSymNN.Core.Nets.dense.MLP` , :class:`~HeteroSymNN.Core.Nets.dense.Dense`, and :class:`~HeteroSymNN.Core.Nets.dense.HeteroDense`) is simply a structural wrapper that configures and instantiates this core engine.
+The ``BaseNetwork`` class is the foundational chassis of HeteroSymNN. Every high-level builder (like :class:`~HeteroSymNN.Core.Nets.linear_net.MLP` , :class:`~HeteroSymNN.Core.Nets.linear_net.LinearNet`, and :class:`~HeteroSymNN.Core.Nets.linear_net.HeteroLinearNet`) is simply a structural wrapper that configures and instantiates this core engine.
 
 If you are reading this page, you are likely doing one of three things:
 
@@ -16,7 +16,7 @@ The Topology Sandbox
 
 The primary way to mix and match different Architecture Families is through the base class's ``network_structure`` initialization parameter. 
 
-Instead of just passing a list of integers (node counts), the base class accepts tuples containing both the node count *and* the explicit Layer Class you want to use. This allows you to snap together a standard Dense layer with a future Recurrent or Evolutionary layer in the exact Network.
+Instead of just passing a list of integers (node counts), the base class accepts tuples containing both the node count *and* the explicit Layer Class you want to use. This allows you to snap together a standard LinearNet layer with a future Recurrent or Evolutionary layer in the exact Network.
 
 Hardware Routing & Memory Safety
 --------------------------------

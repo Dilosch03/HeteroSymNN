@@ -17,7 +17,7 @@ NEVER:
 <directory_structure>
 /HeteroSymNN
 ├── types.py, config.py, exceptions.py
-├── /Core: layers.py, losses.py, initializers.py, optimizers.py, /Nets (base.py, dense.py, evo.py, functional.py)
+├── /Core: layers.py, losses.py, initializers.py, optimizers.py, /Nets (base.py, linear_net.py, evo.py, functional.py)
 ├── /JIT: compiler.py, codegen.py
 ├── /Backends: hardware.py
 └── /API: registries.py, wrappers.py, data_transformers.py
@@ -43,7 +43,7 @@ Properties for subclasses: `self.be` (Backend: numpy/cupy. Read-Only. Nets, Laye
 # 2. Passes BackendArray sequentially through all layers.
 # 3. Returns predictions as np.ndarray (if to_cpu=True).
 ```python
-# Subclasses: HeteroDense, Dense, MLP
+# Subclasses: HeteroLinearNet, LinearNet, MLP
 class CustomNetwork(BaseNetwork):
     def __init__(self, network_structure: list[tuple[int, type[BaseLayer]]], extra_layer_parameters: list[dict[str, Any]], detailed_activations: list[list[NodeConfig]], initial_values: Optional[list[LayerValues]]=None, initializers: Optional[list[Initializer]]=None, learning_rate: float=0.001, batch_size: int=32, training_mode: Literal["batch","mini-batch","stochastic"]="mini-batch", loss_function: Optional[Loss]=None, optimizer: Optional[Optimizer]=None, num_epochs: int=1000):
         super().__init__(...) # MUST CALL
@@ -60,7 +60,7 @@ class CustomNetwork(BaseNetwork):
 # 
 # Parameter Rules: 
 # - The structural masks and the mathematical parameters (e.g., weights) MUST be saved as separate arrays.
-# - The mask parameters must ALWAYS be dense arrays, not sparse matrix structures.
+# - The mask parameters must ALWAYS be linear_net arrays, not sparse matrix structures.
 ```python
 # Subclasses: LinearLayer
 class CustomLayer(BaseLayer):
@@ -70,7 +70,7 @@ class CustomLayer(BaseLayer):
     # Resumed Forward Example (LinearLayer)
     def forward(self, input_values: BackendArray) -> BackendArray:
         self._cached_input = input_values
-        effective_weights = self._weights * self._connection_mask # Separated, dense arrays
+        effective_weights = self._weights * self._connection_mask # Separated, linear_net arrays
         self.z = self._CALCULATION_MANAGER.dot(effective_weights, input_values) + self._biases
         # ... Apply activation via self._act_funcions_manager ...
         return self.a

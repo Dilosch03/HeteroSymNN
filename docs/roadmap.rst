@@ -17,8 +17,6 @@ Upcoming: v0.4.0 (Security & Persistence)
 
 * **API Quality of Life** (SSOT Enforcement):
 
-  * Deprecating ``training_mode`` and strictly enforcing ``batch_size`` as the Single Source of Truth.
-  * Deprecating the ``num_nodes`` parameter in ``HeteroDense`` and inferring it dynamically from ``len(detailed_activations)``.
   * Converting magic routing strings (like ``"GPU_CUDA"``) into strict String-Enums to enable IDE autocomplete and prevent typos.
 
 * **Asynchronous Data Bus**: Building the ``DatasetStreamer`` to feed the GPU in chunks without overflowing CPU RAM.

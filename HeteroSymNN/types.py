@@ -44,6 +44,15 @@ if os.environ.get("SPHINX_BUILD") == "True":
         """
         pass
 
+    class LayerConstructionConfig:
+        """
+        Legacy type alias LayerConstructionConfig for backward compatibility.
+        it encapsulates the old configuration needed to construct a neural network layer.
+        
+        Definition: ``tuple[list[NodeConfig], LayerValues]``
+        """
+        pass
+
     FlexibleNodeConfig = Union[str, NodeConfig]
     """FlexibleNodeConfig can be either a simple string representing the activation function name or a detailed :obj:`~NodeConfig` tuple."""
 
@@ -67,3 +76,7 @@ else:
     ConstantToUpdate: TypeAlias = tuple[int, str, float]
     """ConstantToUpdate represents a tuple containing the node index, the constant name, and the new value.
         Definition: ``tuple[int, str, float]``"""
+    LayerConstructionConfig: TypeAlias = tuple[list[NodeConfig], LayerValues]
+    """Legacy type alias LayerConstructionConfig for backward compatibility.it encapsulates the old configuration needed to construct a neural network layer.
+        Definition: ``tuple[list[NodeConfig], LayerValues]``
+        """

@@ -3,7 +3,7 @@ HeteroSymNN v0.3.0: JIT-compiled Differentiable Compiler & Neuro-Symbolic engine
 </project_identity>
 
 <capabilities>
-Capabilities: Design Networks (Dense, MLP, HeteroDense), Define Symbolic Math (custom SymPy activations/losses), Train (API.Wrapper or custom loops), Extend Core (Initializers, Optimizers, Losses), Zero-Recompile Tuning (set_constants).
+Capabilities: Design Networks (LinearNet, MLP, HeteroLinearNet), Define Symbolic Math (custom SymPy activations/losses), Train (API.Wrapper or custom loops), Extend Core (Initializers, Optimizers, Losses), Zero-Recompile Tuning (set_constants).
 </capabilities>
 
 <forbidden_actions>
@@ -17,7 +17,7 @@ NEVER:
 
 <import_patterns>
 ```python
-from HeteroSymNN.Core.Nets import HeteroDense, Dense, MLP, BaseNetwork
+from HeteroSymNN.Core.Nets import HeteroLinearNet, LinearNet, MLP, BaseNetwork
 from HeteroSymNN.API import Wrapper, MinMaxScaler
 from HeteroSymNN.Core import losses, optimizers, initializers, layers
 from HeteroSymNN.types import FlexibleNodeConfig, NodeConfig, BackendArray, ConstantToUpdate, LayerValues, LayerConstruction
@@ -52,10 +52,10 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 - `change_constants(new_constants: dict) -> None`
 - `get_config() -> dict[str, Any]`
 
-*HeteroDense*
+*HeteroLinearNet*
 - `__init__(nodes_structure: list[int], detailed_activations: list[list[NodeConfig]], initial_values: Optional[list[LayerValues]] = None, initializer: Optional[list[Initializer]] = None, learning_rate: float = 0.001, batch_size: int = 32, training_mode: str = "mini-batch", loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_training_iter: int = 1000)`
 
-*Dense*
+*LinearNet*
 - `__init__(nodes_structure: list[int], activation_config: list[FlexibleNodeConfig], initial_values: Optional[list[LayerValues]] = None, initializer: Optional[Union[Initializer, list[Initializer]]] = None, learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic", batch_size: int = 32, loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_training_iter: int = 1000)`
 
 *MLP*
@@ -130,7 +130,7 @@ Exceptions (`HeteroSymNN.exceptions`): `HeteroSymNNError` (base), `BackendNotAva
 <framework_examples>
 ```python
 # API Training Example (Full Lifecycle)
-from HeteroSymNN.Core.Nets import Dense
+from HeteroSymNN.Core.Nets import LinearNet
 from HeteroSymNN.API import Wrapper
 from HeteroSymNN.Core import optimizers, losses, initializers
 
@@ -139,7 +139,7 @@ custom_init = initializers.HeNormal(connection_density=0.8)
 custom_loss = losses.HuberLoss(delta=1.5)
 custom_opt = optimizers.AdamOptimizer(learning_rate=0.005)
 
-model = Dense(nodes_structure=[10, 25, 1], activation_config=["sin(num)", ("tanh(num)*a", {"a":2.0})], initializer=custom_init, loss_function=custom_loss, optimizer=custom_opt)
+model = LinearNet(nodes_structure=[10, 25, 1], activation_config=["sin(num)", ("tanh(num)*a", {"a":2.0})], initializer=custom_init, loss_function=custom_loss, optimizer=custom_opt)
 
 # 2. Wrapping
 agent = Wrapper(model, work_type="reg")
@@ -156,14 +156,14 @@ loaded_agent = Wrapper.load("my_dense_model.symnn")
 predictions = loaded_agent.predict(X_test)
 
 # Explicit Heterogeneous Topology (Full Lifecycle)
-from HeteroSymNN.Core.Nets.dense import HeteroDense
+from HeteroSymNN.Core.Nets.linear_net import HeteroLinearNet
 from HeteroSymNN.API import Wrapper
 from HeteroSymNN.API.data_transformers import MinMaxScaler
 from HeteroSymNN.Core import optimizers, losses, initializers
 
 # 1. Instancing
 h_acts = [["sin(num)",{}], ["Max(0, num)",{}], ["exp(num*beta)", {"beta": -0.5}]]*4 # 12 hidden nodes
-hetero_model = HeteroDense(nodes_structure=[2, 12, 1], detailed_activations=[h_acts, [["num",{}]]], loss_function=losses.BinaryCrossEntropy(), optimizer=optimizers.SgdOptimizer(learning_rate=0.01))
+hetero_model = HeteroLinearNet(nodes_structure=[2, 12, 1], detailed_activations=[h_acts, [["num",{}]]], loss_function=losses.BinaryCrossEntropy(), optimizer=optimizers.SgdOptimizer(learning_rate=0.01))
 
 # 2. Wrapping (with Data Transformers)
 agent_hetero = Wrapper(hetero_model, work_type="class", input_transformer=MinMaxScaler())

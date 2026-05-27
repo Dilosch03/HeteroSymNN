@@ -33,17 +33,17 @@ If you just need a standard, high-performance neural network where all hidden la
 2. Layer-Level Heterogeneity (The "Cocktail" Network)
 ------------------------------------------------------
 
-In standard frameworks, mixing different activation functions usually requires custom boilerplate classes. With HeteroSymNN's Dense builder, you can effortlessly assign different mathematical strings to different layers.
+In standard frameworks, mixing different activation functions usually requires custom boilerplate classes. With HeteroSymNN's LinearNet builder, you can effortlessly assign different mathematical strings to different layers.
 
 Here is how to create a network that uses periodic functions (Sine) in the first hidden layer, and parameterized functions in the second:
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.Core.Nets import LinearNet
     from HeteroSymNN.API import Wrapper
 
     # Define the network topology and layer-wise activations
-    model = Dense(
+    model = LinearNet(
         nodes_structure=[10, 25, 25, 1],
         activation_config=[
             "sin(num)",                        # Hidden Layer 1: Sine wave
@@ -64,7 +64,7 @@ To achieve this granular control, use the node-level configuration arrays:
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets import HeteroDense
+    from HeteroSymNN.Core.Nets import HeteroLinearNet
     # Define a small network: 2 inputs, a hidden layer with 3 neurons, 1 output
     # We explicitly define the math for each of the 3 hidden neurons:
     hidden_activations = [
@@ -77,7 +77,7 @@ To achieve this granular control, use the node-level configuration arrays:
     output_activations = [("num", {})]
 
     # Construct the fully heterogeneous network
-    hetero_model = HeteroDense(
+    hetero_model = HeteroLinearNet(
         nodes_structure=[2, 12, 1],
         detailed_activations=[hidden_activations, output_activations]
     )
@@ -94,7 +94,7 @@ HeteroSymNN treats these symbolic constants as mutable kernel arguments. This me
     # Update the 'beta' constant for a specific layer/neuron in real-time
     # The framework routes this directly to the compiled C++ kernel memory.
 
-    # Example: Update the 'beta' parameter we defined in the HeteroDense model
+    # Example: Update the 'beta' parameter we defined in the HeteroLinearNet model
     # Format: {Layer_Index: list or single of (Node_Index, Constant_Name, New_Value))}
     hetero_model.change_constants({0: (2, "beta", -0.9)})
 

@@ -74,7 +74,7 @@ class _Registry:
         
         # 1. Walk through every module (.py file) in the directory
         for _, module_name, _ in pkgutil.iter_modules(package.__path__):
-            # 2. Dynamically import the file (e.g., 'HeteroSymNN.Core.Nets.dense')
+            # 2. Dynamically import the file (e.g., 'HeteroSymNN.Core.Nets.linear_net')
             full_module_name = f"{package.__name__}.{module_name}"
             module = importlib.import_module(full_module_name)
             

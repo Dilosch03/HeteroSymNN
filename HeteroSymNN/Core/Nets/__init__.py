@@ -1,4 +1,4 @@
-from .dense import HeteroDense,Dense,MLP
+from .linear_net import HeteroLinearNet,LinearNet,MLP
 from .base_classes import BaseNetwork
 
-__all__ = ["HeteroDense","Dense","MLP","BaseNetwork"]
+__all__ = ["HeteroLinearNet","LinearNet","MLP","BaseNetwork"]

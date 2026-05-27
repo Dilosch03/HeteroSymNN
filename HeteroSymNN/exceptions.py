@@ -1,6 +1,7 @@
 __all__ = [
     # Base
     "HeteroSymNNError", "HeteroSymNNWarnings",
+
     # Backend
     "BackendError", "BackendWarning",
     "MethodMigrationError", "MethodMigrationWarning",
@@ -8,26 +9,34 @@ __all__ = [
     "InvalidDeviceIDError", "InvalidDeviceIDWarning",
     "ResourceAllocationError", "ResourceAllocationWarning",
     "BackendDataTypeError", "BackendDataTypeWarning",
-    "HardwareWarning",
+    "HardwareWarning","HardwareError",
+
     # JIT
     "JITError", "JITWarning",
     "JITCompilationError", "JITCompilationWarning", "CompilationWarning",
     "FormulaParsingError", "FormulaParsingWarning",
+
     # Config
     "ConfigError", "ConfigWarning",
     "NetworkStructureError", "NetworkStructureWarning",
     "LayerConfigurationError", "LayerConfigurationWarning",
+
     "PathError", "PathWarning",
     # Wrapper
     "WrapperError", "WrapperWarning",
     "TrainingError", "TrainingWarning",
     "LoadingError", "LoadingWarning",
     "SavingError", "SavingWarning",
+
     # General
     "RuntimeStateError", "RuntimeStateWarning",
     "ShapeMismatchError", "ShapeMismatchWarning", "ShapeWarning",
     "DataTypeError", "DataTypeWarning",
     "PerformanceWarning",
+
+    #API evolution
+    "HeteroSymNNDeprecationError",
+    "HeteroSymNNDeprecationWarning",
 ]
 
 class HeteroSymNNError(Exception):
@@ -331,9 +340,41 @@ class PerformanceWarning(HeteroSymNNWarnings):
     """
     pass
 
-class HardwareWarning(BackendWarning):
+class HardwareError(HeteroSymNNError):
     """
-    Warning raised when there is a potential issue or limitation with the hardware 
-    (e.g., falling back to CPU when GPU is requested).
+    Error raised when requested physical hardware is unavailable or drivers are missing.
     """
     pass
+
+class HardwareWarning(HardwareError,HeteroSymNNWarnings):
+    """
+    Warning raised when there is a potential issue or limitation with the hardware 
+    """
+    pass
+
+class HeteroSymNNDeprecationError(HeteroSymNNError):
+    """Raised when a user attempts to use a feature that has been fully removed from the API."""
+    pass
+
+class HeteroSymNNDeprecationWarning(HeteroSymNNDeprecationError, HeteroSymNNWarnings):
+    """
+    Warning issued when a feature is deprecated. Auto-generates a standard message
+    unless a custom one is provided.
+    """
+    def __init__(self, deprecated_feature: str, replacement: str, version_removal: str, custom_message: str = None):
+        self.deprecated_feature = deprecated_feature
+        self.replacement = replacement
+        self.version_removal = version_removal
+        
+        # If the developer provides a specific explanation, use it.
+        if custom_message is not None:
+            message = custom_message
+        # Otherwise, auto-generate the Objective Truth standard message.
+        else:
+            message = (
+                f"The '{self.deprecated_feature}' feature is deprecated and will be "
+                f"fully removed in HeteroSymNN v{self.version_removal}. "
+                f"Please migrate to using '{self.replacement}' instead."
+            )
+            
+        super().__init__(message)

@@ -17,11 +17,11 @@ Use the ``Wrapper`` class for all day-to-day model training, evaluation, and dat
 
 .. code-block:: python
 
-    from HeteroSymNN.Core.Nets import Dense
+    from HeteroSymNN.Core.Nets import LinearNet
     from HeteroSymNN.API import Wrapper
 
     # 1. Define your raw engine
-    model = Dense(nodes_structure=[10, 25, 1], activation_config=["sin(num)", "num"])
+    model = LinearNet(nodes_structure=[10, 25, 1], activation_config=["sin(num)", "num"])
 
     # 2. Wrap it for Regression ("reg") or Classification ("class")
     agent = Wrapper(model, work_type="reg")

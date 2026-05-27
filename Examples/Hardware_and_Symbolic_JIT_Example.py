@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from HeteroSymNN.Core.Nets.dense import HeteroDense
+from HeteroSymNN.Core.Nets import HeteroLinearNet
 from HeteroSymNN.Backend import hardware as HW
 
 def run_hardware_demo():
@@ -14,8 +14,8 @@ def run_hardware_demo():
     activations = [ [("relu", {})] * 2048 ] * 3
     activations.append( [("sigmoid", {})] * 10 ) 
 
-    model = HeteroDense(
-        nodes_structure=nodes,
+    model = HeteroLinearNet(
+        num_inputs=nodes[0],
         detailed_activations=activations,
         batch_size=1024 
     )
@@ -55,8 +55,8 @@ def run_symbolic_demo():
     custom_func = "sin(num) * exp(-Abs(num))"
     activations = [[(custom_func, {})] * 1000] 
     
-    model = HeteroDense(
-        nodes_structure=[1000, 1000],
+    model = HeteroLinearNet(
+        num_inputs=1000,
         detailed_activations=activations,
         batch_size=1024
     )
