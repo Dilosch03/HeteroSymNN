@@ -11,18 +11,18 @@ The Compilation Pipeline
 ------------------------
 When a network initializes or a custom loss function is defined, the JIT compiler executes a strict 4-step pipeline:
 
-1. **Parse & Derive:** The compiler reads the user's mathematical string (e.g., ``"sin(num * alpha)"``) and converts it into an Abstract Syntax Tree (AST) using SymPy, simultaneously calculating the exact symbolic derivative for the backward pass.
+1. **Parse & Derive:** The compiler reads the user's mathematical string (e.g., ``"sin(num * alpha)"``) and formats the mathematical string, simultaneously calculating the exact symbolic derivative for the backward pass.
    
    .. warning::
-      **Security Note (The AST Sandbox):** The explicit AST whitelist sandbox—designed to strictly prevent Arbitrary Code Execution (ACE) via malicious SymPy object injection—is currently in active development for a future release. While SymPy parsing is inherently safer than raw ``eval()``, you should not load ``.symnn`` files from untrusted sources in the current version.
+      **Security Note (String Formatting Verification):** The explicit string formatting verification—designed to strictly prevent Arbitrary Code Execution (ACE) via malicious string injection—is currently in active development for a future release. While string formatting is inherently safer than raw ``eval()``, you should not load ``.symnn`` files from untrusted sources in the current version.
 
-2. **Code Generation:** The AST is passed through the internal ``codegen`` module, which acts as the translation dictionary for the hardware.
+2. **Code Generation:** The formatted string is passed through the internal ``codegen`` module, which acts as the translation dictionary for the hardware.
 3. **Kernel Fusion:** To prevent the massive performance penalty of "kernel launch overhead," the compiler fuses all of the distinct mathematical instructions for every neuron in a layer into a single, unified C++ ``switch`` statement.
 4. **Execution & Caching:** The raw C++ string is compiled using the active hardware backend. The resulting binary execution pointer is securely cached to disk to guarantee instantaneous loading on future runs.
 
 The Code Generation Addon (codegen)
 -----------------------------------
-Operating as an essential subsystem within the general JIT flow, the internal ``codegen`` module acts as the framework's blueprint library. Once the compiler has processed the AST, it relies on this module for the final translation:
+Operating as an essential subsystem within the general JIT flow, the internal ``codegen`` module acts as the framework's blueprint library. Once the compiler has processed the formatted string, it relies on this module for the final translation:
 
 * **Function Converters:** It contains the direct dictionaries that map standard SymPy operations into their hardware-specific syntax (e.g., translating a SymPy ``Max`` into a CUDA ``fmaxf`` or C++ ``std::max``).
 * **Execution Templates:** It holds the raw C++ and CUDA boilerplate string templates required to scaffold the final fused ``forward`` and ``backward`` passes.

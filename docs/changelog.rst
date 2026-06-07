@@ -68,7 +68,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 
 * Currently the ``CPU_JIT`` method has been deactivated due to performance issues.
 * Removed ``Core/Nets/neural_nets.py`` (Logic has been modularized and distributed into ``base_classes.py``, ``linear_net.py``, and ``evo.py``).
-* Removed ``JIT/templates.py`` (Replaced by the more robust and flexible AST generation pipeline in ``codegen.py``).
+* Removed ``JIT/templates.py`` (Replaced by the more robust and flexible string formatting pipeline in ``codegen.py``).
 * Removed legacy pickle-based config loading in favor of standard JSON serialization for ``.symnn`` wrapper creation.
 * Removed ``learning_mode`` network parameter.
   

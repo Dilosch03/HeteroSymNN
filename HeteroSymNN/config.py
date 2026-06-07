@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 
 from .Backend.hardware import GPU_ENABLED
-from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning
+from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning,ConfigError,ComputationalMethodValueError,DataTypeError
 from .Backend import hardware as HW
 
 __all__ = ["settings"]
@@ -106,7 +106,7 @@ class _Settings:
             self._warning_level = value
             warnings.simplefilter(value,HeteroSymNNWarnings)   
         else:
-            raise ValueError(f"Invalid warning level: {value}. Must be one of {["error", "ignore", "always", "default", "module","once"]}")
+            raise ConfigError(f"Invalid warning level: {value}. Must be one of {['error', 'ignore', 'always', 'default', 'module','once']}")
         
     @property
     def cpu_cache_dir(self) -> Path:
@@ -165,7 +165,7 @@ class _Settings:
         try_method = new_method
         msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."
@@ -248,7 +248,7 @@ class _Settings:
         if dtype_str in self.mapping:
             self._default_dtype = self.mapping[dtype_str]
         else:
-            raise ValueError(f"Unsupported dtype: {dtype_str}. Supported: {list(self.mapping.keys())}")
+            raise DataTypeError(f"Unsupported dtype: {dtype_str}. Supported: {list(self.mapping.keys())}")
         
     def set_cache_location(self,path: Union[str,Path],move_existing_cache: bool = False)->None:
         """
@@ -301,6 +301,7 @@ class _Settings:
                     try:
                         os.rmdir(old_cache_dir)
                     except OSError: pass 
+                    self._cpu_cache_dir = new_cache_dir
                     
                 except Exception as e:
                     warnings.warn(f"Failed to move some cache files: {e}. New cache is active but might be empty.",PathWarning,stacklevel=2)

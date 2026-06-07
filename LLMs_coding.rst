@@ -42,7 +42,7 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 
 <networks_api>
 *BaseNetwork*
-- `__init__(network_structure: list[tuple[int, type[BaseLayer]]], extra_layer_parameters: list[dict[str, Any]], detailed_activations: list[list[NodeConfig]], initial_values: Optional[list[LayerValues]] = None, initializers: Optional[list[Initializer]] = None, learning_rate: float = 0.001, batch_size: int = 32, training_mode: Literal["batch", "mini-batch", "stochastic"] = "mini-batch", loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_epochs: int = 1000)`
+- `__init__(num_inputs: int, network_structure: list[type[BaseLayer]], extra_layer_parameters: list[dict[str, Any]], detailed_activations: list[list[NodeConfig]], initializers: Optional[list[Initializer]] = None, learning_rate: float = 0.001, batch_size: int = 32, loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_epochs: int = 1000, gpu_id: int = 0)`
 - `train(training_inputs: list, training_targets: list, ...) -> list[float]`
 - `predict(input_values: list, to_cpu: bool = True) -> Union[np.ndarray, BackendArray]`
 - `get_parameters() -> dict`
@@ -53,7 +53,7 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 - `get_config() -> dict[str, Any]`
 
 *HeteroLinearNet*
-- `__init__(nodes_structure: list[int], detailed_activations: list[list[NodeConfig]], initial_values: Optional[list[LayerValues]] = None, initializer: Optional[list[Initializer]] = None, learning_rate: float = 0.001, batch_size: int = 32, training_mode: str = "mini-batch", loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_training_iter: int = 1000)`
+- `__init__(num_inputs: int, detailed_activations: list[list[NodeConfig]], initializer: Optional[list[Initializer]] = None, learning_rate: float = 0.001, batch_size: int = 32, loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_training_iter: int = 1000)`
 
 *LinearNet*
 - `__init__(nodes_structure: list[int], activation_config: list[FlexibleNodeConfig], initial_values: Optional[list[LayerValues]] = None, initializer: Optional[Union[Initializer, list[Initializer]]] = None, learning_rate: float = 0.001, training_mode: Literal["batch", "mini-batch", "stochastic"] = "stochastic", batch_size: int = 32, loss_function: Optional[Loss] = None, optimizer: Optional[Optimizer] = None, num_training_iter: int = 1000)`
@@ -124,7 +124,7 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 
 <settings_and_exceptions>
 `HeteroSymNN.config.settings`: `use_kernel_cache` (bool), `n_jobs` (int), `warning_level` ("ignore"|"warn"|"error"), `default_compute_method` ("GPU_CUDA"|"CPU_PYTHON"), `cpu_cache_dir` (Path).
-Exceptions (`HeteroSymNN.exceptions`): `HeteroSymNNError` (base), `BackendNotAvailableError`/`MethodMigrationError` (routing fails), `CompilationWarning`/`JITError` (SymPy compile fails), `ShapeMismatchError`/`LayerConfigurationError` (dim mismatch), `WrapperError`/`LoadingError`/`SavingError` (disk I/O), `RuntimeStateError` (bad execution order).
+Exceptions (`HeteroSymNN.exceptions`): `HeteroSymNNError` (base), `BackendNotAvailableError`/`MethodMigrationError` (routing fails), `CompilationWarning`/`JITError`/`JITCompilationError`/`FormulaParsingError` (SymPy compile fails), `ShapeMismatchError`/`LayerConfigurationError`/`NetworkStructureError` (dim/structural mismatch), `WrapperError`/`LoadingError`/`SavingError`/`TrainingError` (disk I/O & training), `RuntimeStateError` (bad execution order), `HeteroSymNNValueError`/`DeviceSelectionError`/`ComputationalMethodValueError` (invalid options).
 </settings_and_exceptions>
 
 <framework_examples>
@@ -163,7 +163,7 @@ from HeteroSymNN.Core import optimizers, losses, initializers
 
 # 1. Instancing
 h_acts = [["sin(num)",{}], ["Max(0, num)",{}], ["exp(num*beta)", {"beta": -0.5}]]*4 # 12 hidden nodes
-hetero_model = HeteroLinearNet(nodes_structure=[2, 12, 1], detailed_activations=[h_acts, [["num",{}]]], loss_function=losses.BinaryCrossEntropy(), optimizer=optimizers.SgdOptimizer(learning_rate=0.01))
+hetero_model = HeteroLinearNet(num_inputs=2, detailed_activations=[h_acts, [["num",{}]]], loss_function=losses.BinaryCrossEntropy(), optimizer=optimizers.SgdOptimizer(learning_rate=0.01))
 
 # 2. Wrapping (with Data Transformers)
 agent_hetero = Wrapper(hetero_model, work_type="class", input_transformer=MinMaxScaler())

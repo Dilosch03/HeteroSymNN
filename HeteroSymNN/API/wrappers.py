@@ -301,7 +301,7 @@ class Wrapper():
             if (len(None_keys) > 0):
                 raise WrapperError(f"Input transformer has {",".join(None_keys)} with None values even though it was fitted.")
                 
-            Y_denorm = self._output_transformer.transform(Y_pred_norm)
+            Y_denorm = self._output_transformer.inverse_transform(Y_pred_norm)
         
         return Y_denorm
 
@@ -524,6 +524,10 @@ class Wrapper():
                 "loaded_train_data":self._loaded_train_data
             }
 
+            if (metadata["model_class"] in registries.registry.legacy_map.keys()):
+                metadata["model_class"] = registries.registry.legacy_map[metadata["model_class"]]
+
+
             transformation_configs = {}
             if self.input_transformer is not None:
                 transformation_configs["inputs"] = self.input_transformer.get_config()
@@ -558,9 +562,6 @@ class Wrapper():
             npz_ram_buffer = io.BytesIO()
             np.savez_compressed(npz_ram_buffer, **flat_params)
 
-            temp = zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED)
-            temp.close()
-
             with zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
                 
                 archive.writestr("config.json", json.dumps(config_to_save, indent=4, cls=_NumpyEncoder))
@@ -568,7 +569,7 @@ class Wrapper():
 
             return full_path
         except Exception as e:
-            raise SavingError(f"Error al guardar el modelo.") from e
+            raise SavingError(f"Error ocured when saving the model {self.model_name}. {str(e)}")
 
     def load_state(self, path: str) -> None:
         """
@@ -727,7 +728,7 @@ class GridSearchManager:
         self.param_grid = param_grid
         
         if not (0.0 < validation_split < 1.0):
-            raise ValueError("validation_split value should be between 0 and 1.")
+            raise WrapperError("validation_split value should be between 0 and 1.")
         self.validation_split = validation_split
         
         self._X_train, self._y_train = None, None
@@ -744,7 +745,7 @@ class GridSearchManager:
         Y_full = np.array(expected_results)
 
         if len(X_full) != len(Y_full):
-            raise ValueError(f"Number of samples in input and output data do not match. input samples: {len(X_full)}, output samples: {len(Y_full)}")
+            raise ShapeMismatchError(f"Number of samples in input and output data do not match. input samples: {len(X_full)}, output samples: {len(Y_full)}")
         
         indices = np.arange(X_full.shape[0])
         if shuffle:
@@ -756,7 +757,7 @@ class GridSearchManager:
         split_idx = int(X_full.shape[0] * (1 - self.validation_split))
         
         if split_idx == 0 or split_idx == len(X_full):
-            raise ValueError(f"The value for the split for validation ({self.validation_split}) returns and empty split for one of the tasks.")
+            raise WrapperError(f"The value for the split for validation ({self.validation_split}) returns and empty split for one of the tasks.")
 
         self._X_train = X_shuffled[:split_idx]
         self._y_train = Y_shuffled[:split_idx]
@@ -792,7 +793,7 @@ class GridSearchManager:
         Wrapper
             Fresh wrapper with the mutated configuration.
         """
-        self.template_wrapper.model.change_device("CPU")
+        self.template_wrapper.model.to("CPU")
         architecture_config = self.template_wrapper.model.get_config()
 
         base_config = {
@@ -893,7 +894,7 @@ class GridSearchManager:
                 score = metrics.get(metric_to_optimize)
                 
                 if score is None or np.isnan(score):
-                    raise ValueError(f"Metric '{metric_to_optimize}' not found or NaN. Available: {list(metrics.keys())}")
+                    raise WrapperError(f"Metric '{metric_to_optimize}' not found or NaN. Available: {list(metrics.keys())}")
                     
                 duration = time.time() - start_time
                 self.grid_search_results.append({'params': readable_combo, 'score': score, 'metrics': metrics, 'duration_s': duration})

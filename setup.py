@@ -7,10 +7,15 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(name="HeteroSymNN",
-      version="0.3.0b4",
+      version="0.3.0b7",
       packages=find_packages(),
       python_requires=">=3.10",
       author="Dilosch03",
+      entry_points={
+          "console_scripts": [
+              "heterosymnn=HeteroSymNN.__main__:main",
+          ],
+      },
       install_requires=["numpy>=2.0,<2.3","sympy~=1.14","platformdirs~=4.5"],
       extras_require={
         "gpu": ["cupy~=13.6"]

@@ -2,10 +2,11 @@ import numpy as np
 import time
 from HeteroSymNN.Core.Nets import HeteroLinearNet
 from HeteroSymNN.Backend import hardware as HW
+from HeteroSymNN import settings
 
 def run_hardware_demo():
     if not HW.GPU_ENABLED:
-        print("❌ This demo requires a GPU.")
+        print("This demo requires a GPU.")
         return
 
     print("--- 1. Low Level Setup ---")
@@ -27,7 +28,7 @@ def run_hardware_demo():
 
     print("--- 3. Moving to GPU ---")
     model.set_gpu_id(0)
-    model.change_device("GPU")
+    model.to("GPU")
     
     print(f"VRAM after Float32 Load: {mempool.used_bytes() / 1024**2:.2f} MB")
 
@@ -46,7 +47,7 @@ def run_hardware_demo():
 
 def run_symbolic_demo():
     print("\n" + "="*40)
-    print("🔮 SYMBOLIC JIT DEMO 🔮")
+    print("SYMBOLIC JIT DEMO 🔮")
     print("="*40)
     
     print("Defining a completely custom activation function:")
@@ -72,19 +73,19 @@ def run_symbolic_demo():
     }
     layer0.set_parameters(layer_params)
 
-    if HW.GPU_ENABLED:
+    if "GPU_CUDA" in settings.available_methods:
         print("-> Compiling Custom CUDA Kernel...")
         model.set_gpu_id(0)
-        model.change_device("GPU")
-        model._change_COMPUTATIONAL_METHOD("GPU_CUDA") 
-        print("✅ Compilation Complete! Kernel loaded to GPU.")
-    elif HW.CPP_JIT_ENABLED:
+        model.to("GPU")
+        model.set_backend("GPU_CUDA") 
+        print("Compilation Complete! Kernel loaded to GPU.")
+    elif "CPU_JIT"in settings.available_methods:
         print("-> Compiling Custom C++ Kernel (CPU)...")
-        model._change_COMPUTATIONAL_METHOD("CPU_JIT")
-        print("✅ Compilation Complete! DLL loaded.")
+        model.set_backend("CPU_JIT")
+        print("Compilation Complete! DLL loaded.")
     else:
         print("-> Using Python Lambdas (CPU)...")
-        model._change_COMPUTATIONAL_METHOD("CPU_PYTHON")
+        model.set_backend("CPU_PYTHON")
 
     # 2. Test it
     x_test = np.linspace(-5, 5, 1024).reshape(-1, 1).astype(np.float32)
@@ -103,9 +104,9 @@ def run_symbolic_demo():
     print(f"   NumPy Check: {expected:.6f}")
     
     if abs(y_sample - expected) < 1e-5:
-        print("✅ MATH MATCH! The JIT compiled the formula correctly.")
+        print("MATH MATCH! The JIT compiled the formula correctly.")
     else:
-        print("❌ MATH MISMATCH! Something went wrong.")
+        print("MATH MISMATCH! Something went wrong.")
 
 if __name__ == "__main__":
     run_hardware_demo()

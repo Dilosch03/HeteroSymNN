@@ -37,6 +37,10 @@ __all__ = [
     #API evolution
     "HeteroSymNNDeprecationError",
     "HeteroSymNNDeprecationWarning",
+
+    "HeteroSymNNValueError",
+    "DeviceSelectionError",
+    "ComputationalMethodValueError",
 ]
 
 class HeteroSymNNError(Exception):
@@ -378,3 +382,21 @@ class HeteroSymNNDeprecationWarning(HeteroSymNNDeprecationError, HeteroSymNNWarn
             )
             
         super().__init__(message)
+
+class HeteroSymNNValueError(HeteroSymNNError):
+    """
+    HeteroSymNN exception for value errors.
+    """
+    pass
+
+class DeviceSelectionError(BackendError, HeteroSymNNValueError):
+    """
+    Exception raised when an invalid computational device is specified.
+    """
+    pass
+
+class ComputationalMethodValueError(BackendError, HeteroSymNNValueError):
+    """
+    Exception raised when an invalid computational method is specified.
+    """
+    pass

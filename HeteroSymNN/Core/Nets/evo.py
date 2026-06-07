@@ -9,8 +9,10 @@ from ..layers import LinearLayer,RecurrentLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 
-__all__ = ["EvoNet"]
+__all__ = []
 
 class EvoNet(BaseNetwork):
     def __init__(self):
+        raise NotImplementedError("EvoNet is not implemented yet.")
         super().__init__()
+        

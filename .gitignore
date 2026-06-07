@@ -180,7 +180,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-structure.txt
+*.txt
 *test.py
 
 *.symnn
+bandit_report.json
+.vscode/settings.json
+pytest.ini

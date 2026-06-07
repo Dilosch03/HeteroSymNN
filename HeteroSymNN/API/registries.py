@@ -28,6 +28,7 @@ class _Registry:
         self._layers_map:dict[str, layers.BaseLayer] = self._build_dynamic_map(layers, layers.BaseLayer)
         self._net_map:dict[str,Nets.BaseNetwork] = self._scan_package_deep(Nets,Nets.BaseNetwork)
         self._transformers_map:dict[str,data_transformers.DataTransformer] = self._build_dynamic_map(data_transformers, data_transformers.DataTransformer)
+        self._legacy_map:dict[str,str] = {"ConfigurableNN":"HeteroLinearNet","FlexibleNN":"LinearNet","SimpleNN":"MLP"}
 
     def _build_dynamic_map(self,module, base_class)->dict[str,type]:
         """
@@ -85,6 +86,17 @@ class _Registry:
                     
         return found_classes
     
+    @property
+    def legacy_map(self):
+        """
+        Propery to the dictionary translation for the legacy classes to the classes names that are repleacing them. Read-only.
+        
+        Returns
+        -------
+        dict[str,str]
+        """
+        return self._legacy_map
+
     @property
     def loss_fn_map(self):
         """

@@ -5,7 +5,8 @@ import warnings
 import concurrent.futures
 
 from ..Backend import hardware as HW
-from ..exceptions import PerformanceWarning,InvalidDeviceIDError,BackendNotAvailableWarning
+from ..Backend.validators import _validate_gpu_id
+from ..exceptions import PerformanceWarning,BackendNotAvailableWarning,DeviceSelectionError
 from ..config import settings
 from ..types import BackendArray
 
@@ -37,7 +38,7 @@ class Optimizer:
             try_method = computational_device
             msg_extra = ""
             if not(computational_device in ["GPU","CPU"]):
-                raise ValueError("Device not recognized. Expecting GPU or CPU.")
+                raise DeviceSelectionError("Device not recognized. Expecting GPU or CPU.")
             
             if (device_id == None):
                 self._GPU_ID = 0
@@ -73,7 +74,8 @@ class Optimizer:
         (e.g., momentum, velocity) are converted to the correct backend format (NumPy or CuPy) 
         provided by ``vector_format``.
         """
-        raise NotImplementedError
+        if hasattr(self, 'learning_rate') and self.learning_rate is not None:
+            self.learning_rate = vector_format(self.learning_rate)
 
     def _setup_kernels(self):
         """
@@ -84,7 +86,7 @@ class Optimizer:
         """
         pass
 
-    def _change_COMPUTACIONAL_DEVICE(self, device:Literal["GPU","CPU"], device_id: Optional[int] = None):
+    def _change_COMPUTATIONAL_DEVICE(self, device:Literal["GPU","CPU"], device_id: Optional[int] = None):
         """
         Internal method to change the computational device (CPU/GPU).
         
@@ -96,7 +98,7 @@ class Optimizer:
             The GPU ID to use if device is "GPU".
         """
         if not(device in ["GPU","CPU"]):
-            raise ValueError("Device not recognized. Expecting GPU or CPU.")
+            raise DeviceSelectionError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU") and (not(HW.GPU_ENABLED))):
             warnings.warn("Trying to define the GPU as the computational device when there is no GPU available."+"CPU is required.",PerformanceWarning,stacklevel=3)
@@ -123,8 +125,7 @@ class Optimizer:
         new_id : int
             The new GPU ID.
         """
-        if (new_id >= HW.NUM_GPUS):
-            raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+        _validate_gpu_id(new_id)
 
         if (new_id != self.DEVICE_ID):
             self.DEVICE_ID = new_id
@@ -142,7 +143,7 @@ class Optimizer:
             The target device.
         """
         if not(device in ["GPU","CPU"]):
-            raise ValueError("Device not recognized. Expecting GPU or CPU.")
+            raise DeviceSelectionError("Device not recognized. Expecting GPU or CPU.")
         
         if ((device == "GPU")and(self.COMPUTATIONAL_DEVICE == "CPU")):
             warnings.warn("Tried to send the paramters to the GPU when the CPU was set as the computational device."+"CPU is required.",PerformanceWarning,stacklevel=3)
@@ -314,10 +315,8 @@ class SgdOptimizer(Optimizer):
     def _refresh_parameters(self, vector_format):
         """
         Internal method to refresh internal parameters when changing devices or vector formats.
-
-        This method is not used in this class.
         """
-        pass
+        super()._refresh_parameters(vector_format)
     
     def _setup_kernels(self):
         """
@@ -470,6 +469,22 @@ class AdamOptimizer(Optimizer):
         vector_format: `numpy.ndarray` or `cupy.ndarray`
             The new vector format.
         """
+        super()._refresh_parameters(vector_format)
+        
+        if hasattr(self, 'beta1') and self.beta1 is not None:
+            self.beta1 = vector_format(self.beta1)
+        if hasattr(self, 'beta2') and self.beta2 is not None:
+            self.beta2 = vector_format(self.beta2)
+        if hasattr(self, 'epsilon') and self.epsilon is not None:
+            self.epsilon = vector_format(self.epsilon)
+        if hasattr(self, 't') and self.t is not None:
+            self.t = vector_format(self.t)
+            
+        if hasattr(self, 't_pow_beta1') and self.t_pow_beta1 is not None:
+            self.t_pow_beta1 = vector_format(self.t_pow_beta1)
+        if hasattr(self, 't_pow_beta2') and self.t_pow_beta2 is not None:
+            self.t_pow_beta2 = vector_format(self.t_pow_beta2)
+
         if ((getattr(self, 'm', None) is None) or (getattr(self, 'v', None) is None)):
             return
 

@@ -73,7 +73,7 @@ hidden_activations = [
 ] * 4
 
 model = HeteroLinearNet(
-    nodes_structure=[2, 12, 1],
+    num_inputs=2,
     detailed_activations=[hidden_activations, [("num", {})]]
 )
 ```
@@ -121,14 +121,14 @@ HeteroSymNN acts as a Differentiable Compiler:
 
 ```mermaid
 flowchart TD
-    A[String Input: 'alpha * sin(num)'] --> B(1. Parse: SymPy AST)
+    A[String Input: 'alpha * sin(num)'] --> B(1. Parse: SymPy)
     B --> C(2. Derive: Symbolic Derivative)
     C --> D(3. Compile: JIT C++/CUDA)
     D --> E(4. Fuse: Unified Hardware Kernel)
     E --> F[BackendArray Execution]
 ```
 
-1. **Parse**: Accepts mathematical strings (```"alpha * sin(num)"```) and parses them into abstract syntax trees using SymPy.
+1. **Parse**: Accepts mathematical strings (```"alpha * sin(num)"```) and parses and formats them into a structure for execution using SymPy.
 
 2. **Derive**: Automatically calculates the exact symbolic derivative for backpropagation.
 

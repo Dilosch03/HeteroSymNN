@@ -1,14 +1,9 @@
 from __future__ import annotations
-import numpy as np
-from typing import Literal, Union, Sequence
 import warnings
 
-from ..Backend import hardware as HW
+
 from ..types import LayerConstructionConfig
-from .initializers import Initializer
-from ..config import settings
-from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError,HardwareError, HeteroSymNNDeprecationWarning
-from ..error_handlers import clean_traceback
+from ..exceptions import HeteroSymNNDeprecationWarning
 from .layers import LinearLayer
 
 class Layer(LinearLayer):
@@ -51,3 +46,8 @@ class Layer(LinearLayer):
             stacklevel=2
         )
         super().__init__(num_inputs=num_inputs, layer_configuration=layer_configuration, batch_size=batch_size, Gpu_id=Gpu_id)
+    def get_config(self)->dict[str,any]:
+        temp = super().get_config()
+        temp["layer_type"] = "LinearLayer"
+        return temp
+

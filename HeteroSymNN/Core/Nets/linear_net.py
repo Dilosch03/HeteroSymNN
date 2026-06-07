@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import Optional,Literal,Union
+from typing import Optional,Union
 
-from ...types import NodeConfig,LayerValues,FlexibleNodeConfig
+from ...types import NodeConfig,FlexibleNodeConfig
 from ..layers import LinearLayer
 from .base_classes import BaseNetwork
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
-from ...exceptions import NetworkStructureError
+from ...exceptions import NetworkStructureError, LayerConfigurationError
 from ...error_handlers import clean_traceback
 
 __all__ = ["HeteroLinearNet", "LinearNet", "MLP"]
@@ -16,8 +16,8 @@ class HeteroLinearNet(BaseNetwork):
         
         Parameters
         ----------
-        nodes_structure : list[int]
-            List with the number of nodes per layer including input and output layers.
+        num_inputs : int
+            Number of inputs the network is going to receive.
         detailed_activations : list[list[:type:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
         initial_values : Optional[list[:type:`~HeteroSymNN.types.LayerValues`]], optional
@@ -52,7 +52,7 @@ class HeteroLinearNet(BaseNetwork):
         --------
         >>> from HeteroSymNN.Core.Nets.LinearNet import HeteroLinearNet
         >>> CNN = HeteroLinearNet(
-        ...     nodes_structure=[3, 5, 2],
+        ...     num_inputs=3,
         ...     detailed_activations=[
         ...         [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
         ...         [("sigmoid", {}), ("sigmoid", {})]
@@ -68,7 +68,7 @@ class HeteroLinearNet(BaseNetwork):
         >>> custom_optimizer = OptiC.SGDOptimizer(learning_rate=0.01)
         >>> custom_initializers = [InitC.XavierUniform(),InitC.XavierUniform()]
         >>> CNN = HeteroLinearNet(
-        ...     nodes_structure=[4, 6, 3],
+        ...     num_inputs=4,
         ...     detailed_activations=[
         ...         [("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {}), ("tanh", {})],
         ...         [("softmax", {}), ("softmax", {}), ("softmax", {})]
@@ -153,7 +153,7 @@ class LinearNet(HeteroLinearNet):
             raise NetworkStructureError("nodes_structure most have at least 2 value, the number of inputs and the number of outputs.")
         
         if not isinstance(activation_config, list):
-             raise ValueError(f"activation_config must be a list but received: {type(activation_config)}")
+             raise LayerConfigurationError(f"activation_config must be a list but received: {type(activation_config)}")
         
         if len(activation_config) != num_layers:
              raise NetworkStructureError(f"The list of the activation functions have {len(activation_config)} elements, but was set {num_layers} layers in nodes_structure.")
@@ -193,7 +193,7 @@ class LinearNet(HeteroLinearNet):
         elif ((isinstance(config_item, tuple)) and (len(config_item) == 2)):
             return config_item
         else:
-            raise ValueError(f"Invalid activation configuration: {config_item}.'str' or 'tuple[str, dict[str, float]]' was expected.")
+            raise LayerConfigurationError(f"Invalid activation configuration: {config_item}.'str' or 'tuple[str, dict[str, float]]' was expected.")
 
     def _expand_to_detailed(self, num_layers: int, nodes_per_layer: list[int], layer_configs: list[FlexibleNodeConfig]) -> list[list[NodeConfig]]:
         """

@@ -20,7 +20,7 @@ Upcoming: v0.4.0 (Security & Persistence)
   * Converting magic routing strings (like ``"GPU_CUDA"``) into strict String-Enums to enable IDE autocomplete and prevent typos.
 
 * **Asynchronous Data Bus**: Building the ``DatasetStreamer`` to feed the GPU in chunks without overflowing CPU RAM.
-* **JIT Compiler Evolution**: Implementing AST Safeguards and Dynamic Loop Unrolling for recursive math.
+* **JIT Compiler Evolution**: Implementing string safeguards.
 
   * Making a modular architecture for expansion of capabilities.
 

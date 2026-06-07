@@ -4,11 +4,12 @@ from typing import Literal, Union, Sequence
 import warnings
 
 from ..Backend import hardware as HW
+from ..Backend.validators import _validate_gpu_id
 from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
 from .initializers import Initializer
 from ..config import settings
-from ..exceptions import LayerConfigurationError, InvalidDeviceIDError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError,HardwareError
+from ..exceptions import LayerConfigurationError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError, ComputationalMethodValueError, DeviceSelectionError
 from ..error_handlers import clean_traceback
 
 __all__ = ["BaseLayer", "LinearLayer"]
@@ -42,8 +43,7 @@ class BaseLayer:
         
         self._CALCULATION_MANAGER = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
-        if (0>gpu_id >= HW.NUM_GPUS):
-            raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+        _validate_gpu_id(gpu_id)
         self._GPU_ID = gpu_id
         self._CURRENT_DEVICE = "CPU"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
@@ -57,12 +57,6 @@ class BaseLayer:
         self.delta = None
         self.a = None
         self.z = None
-
-        if (self._GPU_ID == None):
-            self._GPU_ID = gpu_id
-        else:
-            if (0>gpu_id >= HW.NUM_GPUS):
-                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
@@ -257,8 +251,7 @@ class BaseLayer:
             New GPU Id to use.
         """
         if (new_id != self._GPU_ID):
-            if (new_id >= HW.NUM_GPUS):
-                raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+            _validate_gpu_id(new_id)
             self._GPU_ID = new_id
             self._act_funcions_manager.set_gpu_id(self._GPU_ID)
     
@@ -283,13 +276,12 @@ class BaseLayer:
         try_method = new_method
         msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
         else:
-            if (0>=gpu_id >= HW.NUM_GPUS):
-                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+            _validate_gpu_id(gpu_id)
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."
@@ -334,7 +326,7 @@ class BaseLayer:
         """
         device = device.upper()
         if not(device in ["CPU","GPU"]):
-            raise ValueError("Device not recognized. Expecting CPU or GPU.")
+            raise DeviceSelectionError("Device not recognized. Expecting CPU or GPU.")
         
         new_vector_format = self._CALCULATION_MANAGER.array
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
@@ -753,14 +745,14 @@ class LinearLayer(BaseLayer):
         params : dict[str, np.ndarray]
             Dictionary containing the new parameters with keys 'weights', 'biases' and 'connection_mask'.
         """
-        corret_weights = (params["weights"].T.shape == self._weights.shape)
+        correct_weights = (params["weights"].T.shape == self._weights.shape)
         correct_biases = (params["biases"].T.shape == self._biases.shape)
-        if not(correct_biases or corret_weights):
+        if not(correct_biases or correct_weights):
             raise LayerConfigurationError(f"""
                 Weights and biases are not in the correct dimentions. Expected {self._weights.T.shape} for the weights and {self._biases.T.shape} for the biases.
                 Received {params["weights"].shape} for the weights and {params["biases"].shape} for the biases.
                  """)
-        elif not(corret_weights):
+        elif not(correct_weights):
             raise LayerConfigurationError(f"""
                 Weights are not in the correct dimentions. Expected {self._weights.T.shape} for the weights.
                 Received {params["weights"].shape} for the weights.
@@ -771,7 +763,8 @@ class LinearLayer(BaseLayer):
                 Received {params["biases"].shape} for the biases.
                 """)
         
-        self.set_connection_mask(params['connection_mask'].T)
+        if ("connection_mask" in params.keys()):
+            self.set_connection_mask(params['connection_mask'].T)
         self._weights = np.array(params['weights'].T, dtype=self._DEFAULT_FLOAT_TYPE)
         self._biases = np.array(params['biases'].T, dtype=self._DEFAULT_FLOAT_TYPE)
     

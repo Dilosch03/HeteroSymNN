@@ -5,10 +5,11 @@ import warnings
 import inspect
 
 from ...Backend import hardware as HW
+from ...Backend.validators import _validate_gpu_id
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
-from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate,LayerValues
-from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError, InvalidDeviceIDError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,HeteroSymNNDeprecationWarning,HardwareError
+from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
+from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,ComputationalMethodValueError,DeviceSelectionError
 from ...error_handlers import clean_traceback
 from ...config import settings
 
@@ -20,22 +21,23 @@ class BaseNetwork:
         
         Parameters
         ----------
+        num_inputs : int
+            Number of input units to the network.
         network_structure : list[type[BaseLayer]]
             List with the type of layers that will be used for each step of the network.
         extra_layer_parameters : list[dict[str,Any]]
             list of dictionaries with the extra parameters that the layer need to work correctly.
         detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
-        initial_values : Optional[list[:obj:`~HeteroSymNN.types.LayerValues`]], optional
             Optional list of initial values for each layer. If not provided, weights and biases will be initialized using the specified initializer., by default None
-        initializer : List[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-            List of initializer to use for weights and biases if initial_values is not provided. Most pass an instance of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and if value is left as None it will use :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`.
+        initializers : List[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+            List of initializers to use for weights and biases if initial_values is not provided. Must pass instances of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and if value is left as None it will use :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`.
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
             Batch size to use during training, by default 32. If set to -1, it uses the full dataset size for batch training.
         loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
+            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
         optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
             Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.
         num_epochs: int, optional
@@ -61,14 +63,15 @@ class BaseNetwork:
         >>> from HeteroSymNN.Core.Nets import BaseNetwork
         >>> from HeteroSymNN.Core.layers import LinearLayer
         >>> NN = BaseNetwork(
-        ... nodes_structure=[(3,None), (5,LinearLayer),(2,LinearLayer)],
-        ... extra_layer_parameters=[{},{}],
-        ... detailed_activations=[
-        ...    [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
-        ...    [("sigmoid", {}), ("sigmoid", {})]
-        ... ],
-        ... learning_rate=0.01,
-        ... batch_size=16,
+        ...     num_inputs=3,
+        ...     network_structure=[LinearLayer, LinearLayer],
+        ...     extra_layer_parameters=[{}, {}],
+        ...     detailed_activations=[
+        ...         [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
+        ...         [("sigmoid", {}), ("sigmoid", {})]
+        ...     ],
+        ...     learning_rate=0.01,
+        ...     batch_size=16,
         ... )
 
         
@@ -78,15 +81,17 @@ class BaseNetwork:
         >>> custom_loss_func = losses.BinaryCrossEntropy()
         >>> custom_optimizer = optimizers.SgdOptimizer(0.01)
         >>> custom_initializers = [initializers.HeNormal(0.8),initializers.XavierUniform(1)]
-        >>> NN = BaseNetwork(network_structure = [(3,None),(5,LinearLayer),(2,LinearLayer)],
-        ...     extra_layer_parameters = [{}]*2,
+        >>> NN = BaseNetwork(
+        ...     num_inputs=3,
+        ...     network_structure=[LinearLayer, LinearLayer],
+        ...     extra_layer_parameters=[{}]*2,
         ...     detailed_activations=[
-        ...        [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
-        ...    [("sigmoid", {}), ("sigmoid", {})]
-        ...    ],
-        ... initializers=custom_initializers,
-        ... optimizer=custom_optimizer,
-        ... loss_function=custom_loss_func
+        ...         [("relu", {}), ("relu", {}), ("relu", {}), ("relu", {}), ("relu", {})],
+        ...         [("sigmoid", {}), ("sigmoid", {})]
+        ...     ],
+        ...     initializers=custom_initializers,
+        ...     optimizer=custom_optimizer,
+        ...     loss_function=custom_loss_func
         ... )       
     """
     @clean_traceback
@@ -112,8 +117,7 @@ class BaseNetwork:
             raise NetworkStructureError(f"The structure is defined as {num_layers} layers, but 'extra_layer_parameters' has {len(extra_layer_parameters)} elements.")
         
         self._BATCH_SIZE = batch_size
-        if (0>=gpu_id >= HW.NUM_GPUS):
-            raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+        _validate_gpu_id(gpu_id)
         self._GPU_ID = gpu_id
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
         self._CURRENT_DEVICE = "CPU"
@@ -140,7 +144,7 @@ class BaseNetwork:
             self._LOSS_FUNCTION = loss_function
             temp_result = self._LOSS_FUNCTION._change_COMPUTATIONAL_METHOD(self._COMPUTATIONAL_METHOD,self._GPU_ID)
             if (temp_result != self._COMPUTATIONAL_METHOD):
-                raise RuntimeError(f"The loss function computational method ({temp_result}) couldn't be sync with the main network computational method ({self._COMPUTATIONAL_METHOD}).")
+                raise MethodMigrationError(f"The loss function computational method ({temp_result}) couldn't be sync with the main network computational method ({self._COMPUTATIONAL_METHOD}).")
                 
 
         if not(optimizer is None):
@@ -441,8 +445,7 @@ class BaseNetwork:
             If the Id for the new GPU is greater than the number of available GPUs.
         """
         if (self._GPU_ID != new_id):
-            if (new_id >= HW.NUM_GPUS):
-                raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+            _validate_gpu_id(new_id)
             self.to("CPU")
             self._GPU_ID = new_id
             self._LOSS_FUNCTION.set_gpu_id(self._GPU_ID)
@@ -478,13 +481,12 @@ class BaseNetwork:
         try_method = new_method
         msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
         else:
-            if (0>=gpu_id >= HW.NUM_GPUS):
-                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+            _validate_gpu_id(gpu_id)
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."
@@ -498,6 +500,11 @@ class BaseNetwork:
                 warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
 
         if(new_method != self._COMPUTATIONAL_METHOD):
+                warnings.warn(
+                f"Initiating engine migration to {new_method}. This requires JIT recompilation and memory transfers.",
+                PerformanceWarning,
+                stacklevel=2
+                )
                 self._to("CPU")
                 self._COMPUTATIONAL_METHOD = new_method
                 self._GPU_ID = gpu_id
@@ -544,11 +551,6 @@ class BaseNetwork:
         .. Warning::
             When changing computational methods it will force a kernel recompilation for all layers and reallocation of all parameters. Depending on the size of the network this could take a while.
         """
-        warnings.warn(
-        f"Initiating engine migration to {backend}. This requires JIT recompilation and memory transfers.",
-        PerformanceWarning,
-        stacklevel=2
-        )
         self._change_COMPUTATIONAL_METHOD(new_method=backend, gpu_id=gpu_id)
 
     @clean_traceback
@@ -563,7 +565,7 @@ class BaseNetwork:
         """
         device = device.upper()
         if not(device in ["CPU","GPU"]):
-            raise ValueError("Specify device is not GPU or CPU.")
+            raise DeviceSelectionError("Specify device is not GPU or CPU.")
         
         if ((device == "GPU") and not(HW.GPU_ENABLED)):
             warnings.warn("Tried to change to use 'GPU', but no GPU is available. CPU is required.",BackendNotAvailableWarning,stacklevel=2)
@@ -596,8 +598,7 @@ class BaseNetwork:
         if (gpu_id == None):
             gpu_id = self._GPU_ID
         else:
-            if (0>=gpu_id >= HW.NUM_GPUS):
-                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+            _validate_gpu_id(gpu_id)
 
         if self._COMPUTATIONAL_METHOD == "GPU_CUDA":
             with HW.be.cuda.Device(gpu_id):
@@ -741,8 +742,10 @@ class BaseNetwork:
             List of loss values recorded at each epoch during training.
         """
         self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
-        train_data = self._CALCULATION_MANAGER.array(training_inputs,dtype=np.float32).T
-        train_targets = self._CALCULATION_MANAGER.array(training_targets,dtype=np.float32).T
+        train_data,train_targets = self.cast_arrays(training_inputs,training_targets)
+        train_data = train_data.T
+        train_targets:BackendArray = train_targets.T
+        
 
         b_size = self._BATCH_SIZE if batch_size is None else batch_size
         if (num_iterations == None):

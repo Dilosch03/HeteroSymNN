@@ -30,7 +30,7 @@ Instantiating this class requires that you assign a detailed list of activation 
     outputlayer_config = [("relu", {}), ("sin(num)", {}), ("tanh(num)", {})]
     
     baseline_model = HeteroLinearNet(
-        nodes_structure=[4, 6, 3],
+        num_inputs=4,
         detailed_activations=[layer0_config, outputlayer_config]
     )
 
@@ -41,7 +41,7 @@ Instantiating this class requires that you assign a detailed list of activation 
 API Reference
 -------------
 
-.. autoclass:: HeteroSymNN.Core.Nets.MLP
+.. autoclass:: HeteroSymNN.Core.Nets.HeteroLinearNet
    :members:
    :undoc-members:
    :show-inheritance:

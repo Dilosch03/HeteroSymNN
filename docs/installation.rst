@@ -45,6 +45,16 @@ Verifying Your Backend
 
 Once installed, you can quickly verify which hardware backend HeteroSymNN has selected and all the available options by checking the settings:
 
+.. code-block:: bash
+    HeteroSymNN --hardware
+
+Expected Output:
+
+.. code-block:: text
+    Default Compute Method: CPU_PYTHON
+    Available Compute Methods: CPU_PYTHON, GPU_CUDA
+    Detected GPUs: 1
+
 .. code-block:: python
 
     from HeteroSymNN import settings

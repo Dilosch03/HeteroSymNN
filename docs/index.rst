@@ -53,7 +53,7 @@ The Architecture: How It Works
 
 HeteroSymNN operates as a **Differentiable Compiler** rather than a standard tensor operations library. The pipeline consists of four distinct phases:
 
-1. **Parse**: Accepts human-readable mathematical strings (e.g., ``"alpha * sin(num)"``) and parses them into abstract syntax trees using SymPy.
+1. **Parse**: Accepts human-readable mathematical strings (e.g., ``"alpha * sin(num)"``) and parses and formats them into a structure for execution using SymPy.
 2. **Derive**: Automatically computes the exact symbolic derivative for backpropagation, eliminating the need for autograd tracking at runtime.
 3. **Compile**: Generates low-level C++ or CUDA code Just-In-Time. 
 4. **Fuse**: Fuses all memory access and execution logic into a single hardware kernel launch, drastically reducing memory bandwidth bottlenecks.

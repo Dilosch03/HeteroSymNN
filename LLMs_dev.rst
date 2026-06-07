@@ -45,8 +45,8 @@ Properties for subclasses: `self.be` (Backend: numpy/cupy. Read-Only. Nets, Laye
 ```python
 # Subclasses: HeteroLinearNet, LinearNet, MLP
 class CustomNetwork(BaseNetwork):
-    def __init__(self, network_structure: list[tuple[int, type[BaseLayer]]], extra_layer_parameters: list[dict[str, Any]], detailed_activations: list[list[NodeConfig]], initial_values: Optional[list[LayerValues]]=None, initializers: Optional[list[Initializer]]=None, learning_rate: float=0.001, batch_size: int=32, training_mode: Literal["batch","mini-batch","stochastic"]="mini-batch", loss_function: Optional[Loss]=None, optimizer: Optional[Optimizer]=None, num_epochs: int=1000):
-        super().__init__(...) # MUST CALL
+    def __init__(self, num_inputs: int, network_structure: list[type[BaseLayer]], extra_layer_parameters: list[dict[str, Any]], detailed_activations: list[list[NodeConfig]], initializers: Optional[list[Initializer]]=None, learning_rate: float=0.001, batch_size: int=32, loss_function: Optional[Loss]=None, optimizer: Optional[Optimizer]=None, num_epochs: int=1000, gpu_id: int=0):
+        super().__init__(num_inputs, network_structure, extra_layer_parameters, detailed_activations, initializers, learning_rate, batch_size, loss_function, optimizer, num_epochs, gpu_id) # MUST CALL
     # Methods: train, predict, get_parameters, set_parameters, change_device, set_gpu_id, change_constants, get_config
     # RO_Attrs: layers, network_structure, gpu_id, batch_size, current_device, computational_method, optimizer, loss_function, initializer, history_losses, num_completed_train_iterations, num_completed_epochs
     # RW_Attrs: learning_rate, training_mode, num_training_epochs

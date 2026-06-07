@@ -113,6 +113,12 @@ class ConfigurableNN(HeteroLinearNet):
             num_training_iter=num_treaning_iter
         )
         self.training_mode = training_mode
+        if initial_values is not None:
+            dict_init_vals:dict[int,dict[str,list]] = {}
+            for i in range(len(initial_values)):
+                dict_init_vals[i] = {"weights":initial_values[i][1], "biases":initial_values[i][0],"connection_mask":initial_values[i][2]}
+            self.set_parameters(dict_init_vals)
+
 
 class FlexibleNN(LinearNet):
     """
@@ -199,6 +205,11 @@ class FlexibleNN(LinearNet):
             num_training_iter=num_treaning_iter
         )
         self.training_mode = training_mode
+        if initial_values is not None:
+            dict_init_vals:dict[int,dict[str,list]] = {}
+            for i in range(len(initial_values)):
+                dict_init_vals[i] = {"weights":initial_values[i][1], "biases":initial_values[i][0],"connection_mask":initial_values[i][2]}
+            self.set_parameters(dict_init_vals)
 
 class SimpleNN(MLP):
     """

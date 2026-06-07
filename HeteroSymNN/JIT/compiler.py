@@ -12,9 +12,10 @@ import json
 import hashlib
 
 from ..Backend import hardware as HW
+from ..Backend.validators import _validate_gpu_id
 from . import codegen
 from ..types import NodeConfig
-from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,BackendNotAvailableError
+from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,BackendNotAvailableError,ComputationalMethodValueError
 from ..config import settings
 
 __all__ = ["SymbolicJITCompiler"]
@@ -116,8 +117,7 @@ class SymbolicJITCompiler:
         self.func_ids = self.func_ids_cpu
 
         if self.calculation_method == 'GPU_CUDA':
-            if device_id >= HW.NUM_GPUS:
-                raise InvalidDeviceIDError(f"ID given ({device_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+            _validate_gpu_id(device_id)
             self._compile_cuda_kernels(configs)
             
 
@@ -130,7 +130,7 @@ class SymbolicJITCompiler:
             self._compile_py_kernels(configs)
 
         else:
-            raise ValueError("Calculation Method given isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ComputationalMethodValueError("Calculation Method given isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
     def _get_ccode_from_config(self, func_str: str, provided_constants: tuple = ()):
         """
@@ -329,7 +329,7 @@ class SymbolicJITCompiler:
                                 ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
                                 compiled_code[new_id] = (ccode_fwd, ccode_bwd)
                                 try:
-                                    dummy_args = [np.array([0.5], dtype=np.float32) for _ in self.main_vars] + [np.array([0.5]), 0]
+                                    dummy_args = [np.array([0.5], dtype=np.float32) for _ in self.main_vars] + [np.array([0.5]*len(required_constants)), 0]
                                     ccode_fwd(*dummy_args)
                                     ccode_bwd(*dummy_args)
                                     
@@ -361,7 +361,10 @@ class SymbolicJITCompiler:
                     
             except FormulaParsingError as e:
                 # Catch the error, append to our report, and continue to the next node
-                compilation_errors.append(f"Node {idx}: {str(e)}")
+                if (self.mode == "activation"):
+                    compilation_errors.append(f"Node {idx}: {str(e)}")
+                else:
+                    compilation_errors.append(str(e))
 
         # Raise the final comprehensive report if any errors were accumulated
         if compilation_errors:
@@ -394,7 +397,7 @@ class SymbolicJITCompiler:
         """
 
         if (HW.CPP_INSTALLED_COMPILER == None):
-                raise RuntimeError("CPP_JIT_ENABLED is True, but CPP_COMPILER_NAME is None.")
+                raise JITCompilationError("CPP_JIT_ENABLED is True, but CPP_COMPILER_NAME is None.")
               
         fwd_switch_cases, bwd_switch_cases =self._generate_kernel_artifacts(configs, "CPP", mode='string', user_funcs=codegen.CPP_USER_FUNCS)
 
@@ -410,7 +413,7 @@ class SymbolicJITCompiler:
         
 
         try:
-            config_hash = hashlib.md5(json.dumps(configs,sort_keys=True).encode()+self.mode.encode()).hexdigest()
+            config_hash = hashlib.sha256(json.dumps(configs,sort_keys=True).encode()+self.mode.encode()).hexdigest()
             
             temp_dir = settings.cpu_cache_dir
             os.makedirs(temp_dir, exist_ok=True)
@@ -677,8 +680,7 @@ class SymbolicJITCompiler:
             if ((new_calculatuion_method == "GPU_CUDA") and (HW.GPU_ENABLED)):
                 if (gpu_id is None):
                     gpu_id = self.device_id
-                if (gpu_id >= HW.NUM_GPUS):
-                    raise InvalidDeviceIDError(f"ID given ({gpu_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+                _validate_gpu_id(gpu_id)
                 self.device_id = gpu_id
                 self.func_ids_cpu = []
                 self.calculation_method = "GPU_CUDA"
@@ -699,7 +701,7 @@ class SymbolicJITCompiler:
                 self._compile_py_kernels(self.activation_funcs)
                 self.func_ids = self.func_ids_cpu
             else:
-                raise ValueError("Calculation Method is not GPU_CUDA, CPU_JIT o CPU_PYTHON")
+                raise ComputationalMethodValueError("Calculation Method is not GPU_CUDA, CPU_JIT o CPU_PYTHON")
 
         return self.calculation_method
     
@@ -712,8 +714,7 @@ class SymbolicJITCompiler:
         new_id : int
             The new GPU device ID.
         """
-        if (new_id >= HW.NUM_GPUS):
-            raise InvalidDeviceIDError(f"ID given ({new_id}) is greater than the number of available GPUs ({HW.NUM_GPUS})")
+        _validate_gpu_id(new_id)
         
         if (new_id != self.device_id):
             self.device_id = new_id

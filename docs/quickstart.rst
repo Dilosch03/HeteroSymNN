@@ -78,7 +78,7 @@ To achieve this granular control, use the node-level configuration arrays:
 
     # Construct the fully heterogeneous network
     hetero_model = HeteroLinearNet(
-        nodes_structure=[2, 12, 1],
+        num_inputs=2,
         detailed_activations=[hidden_activations, output_activations]
     )
 

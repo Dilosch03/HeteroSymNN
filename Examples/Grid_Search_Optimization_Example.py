@@ -1,16 +1,11 @@
-import sys
-sys.path.insert(0, r"C:\Users\dilos\Documents\GitHub\HeteroSymNN")
-
 import numpy as np
-import time
-from HeteroSymNN.Core.Nets import LinearNet, HeteroLinearNet
+from HeteroSymNN.Core.Nets import LinearNet
 from HeteroSymNN.API import Wrapper, GridSearchManager
-from HeteroSymNN.Backend import hardware as HW
 
 
 def run_expert_demo():
     print("\n" + "="*60)
-    print("🧠 EXPERT ARCHITECTURE & OPTIMIZATION DEMO")
+    print("EXPERT ARCHITECTURE & OPTIMIZATION DEMO")
     print("="*60)
 
     print("\n--- PART 1: Grid Search via Composition ---")
@@ -42,8 +37,8 @@ def run_expert_demo():
     print("-> Running Grid Search Clones in RAM...")
     best_wrapper, best_params, results = gs.execute_search(metric_to_optimize='Acur')
 
-    print(f"\n✅ Best Accuracy: {gs.best_score:.2%}")
-    print(f"✅ Best Config: {best_params}")
+    print(f"\n Best Accuracy: {gs.best_score:.2%}")
+    print(f" Best Config: {best_params}")
 
     print("\n--- PART 2: Using the Best Model ---")
     # Let's test the best wrapper on a couple of manual examples

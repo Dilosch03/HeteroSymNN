@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+sys.path.insert(0, r"C:\Users\dilos\Documents\GitHub\HeteroSymNN")
 
 from HeteroSymNN.Core.Nets.linear_net import MLP
 from HeteroSymNN.API.wrappers import Wrapper
@@ -45,10 +47,10 @@ def run_simple_demo():
 
     print("\n--- 5. Saving and Loading Models ---")
     trainer.save_model("my_sine_model.symnn", overwrite=True)
-    print("✅ Model saved to my_sine_model.symnn")
+    print("Model saved to my_sine_model.symnn")
     
     loaded_trainer = Wrapper.load_model("my_sine_model.symnn")
-    print("✅ Model loaded successfully!")
+    print("Model loaded successfully!")
 
     print("\n--- 6. Plotting Results ---")
     # Reset constants to a good state for plotting

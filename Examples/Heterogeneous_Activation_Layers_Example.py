@@ -5,7 +5,7 @@ from HeteroSymNN.Backend import hardware as HW
 
 def run_mixed_activation_demo():
     print("\n" + "="*60)
-    print("🧪 MIXED ACTIVATION DEMO (Per-Neuron Heterogeneity)")
+    print("MIXED ACTIVATION DEMO (Per-Neuron Heterogeneity)")
     print("="*60)
     
     nodes = [10, 5, 1]
@@ -30,12 +30,12 @@ def run_mixed_activation_demo():
     
     if HW.GPU_ENABLED:
         model.set_gpu_id(0)
-        model._change_COMPUTATIONAL_METHOD("GPU_CUDA")
-        model.change_device("GPU")
-        print("✅ Compiled mixed CUDA kernel.")
+        model.set_backend("GPU_CUDA")
+        model.to("GPU")
+        print("Compiled mixed CUDA kernel.")
     else:
-        model._change_COMPUTATIONAL_METHOD("CPU_JIT")
-        print("✅ Compiled mixed C++ kernel.")
+        model.set_backend("CPU_JIT")
+        print("Compiled mixed C++ kernel.")
 
     print("\n-> Testing Neuron Behavior with range of inputs...")
     
@@ -63,11 +63,10 @@ def run_mixed_activation_demo():
         test_input[:, i] = x_vals
     
     print("-> Running Layer 0 Forward...")
-    if HW.GPU_ENABLED:
-        import cupy as cp
-        gpu_in = cp.array(test_input.T)
+    if layer0.computational_method == "GPU_CUDA":
+        gpu_in = model.cast_arrays(test_input.T)
         gpu_out = layer0.forward(gpu_in)
-        activations = cp.asnumpy(gpu_out) # Shape should be (10, 100) or similar
+        activations = model.asnumpy(gpu_out) # Shape should be (10, 100) or similar
     else:
         out = layer0.forward(test_input.T)
         activations = out
@@ -86,7 +85,7 @@ def run_mixed_activation_demo():
     plt.legend()
     plt.show()
 
-    print("\n✅ DEMO COMPLETE: The single kernel executed 5 different math functions in parallel.")
+    print("\nDEMO COMPLETE: The single kernel executed 5 different math functions in parallel.")
 
 if __name__ == "__main__":
     run_mixed_activation_demo()

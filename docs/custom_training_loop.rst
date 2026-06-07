@@ -43,9 +43,6 @@ Below is a safe and standard structure for a custom training loop leveraging the
     # Assuming custom_dataloader yields batches of x (inputs) and y (targets)
     network.to(network.computational_method.split("_")[0])
     for epoch in range(epochs):
-        # Manually track epochs
-        network.num_completed_epochs += 1
-
         for x_batch, y_batch in custom_dataloader:
             # 1. Hardware abstraction: Send data to current backend (CPU/GPU)
             x, y = network.cast_arrays(x_batch, y_batch)
@@ -72,5 +69,6 @@ Below is a safe and standard structure for a custom training loop leveraging the
             
             # Manually track training steps
             network.num_completed_train_iterations += 1
+
         #Manual tracking of epochs
         network.num_completed_epochs += 1

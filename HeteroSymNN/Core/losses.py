@@ -4,10 +4,11 @@ from typing import Literal
 import warnings
 
 from ..Backend import hardware as HW
+from ..Backend.validators import _validate_gpu_id
 from ..JIT.compiler import SymbolicJITCompiler
 from ..types import BackendArray
 from ..config import settings
-from ..exceptions import BackendNotAvailableWarning, HardwareError
+from ..exceptions import BackendNotAvailableWarning, ComputationalMethodValueError
 from ..error_handlers import clean_traceback
 
 __all__ = [
@@ -125,8 +126,7 @@ class FlexibleLoss(Loss):
         self._constants = constants or {}
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         
-        if (0>=gpu_id >= HW.NUM_GPUS):
-            raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+        _validate_gpu_id(gpu_id)
         self._GPU_ID = gpu_id
         self._be = settings.default_manager
         self._asnumpy = settings.default_asnumpy
@@ -136,7 +136,7 @@ class FlexibleLoss(Loss):
             try_method = computational_method
             msg_extra = ""
             if not(computational_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-                raise ValueError("Tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+                raise ComputationalMethodValueError("Tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
             if ((computational_method == "GPU_CUDA") and not(computational_method in settings.available_methods)):
                 msg_extra = ", but no GPU is available."
@@ -273,13 +273,12 @@ class FlexibleLoss(Loss):
         try_method = new_method
         msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
         else:
-            if (0>=gpu_id >= HW.NUM_GPUS):
-                raise HardwareError("The GPU requested form Id is not in the list of available GPUs.")
+            _validate_gpu_id(gpu_id)
 
         if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
             msg_extra = ", but no GPU is available."

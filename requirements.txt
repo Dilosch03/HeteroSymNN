@@ -4,3 +4,4 @@ platformdirs~=4.5
 
 sphinx>=7.0
 sphinx-rtd-theme
+pytest>=7.0

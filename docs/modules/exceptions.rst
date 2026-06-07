@@ -7,12 +7,13 @@ To facilitate debugging of the created neural networks the framework implements 
 
 The Error Hierarchy
 -------------------
-All custom exceptions inherit from the base :exc:`~HeteroSymNN.exceptions.HeteroSymNNError`, and all custom warnings inherit from :exc:`~HeteroSymNN.exceptions.HeteroSymNNWarnings`. They are categorized into four main functional domains:
+All custom exceptions inherit from the base :exc:`~HeteroSymNN.exceptions.HeteroSymNNError`, and all custom warnings inherit from :exc:`~HeteroSymNN.exceptions.HeteroSymNNWarnings`. They are categorized into five main functional domains:
 
 * **Backend Errors:** Inheriting from :exc:`~HeteroSymNN.exceptions.BackendError`. These encompass any issues related to the underlying computational hardware, physical memory management, or execution environment transitions.
 * **JIT Compilation Errors:** Inheriting from :exc:`~HeteroSymNN.exceptions.JITError`. These cover all failures encountered during the dynamic translation, compilation, linking, or execution of custom mathematical kernels.
 * **Configuration Errors:** Inheriting from :exc:`~HeteroSymNN.exceptions.ConfigError`. These catch structural, dimensional, or parameter-based mismatches during the initialization and setup phases of the network or its individual components.
 * **API & Wrapper Errors:** Inheriting from :exc:`~HeteroSymNN.exceptions.WrapperError`. These represent high-level failures that occur during user-facing operations, such as data handling, model training routines, or state serialization and persistence.
+* **Value & Selection Errors:** Inheriting from :exc:`~HeteroSymNN.exceptions.HeteroSymNNValueError`. These represent cases where an invalid option, device, or computational method has been specified, subclassing both their functional error domain and Python's native ``ValueError`` (such as :exc:`~HeteroSymNN.exceptions.DeviceSelectionError` and :exc:`~HeteroSymNN.exceptions.ComputationalMethodValueError`).
 
 Warnings
 ---------
