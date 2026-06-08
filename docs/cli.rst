@@ -44,7 +44,7 @@ The ``defaults`` command allows you to view and modify global framework settings
 
 **Set a new property:**
 
-Use the ``--set`` flag along with the ``--value`` flag to change global defaults.
+Use the ``--set`` flag along with the ``--value`` flag to change global defaults. These changes are saved permanently to the user's ``settings.json`` configuration file and will persist across all future executions.
 
 .. code-block:: bash
 

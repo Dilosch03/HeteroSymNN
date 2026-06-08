@@ -102,7 +102,7 @@ def main() -> int:
                     elif args.set == "use-cache":
                         # Convert common true/false strings to actual python booleans
                         settings.use_kernel_cache = args.value.lower() in ['true', '1', 't', 'y', 'yes']
-                    
+                    settings.save()
                     print(f"Global property '{args.set}' successfully set to: {args.value}")
                 except ValueError as e:
                     print(f"Invalid value for '{args.set}': {e}")

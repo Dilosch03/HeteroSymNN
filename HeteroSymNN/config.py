@@ -1,13 +1,14 @@
-from platformdirs import user_cache_dir
+from platformdirs import user_cache_dir,user_config_dir
 from pathlib import Path
 from typing import Literal, Union
 import os
 import shutil
 import warnings
 import numpy as np
+import json
 
 from .Backend.hardware import GPU_ENABLED
-from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning,ConfigError,ComputationalMethodValueError,DataTypeError
+from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning,ConfigError,ConfigWarning,ComputationalMethodValueError,DataTypeError
 from .Backend import hardware as HW
 
 __all__ = ["settings"]
@@ -25,6 +26,9 @@ class _Settings:
             "uint8": np.uint8
         }
     def __init__(self):
+        self._config_dir = Path(user_config_dir("HeteroSymNN"))
+        self._config_file = self._config_dir / "settings.json"
+
         self.debug_mode = False
         self._num_cpu_threads = os.cpu_count()
         self._warning_level = "warn"
@@ -50,6 +54,8 @@ class _Settings:
         self._warning_level = "default"
         warnings.simplefilter("default",HeteroSymNNWarnings)      
         self._default_dtype = np.float32
+
+        self._load_from_file()
 
     @property
     def use_kernel_cache(self) -> bool:
@@ -151,6 +157,44 @@ class _Settings:
         Default method used for the asnumpy operations.
         """
         return self._default_asnumpy
+
+    def _load_from_file(self):
+        """Internal method to apply JSON settings over the defaults."""
+        if self._config_file.exists():
+            try:
+                with open(self._config_file, "r") as f:
+                    user_data = json.load(f)
+                    
+                    if "debug_mode" in user_data:
+                        self.debug_mode = user_data["debug_mode"]
+                    if "use_kernel_cache" in user_data:
+                        self._use_kernel_cache = user_data["use_kernel_cache"]
+                    if "warning_level" in user_data:
+                        self.set_warning_level(user_data["warning_level"])
+                    if "n_jobs" in user_data:
+                        self.n_jobs = user_data["n_jobs"]
+                    if "default_compute_method" in user_data:
+                        self.set_default_compute_method(user_data["default_compute_method"])
+            except Exception as e:
+                warnings.warn(f"Failed to read settings.json. Corrupted or invalid format. Creating a new one with default settings. Error: {e}", ConfigWarning)
+                self.save()
+
+    def save(self):
+        """Saves the current state of the settings object to the JSON file."""
+        data = {
+            "debug_mode": self.debug_mode,
+            "use_kernel_cache": self._use_kernel_cache,
+            "warning_level": self._warning_level,
+            "n_jobs": self._num_cpu_threads,
+            "default_compute_method": self._default_compute_method
+        }
+        
+        try:
+            self._config_dir.mkdir(parents=True, exist_ok=True)
+            with open(self._config_file, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            warnings.warn(f"Failed to save settings.json: {e}", PathWarning)
 
     def set_default_compute_method(self, method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
         """
