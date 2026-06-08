@@ -29,7 +29,10 @@ def test_example_script_runs_successfully(script_name):
     # We use run_path to execute the script in its own module namespace
     # To speed up training if hardcoded, we could potentially monkeypatch num_training_iter
     # or epochs, but here we just run them as-is ensuring they pass.
-    
+    from HeteroSymNN.config import settings
+
+    settings.debug_mode = True
+
     try:
         runpy.run_path(script_path, run_name="__main__")
     except Exception as e:

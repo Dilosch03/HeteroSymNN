@@ -127,6 +127,18 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 Exceptions (`HeteroSymNN.exceptions`): `HeteroSymNNError` (base), `BackendNotAvailableError`/`MethodMigrationError` (routing fails), `CompilationWarning`/`JITError`/`JITCompilationError`/`FormulaParsingError` (SymPy compile fails), `ShapeMismatchError`/`LayerConfigurationError`/`NetworkStructureError` (dim/structural mismatch), `WrapperError`/`LoadingError`/`SavingError`/`TrainingError` (disk I/O & training), `RuntimeStateError` (bad execution order), `HeteroSymNNValueError`/`DeviceSelectionError`/`ComputationalMethodValueError` (invalid options).
 </settings_and_exceptions>
 
+<cli_usage>
+HeteroSymNN provides a Command-Line Interface invoked via `python -m HeteroSymNN <command>`:
+- `hardware`: View system hardware detection and active defaults.
+- `defaults`: View or update framework defaults.
+  - Set defaults: `python -m HeteroSymNN defaults --set <property> --value <value>`. Valid properties: `compute` (GPU_CUDA, CPU_PYTHON, CPU_JIT), `threads` (int), `use-cache` (true/false), `warnings` (error, ignore, always, default, module, once), `cpu-cache` (path).
+  - Manage cache: `--clear-cpu-cache` (clears compiled kernels), `--show-gpu-cache` (shows CuPy directory).
+- `parse`: Test SymPy string parsing (e.g. `python -m HeteroSymNN parse "sin(num)"`).
+  - Flags: `--show-parsed` (displays internal SymPy expression), `--show-derivative` (displays the computed symbolic derivative).
+- `inspect`: Read metadata, topology, and dynamic constants from a `.symnn` file without initializing a model.
+- `clone`: Copy architecture/topology from an existing `.symnn` to a new `.symnn` without trained weights.
+</cli_usage>
+
 <framework_examples>
 ```python
 # API Training Example (Full Lifecycle)

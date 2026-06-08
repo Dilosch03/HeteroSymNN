@@ -115,6 +115,23 @@ gs.load_data(X_train, y_train)
 best_agent, best_params, results = gs.execute_search(metric_to_optimize="R2")
 ```
 
+## Command-Line Interface (CLI)
+
+HeteroSymNN features a built-in CLI to manage global settings, inspect models, and test string formulas natively from the terminal:
+
+```bash
+# Check detected hardware and CPU threads
+python -m HeteroSymNN hardware
+
+# Inspect the topology and metadata of a saved model
+python -m HeteroSymNN inspect my_model.symnn
+
+# Test a math string through the JIT compiler
+python -m HeteroSymNN parse "alpha * sin(num)" --show-derivative
+```
+
+For the full list of commands (including defaults management and model cloning), see the [CLI Documentation](docs/cli.rst).
+
 ## How It Works
 
 HeteroSymNN acts as a Differentiable Compiler:

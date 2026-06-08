@@ -12,6 +12,8 @@ import json
 import zipfile
 from pathlib import Path
 
+from .. import __version__
+
 from ..Core.Nets.base_classes import BaseNetwork
 from ..Core import losses, optimizers
 from . import data_transformers, registries
@@ -517,6 +519,7 @@ class Wrapper():
                 'work_type': self.work_type,
                 'description': description,
                 'save_timestamp': datetime.datetime.now().isoformat(),
+                'framework_version':__version__,
                 'total_training_iterations': self.model.num_completed_train_iterations,
                 'total_epochs_iterations':self.model.num_completed_epochs,
                 'input_transformer':  self._input_transformer.__class__.__name__ if self._input_transformer else None,

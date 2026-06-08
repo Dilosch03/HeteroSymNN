@@ -39,6 +39,8 @@ Upcoming: v0.4.0 (Security & Persistence)
 * **Evaluation Suite:** Classes to get tendencies metrics of how an architecture is performing across multiple instances.
 * **Constants Tuner:** Method or function to find the best values of the dynamic constant in the network.
 * **Expansion of classes:** Adding more types of initializers, optimizers, losses and data transformers.
+* **Custom class Persistence:** Adding a hierarchical registry loading of custom classes.
+* **Expanding the CLI:** Adding more commands to the CLI to make it more useful like a ``build`` command for generating .symnn files form a json defined strucure.
   
 Upcoming: v0.5.0 (Backend Optimization)
 ----------------------------------------

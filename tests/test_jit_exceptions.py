@@ -34,7 +34,7 @@ class TestSymbolicJITCompilerExceptions:
     def test_malformed_syntax_error(self):
         """Test that missing parentheses or bad operators throw a clear syntax error."""
         configs = [("sin * num", {})]
-        with pytest.raises(FormulaParsingError, match="Malformed function"):
+        with pytest.raises(FormulaParsingError, match="Missing constants detected in formula"):
             SymbolicJITCompiler(configs, "CPU_PYTHON", 0, "activation")
 
     def test_complex_number_rejection(self):

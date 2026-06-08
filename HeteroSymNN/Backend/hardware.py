@@ -57,12 +57,12 @@ CPP_JIT_ENABLED = _check_cpp_compiler()
 
 def _get_cuda_dims(n:int,device_id:int)->tuple[int, int]:
     """
-    Not yet utilized internal method to get the number of dims a certain gpu has.
+    Internal method to get the number of dims a certain gpu has.
 
     Parameters
     ----------
     n: int
-        size of the mange data
+        size of the manage data
     device_id: int
         gpu id that is going to be used
     

@@ -65,6 +65,7 @@ HeteroSymNN operates as a **Differentiable Compiler** rather than a standard ten
    installation
    quickstart
    custom_training_loop
+   cli
 
 .. toctree::
    :maxdepth: 1

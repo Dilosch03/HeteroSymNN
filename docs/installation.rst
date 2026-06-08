@@ -46,7 +46,7 @@ Verifying Your Backend
 Once installed, you can quickly verify which hardware backend HeteroSymNN has selected and all the available options by checking the settings:
 
 .. code-block:: bash
-    HeteroSymNN --hardware
+    HeteroSymNN hardware
 
 Expected Output:
 

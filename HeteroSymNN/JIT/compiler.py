@@ -10,6 +10,7 @@ import warnings
 import shutil 
 import json
 import hashlib
+import ast
 
 from ..Backend import hardware as HW
 from ..Backend.validators import _validate_gpu_id
@@ -140,20 +141,41 @@ class SymbolicJITCompiler:
         local_dict = {}
         general_constants = {'e': sp.E.evalf(), 'pi': sp.pi.evalf(), 'tau': (2 * sp.pi).evalf(), 'phi': ((1 + sp.sqrt(5)) / 2).evalf()}
         local_dict.update(general_constants)
-        
+        constat_sub = []
+
         # Populate local_dict with main_vars to preserve exact `real=True` symbol instances
         for var in self.main_vars:
             local_dict[str(var)] = var
 
-        # Protect user-provided constants and notoriously problematic SymPy built-ins (like 'beta')
-        # from being parsed as mathematical functions.
-        safe_symbols = list(provided_constants) + ['beta', 'alpha', 'sigma', 'mu']
-        for var_name in safe_symbols:
-            if var_name not in local_dict:
-                local_dict[var_name] = sp.symbols(var_name, real=True)
-
         if func_str in codegen.COMMON_FORMULAS:
             func_str = codegen.COMMON_FORMULAS[func_str]
+        
+        for con in provided_constants:
+            temp = sp.symbols(con, real=True)
+            local_dict[con] = temp
+            constat_sub.append(temp)
+            
+        # Use Python's AST to safely intercept user symbols (e.g. 'beta') before SymPy 
+        # accidentally misidentifies them as its own built-in functions.
+        try:
+            tree = ast.parse(func_str, mode='eval')
+            called_names = set()
+            all_names = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                    called_names.add(node.func.id)
+                elif isinstance(node, ast.Name):
+                    all_names.add(node.id)
+            
+            # Anything that wasn't used as a function call is a free symbol!
+            uncalled_symbols = all_names - called_names
+            for sym_name in uncalled_symbols:
+                if sym_name not in local_dict:
+                    temp = sp.symbols(sym_name, real=True)
+                    constat_sub.append(temp)
+                    local_dict[sym_name] = temp
+        except SyntaxError:
+            pass # Invalid syntax will be caught and explained beautifully by SymPy shortly.
 
         temp_callables = {}
         y_pred_sym = local_dict.get('y_pred', sp.symbols('y_pred', real=True))
@@ -174,13 +196,6 @@ class SymbolicJITCompiler:
                 temp_callables[key] = lambda val, e=base_expr, n=num_sym: e.subs({n: val})
         
         local_dict = local_dict | temp_callables
-
-        constat_sub = []
-        for key in provided_constants:
-            temp = sp.symbols(key, real=True)
-            constat_sub.append(temp)
-            local_dict[key] = temp
-        
         
         # Safely parse the user's string and catch mathematical syntax errors (like "sin * num")
         try:
@@ -201,7 +216,7 @@ class SymbolicJITCompiler:
         required_constants = set()
 
         if self.mode == "activation":
-            x_sym, z_sym = sp.symbols("x z")
+            x_sym, z_sym = sp.symbols("x z", real=True)
             
             # Alias Resolution: If 'num' isn't explicitly used, check if 'x' or 'z' are meant to be the main variable
             has_num = num_sym in free_symb
@@ -246,6 +261,7 @@ class SymbolicJITCompiler:
 
         # Apply array fetch substitutions here since we already have the keys
         for_subs = {}
+        constat_sub.sort(key=lambda s: s.name)
         for id, key in enumerate(constat_sub):
             for_subs[key] = sp.symbols(f"params[offset+{id}]")
             
@@ -292,7 +308,7 @@ class SymbolicJITCompiler:
                         # 2. Validate that the current neuron provides all required constants for this formula
                         missing_consts = [c for c in required_constants if c not in consts]
                         if missing_consts:
-                            raise FormulaParsingError(f"Missing constants detected in formula '{func_str}'. The variables {missing_consts} were found in the equation but not provided in the constants dictionary.")
+                            raise FormulaParsingError(f"Missing constants detected in formula '{func_str}'. The variables {missing_consts} were found in the equation but not provided in the constants dictionary. If you intended for these to be mathematical functions (like sin or cos), please ensure they are called with parentheses (e.g. 'sin(num)' instead of 'sin * num').")
 
                         # 2.5 Reserved keyword check & Unused constant warning
                         reserved_words = {'params', 'offset', 'num', 'y_pred', 'y_true', 'z_val', 'e', 'pi', 'tau', 'phi'}

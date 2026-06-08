@@ -275,7 +275,7 @@ class MLP(LinearNet):
         ... )
     """
     @clean_traceback
-    def __init__(self, nodes_structure: list[int], activation: FlexibleNodeConfig = "relu(x)", output_activation: FlexibleNodeConfig = "num",initializer: Optional[InitC.Initializer] = None,
+    def __init__(self, nodes_structure: list[int], activation: FlexibleNodeConfig = "relu", output_activation: FlexibleNodeConfig = "num",initializer: Optional[InitC.Initializer] = None,
                  learning_rate: float = 0.001,batch_size: int = 32, loss_function: Optional[lossC.Loss] = None, optimizer: Optional[OptiC.Optimizer] = None, num_training_iter: int = 1000):
 
         if len(nodes_structure) < 2:

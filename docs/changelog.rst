@@ -36,6 +36,13 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
   * Added ``LLMs_coding.rst`` and ``LLMs_dev.rst`` (LLM Context files) to provide a strict dependency and architectural map for AI code assistants interacting with the framework.
   * Massive extensions to the Sphinx documentation suite, including quickstarts, module-specific API breakdowns, and robust autoclass mock object typing in ``types.py``.
 
+* **New CLI Tool:**
+
+  * Added ``heterosymnn.cli`` for standardized command-line operations.
+  * Added the ``hardware`` command for hardware detection and compatibility reporting.
+  * Added the ``defaults`` command for managing framework defaults and cache.
+  * Added the ``parse`` command for testing symbolic math strings through the JIT compiler.
+
 **Changed / Refactored**
 
 * **Name Changes:**

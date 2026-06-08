@@ -82,7 +82,22 @@ To achieve this granular control, use the node-level configuration arrays:
         detailed_activations=[hidden_activations, output_activations]
     )
 
-4. Zero-Recompile Tuning (Dynamic Constants)
+4. Mathematical Formula Rules (Variables vs. Functions)
+-------------------------------------------------------
+
+When writing symbolic formulas, the framework uses a highly robust Abstract Syntax Tree (AST) parser to automatically differentiate between your custom variables and known mathematical functions.
+
+**The Golden Rule:** Any word not explicitly called with parentheses is treated as a custom parameter variable. Any word followed by parentheses is treated as a mathematical function.
+
+For example:
+
+- ``"sin(num) * alfa"``: The parser correctly sees ``sin`` as a function and ``alfa`` as a variable parameter.
+- ``"sin * num"``: Because it lacks parentheses, ``sin`` is treated as a custom variable, NOT the sine function! If you don't provide a dictionary value for it, you will receive a "Missing constants" error.
+
+**Function Aliases:**
+For convenience, HeteroSymNN allows you to use common activation names as standalone strings (e.g., ``"relu"``, ``"sigmoid"``, ``"tanh"``). When an alias is the *only* text in the string, it is safely auto-expanded (e.g., ``"relu"`` becomes ``"Max(0, num)"``). However, if you are composing a larger equation, you **must** use the function call syntax (e.g., ``"relu(num) * alfa"``) so the AST recognizes it correctly.
+
+5. Zero-Recompile Tuning (Dynamic Constants)
 --------------------------------------------
 
 Notice the variables ``a`` and ``beta`` in the examples above. You are not forced to hard-code numerical constraints in your strings.
@@ -100,7 +115,7 @@ HeteroSymNN treats these symbolic constants as mutable kernel arguments. This me
 
 This feature is exceptionally powerful for hyperparameter grid searching or Evolutionary Algorithms, where constants must mutate thousands of times per second.
 
-5. Saving & Loading Custom Models (The Registry)
+6. Saving & Loading Custom Models (The Registry)
 ------------------------------------------------
 
 HeteroSymNN allows you to easily serialize your wrapped models to disk. 
