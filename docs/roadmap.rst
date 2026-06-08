@@ -40,7 +40,7 @@ Upcoming: v0.4.0 (Security & Persistence)
 * **Constants Tuner:** Method or function to find the best values of the dynamic constant in the network.
 * **Expansion of classes:** Adding more types of initializers, optimizers, losses and data transformers.
 * **Custom class Persistence:** Adding a hierarchical registry loading of custom classes.
-* **Expanding the CLI:** Adding more commands to the CLI to make it more useful like a ``build`` command for generating .symnn files form a json defined strucure.
+* **Expanding the CLI:** Adding more commands to the CLI to make it more useful like a ``build`` command for generating .symnn files form a json defined structure.
   
 Upcoming: v0.5.0 (Backend Optimization)
 ----------------------------------------
@@ -48,7 +48,8 @@ Upcoming: v0.5.0 (Backend Optimization)
 * **Less loops:** Making the instancing and value updates less reliant in loops and more parallelization.
 * **In-Place Memory Allocation:** Optimizing the forward and backward computation to eliminate temparary memory allocations.
 * **String Parsing Optimization:** Optimizing the string parsing of the jit by eliminating redundant object creation.
-*  **GIL-less Compatibility:** Implementation of methods that optimize CPU bounded tasks when the python version has no GIL with automatic detection.
+* **GIL-less Compatibility:** Implementation of methods that optimize CPU bounded tasks when the python version has no GIL with automatic detection.
+* **Memory managment for optimization:** Reorganization of the tensors structure to packet better similar functions and accelerate the computation.
   
 Upcoming: v0.6.0 (Advanced Topologies & Hardware Control)
 ----------------------------------------------------------
@@ -63,6 +64,7 @@ Upcoming: v0.7.0 (Dual-Engine Architecture)
 --------------------------------------------
 * **CUDA VM:** Building the Python Bytecode Assembler and a CUDA Virtual Machine to execute opcodes directly in VRAM without invoking the nvcc compiler.
 * **Decided JIT:** Implementing the heuristic algorithm to decide if it's going to use the interpreter or the JIT-compiled kernels during training based on dynamic profiling.
+* **High Performance Module:** Adding a module optilized for better gpu performance of the networks.
 
 Future: v0.8.0+
 ----------------

@@ -1,6 +1,6 @@
 .. _dense-network:
 
-LinearNet (The "Cocktail" Network)
+LinearNet (The Mixed-Activation Network)
 ============================
 
 The ``LinearNet`` class expands the capabilities of the standard :class:`~HeteroSymNN.Core.Nets.MLP` by allowing you to define completely different activation functions on a per-layer basis. 

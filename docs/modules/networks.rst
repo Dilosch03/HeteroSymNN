@@ -24,7 +24,7 @@ Within the Feed-Forward family, the classes are organized by their **level of ma
 * **Level 1: MLP (Multi-Layer Perceptron)** - *The Baseline.*
   When you need to establish a rapid standard baseline. It enforces a homogeneous topology where all hidden layers share the same math (e.g., standard ReLU networks).
 
-* **Level 2: LinearNet (The "Cocktail" Network)** - *The Macroscopic Step.*
+* **Level 2: LinearNet (The Mixed-Activation Network)** - *The Macroscopic Step.*
   When your research requires macroscopic heterogeneity. The ``LinearNet`` class allows you to effortlessly assign different mathematical strings to different layers.
 
 * **Level 3: HeteroLinearNet (Node-Level Customization)** - *The Microscopic Frontier.*

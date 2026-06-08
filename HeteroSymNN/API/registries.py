@@ -100,7 +100,7 @@ class _Registry:
     @property
     def loss_fn_map(self):
         """
-        Propery to the de dictionary translation for the loss functions. Read-only.
+        Propery to the dictionary translation for the loss functions. Read-only.
         
         Returns
         -------
@@ -111,7 +111,7 @@ class _Registry:
     @property
     def optimizers_map(self):
         """
-        Propery to the de dictionary translation for the optimizers. Read-only.
+        Propery to the dictionary translation for the optimizers. Read-only.
         
         Returns
         -------
@@ -122,7 +122,7 @@ class _Registry:
     @property
     def initializers_map(self):
         """
-        Propery to the de dictionary translation for the initializers. Read-only.
+        Propery to the dictionary translation for the initializers. Read-only.
         
         Returns
         -------
@@ -133,7 +133,7 @@ class _Registry:
     @property
     def layers_map(self):
         """
-        Propery to the de dictionary translation for the layers. Read-only.
+        Propery to the dictionary translation for the layers. Read-only.
         
         Returns
         -------
@@ -144,7 +144,7 @@ class _Registry:
     @property
     def net_map(self):
         """
-        Propery to the de dictionary translation for the networks. Read-only.
+        Propery to the dictionary translation for the networks. Read-only.
         
         Returns
         -------
@@ -155,7 +155,7 @@ class _Registry:
     @property
     def data_transformers_map(self):
         """
-        Propery to the de dictionary translation for the data transformers. Read-only.
+        Propery to the dictionary translation for the data transformers. Read-only.
         
         Returns
         -------

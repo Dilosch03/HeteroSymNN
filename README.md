@@ -44,7 +44,7 @@ pip install HeteroSymNN[gpu]
 
 ## Quickstart
 
-HeteroSymNN follows a Scikit-Learn style API. Here is how to create a "Cocktail Layer" that mixes periodic and linear features.
+HeteroSymNN follows a Scikit-Learn style API. Here is how to create a Mixed-Activation Layer that mixes periodic and linear features.
 
 ```python
 from HeteroSymNN.API import Wrapper

@@ -109,7 +109,7 @@ def main() -> int:
                 except Exception as e:
                     print(f"Error setting '{args.set}': {e}")
         else:
-            print(f"Global Configuration File: Not Persistent")
+            print(f"Global Configuration File: {settings._config_file}")
             print(f"Compute Method:  {settings.default_compute_method}")
             print(f"Threads:         {settings.n_jobs}")
             print(f"Use Cache:       {settings.use_kernel_cache}")

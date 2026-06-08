@@ -58,11 +58,11 @@ Use the ``--set`` flag along with the ``--value`` flag to change global defaults
     python -m HeteroSymNN defaults --set use-cache --value false
 
 **Available properties:**
-- ``compute``: ``GPU_CUDA``, ``CPU_JIT``, ``CPU_PYTHON``
-- ``cpu-cache``: ``<path/to/directory>``
-- ``warnings``: ``error``, ``ignore``, ``always``, ``default``, ``module``, ``once``
-- ``threads``: ``<integer>``
-- ``use-cache``: ``true``, ``false``
+    - ``compute``: ``GPU_CUDA``, ``CPU_JIT``, ``CPU_PYTHON``
+    - ``cpu-cache``: ``<path/to/directory>``
+    - ``warnings``: ``error``, ``ignore``, ``always``, ``default``, ``module``, ``once``
+    - ``threads``: ``<integer>``
+    - ``use-cache``: ``true``, ``false``
 
 **Cache management:**
 
@@ -84,8 +84,8 @@ The ``parse`` command is a powerful utility for testing mathematical strings bef
     python -m HeteroSymNN parse "sin(num)" "alpha * max(0, num)" --show-parsed --show-derivative
 
 **Options:**
-- ``--show-parsed``: Displays the internal functional expression exactly as interpreted by SymPy.
-- ``--show-derivative``: Displays the exact symbolic derivative computed by the engine.
+    - ``--show-parsed``: Displays the internal functional expression exactly as interpreted by SymPy.
+    - ``--show-derivative``: Displays the exact symbolic derivative computed by the engine.
 
 inspect
 ~~~~~~~
@@ -113,8 +113,8 @@ The ``inspect`` command provides a clean summary of a trained ``.symnn`` archive
      TOPOLOGY 
     ==================================================
     Architecture Class: BaseNetwork
-    Layer 0 [LinearLayer]: 10 -> 25  | Activations: 25x 'sin(num)'
-    Layer 1 [LinearLayer]: 25 -> 25  | Activations: 15x 'relu', 10x 'tanh(num)'
+    Layer 0 [LinearLayer]: 10 -> 25  | Activations: 25x 'sin(num+alfa)*beta'
+    Layer 1 [LinearLayer]: 25 -> 25  | Activations: 15x 'relu(num)+gamma', 10x 'tanh(num)'
     Layer 2 [LinearLayer]: 25 -> 1   | Activations: 1x 'num'
 
     ==================================================
@@ -140,6 +140,6 @@ The ``clone`` command allows you to copy the exact architecture (including trans
     python -m HeteroSymNN clone original_model.symnn new_model.symnn --name "Retrained Architecture"
 
 **Options:**
-- ``--name``: Update the new model's metadata name.
-- ``--description``: Update the new model's description.
-- ``--custom-scripts``: Paths to Python files containing any custom layer or activation classes that must be registered before the CLI can rebuild the architecture.
+    - ``--name``: Update the new model's metadata name.
+    - ``--description``: Update the new model's description.
+    - ``--custom-scripts``: Paths to Python files containing any custom layer or activation classes that must be registered before the CLI can rebuild the architecture.

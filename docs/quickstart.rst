@@ -30,7 +30,7 @@ If you just need a standard, high-performance neural network where all hidden la
     # Train instantly
     agent.fit(X_train, y_train, epochs=100)
 
-2. Layer-Level Heterogeneity (The "Cocktail" Network)
+2. Layer-Level Heterogeneity (The Mixed-Activation Network)
 ------------------------------------------------------
 
 In standard frameworks, mixing different activation functions usually requires custom boilerplate classes. With HeteroSymNN's LinearNet builder, you can effortlessly assign different mathematical strings to different layers.

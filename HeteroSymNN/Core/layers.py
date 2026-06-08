@@ -218,7 +218,7 @@ class BaseLayer:
             return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self._num_nodes)
         return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets)
 
-    def recunstruct_layer_config(self)->Sequence[NodeConfig]:
+    def reconstruct_layer_config (self)->Sequence[NodeConfig]:
         """
         Regenerates the list of NodeConfig with the updated activation funcion constants.
 
@@ -496,7 +496,7 @@ class BaseLayer:
         """
         return  {"num_nodes":self._num_nodes,
                 "num_inputs":self._num_inputs,
-                "layer_node_configs":self.recunstruct_layer_config(),
+                "layer_node_configs":self.reconstruct_layer_config (),
                 "initializer":self._initializer.get_config(),
                 "layer_type":self.__class__.__name__
                 }

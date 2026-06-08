@@ -40,8 +40,11 @@ Below is a safe and standard structure for a custom training loop leveraging the
     network = MLP(nodes_structure=[10, 25, 1])
 
     epochs = 100
-    # Assuming custom_dataloader yields batches of x (inputs) and y (targets)
+    
+    # Move to CPU or GPU depending on the computational method
     network.to(network.computational_method.split("_")[0])
+
+    # Assuming custom_dataloader yields batches of x (inputs) and y (targets)
     for epoch in range(epochs):
         for x_batch, y_batch in custom_dataloader:
             # 1. Hardware abstraction: Send data to current backend (CPU/GPU)
