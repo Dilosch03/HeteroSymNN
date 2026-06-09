@@ -127,6 +127,25 @@ class TestNetworks:
         model.change_constants({1: [(0, "alpha", 2.0)]})
         model.predict(X_dummy)
 
+    def test_network_save_load(self, tmp_path):
+        model = LinearNet(nodes_structure=[4, 8, 1], activation_config=["relu", "linear"], num_training_iter=1)
+        original_preds = model.predict(X_dummy)
+        save_path = str(tmp_path / "raw_model")
+        model.save_model(save_path)
+        
+        # Test class method load_model
+        loaded_model = BaseNetwork.load_model(save_path)
+        loaded_preds = loaded_model.predict(X_dummy)
+        np.testing.assert_allclose(original_preds, loaded_preds, rtol=1e-5, atol=1e-5)
+        assert loaded_model.get_config() == model.get_config()
+        
+        # Test instance method load_state
+        model_new = LinearNet(nodes_structure=[4, 8, 1], activation_config=["relu", "linear"], num_training_iter=1)
+        model_new.load_state(save_path)
+        new_preds = model_new.predict(X_dummy)
+        np.testing.assert_allclose(original_preds, new_preds, rtol=1e-5, atol=1e-5)
+        assert model_new.get_config() == model.get_config()
+
 class TestAPIWrapper:
     def test_wrapper_regression_fit(self):
         model = LinearNet(nodes_structure=[4, 8, 1], activation_config=["relu", "linear"], num_training_iter=2)
@@ -163,7 +182,50 @@ class TestAPIWrapper:
         agent.fit(X_reg.tolist(), y_reg.tolist(), epochs=2)
         save_path = str(tmp_path / "hetero_test_model")
         agent.save_model(save_path)
+
+        # Get original values
+        original_preds = agent.predict(X_reg.tolist())
+        original_config = agent.model.get_config()
+        original_params = agent.model.get_parameters()
+        original_opt_config = agent.model.optimizer.get_config()
+
+        # Test load_model (classmethod) - loads into a new wrapper instance
+        loaded_agent = Wrapper.load_model(save_path)
+
+        # Test load_state - loads state into the existing wrapper
         agent.load_state(save_path)
+
+        # Verify new instance predictions match original predictions
+        loaded_preds = loaded_agent.predict(X_reg.tolist())
+        np.testing.assert_allclose(original_preds, loaded_preds, rtol=1e-5, atol=1e-5)
+
+        # Verify state-restored instance predictions match original predictions
+        state_preds = agent.predict(X_reg.tolist())
+        np.testing.assert_allclose(original_preds, state_preds, rtol=1e-5, atol=1e-5)
+
+        # Verify model configs are identical
+        assert loaded_agent.model.get_config() == original_config
+        assert agent.model.get_config() == original_config
+
+        # Verify optimizer configurations match
+        assert loaded_agent.model.optimizer.get_config() == original_opt_config
+        assert agent.model.optimizer.get_config() == original_opt_config
+
+        # Verify parameters (weights and biases) are identical
+        loaded_params = loaded_agent.model.get_parameters()
+        state_params = agent.model.get_parameters()
+        for layer_key in original_params:
+            for param_key in original_params[layer_key]:
+                np.testing.assert_allclose(
+                    original_params[layer_key][param_key],
+                    loaded_params[layer_key][param_key],
+                    rtol=1e-5, atol=1e-5
+                )
+                np.testing.assert_allclose(
+                    original_params[layer_key][param_key],
+                    state_params[layer_key][param_key],
+                    rtol=1e-5, atol=1e-5
+                )
 
     def test_wrapper_with_data_transformer(self):
         scaler = MinMaxScaler()

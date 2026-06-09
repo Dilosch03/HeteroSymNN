@@ -1,7 +1,9 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
-sys.path.insert(0, r"C:\Users\dilos\Documents\GitHub\HeteroSymNN")
 
 from HeteroSymNN.Core.Nets.linear_net import MLP
 from HeteroSymNN.API.wrappers import Wrapper

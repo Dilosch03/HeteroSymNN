@@ -3,13 +3,20 @@ import numpy as np
 from typing import Literal, Union, Optional, Any, Sequence
 import warnings
 import inspect
+import os
+import datetime
+import json
+import zipfile
+from pathlib import Path
+import io
 
+from ... import __version__
 from ...Backend import hardware as HW
 from ...Backend.validators import _validate_gpu_id
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
 from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
-from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,ComputationalMethodValueError,DeviceSelectionError
+from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,ComputationalMethodValueError,DeviceSelectionError, SavingError, PathError
 from ...error_handlers import clean_traceback
 from ...config import settings
 
@@ -243,7 +250,7 @@ class BaseNetwork:
         architecture_config = general_configs.get('architecture', {})
         metadata = general_configs.get('metadata', {})
 
-        instance._NETWORK_STRUCTURE = architecture_config.get('network_structure', [])
+        instance._NETWORK_STRUCTURE = []
         instance._BATCH_SIZE = architecture_config.get('batch_size', 32)
         instance.num_training_epochs = architecture_config.get('num_training_epochs', 1000)
         
@@ -295,6 +302,7 @@ class BaseNetwork:
                 Gpu_id=instance._GPU_ID
             )
             instance._LAYERS.append(rebuilt_layer)
+            instance._NETWORK_STRUCTURE.append(LayerClass)
             
         return instance
     
@@ -893,3 +901,260 @@ class BaseNetwork:
         config["loss_config"] = self._LOSS_FUNCTION.get_config()
         config['num_training_epochs'] = self.num_training_epochs
         return config
+
+    def save_model(self,path: str, model_name: str = None, description: str = None,overwrite: bool = False,save_optimizer:bool = True)->str:
+        """
+        Saves the model architecture, parameters, optimizer state, and wrapper configuration to a file.
+
+        The file is saved as a compressed symnn archive (``.symnn``).
+
+        Parameters
+        ----------
+        path : str
+            Directory path to save the file.
+        model_name : str
+            Name of the model that is going to be saved (will be used for the filename).
+        description : str, optional
+            Optional description to store in metadata.
+        overwrite : bool, optional
+            Whether to overwrite the file if it already exists.
+        save_optimizer : bool, optional
+            Whether to save the optimizer state.
+            
+        Returns
+        -------
+        str
+            Full path to the saved model file.
+        """
+        if (model_name is None):
+            model_name = self.__class__.__name__
+        
+        if  (path.startswith("/")):
+            path = os.path.join(os.getcwd(), path)
+        
+        is_directory = os.path.isdir(path) or path.endswith("/") or path.endswith(os.sep)
+
+        if is_directory:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_filename = f"{model_name}_{timestamp}.symnn"
+            
+            full_path = os.path.join(path, final_filename)
+            
+
+        else:
+            if not path.endswith(".symnn"):
+                full_path = path + ".symnn"
+            else:
+                full_path = path
+
+            # 3. The Overwrite Guardrail
+            if (os.path.exists(full_path)):
+                if not(overwrite):
+                    temp = full_path[:-6]
+                    offset = 1
+                    while (os.path.exists(temp + f"_{offset}.symnn")):
+                        offset += 1
+                    full_path = temp + f"_{offset}.symnn"
+
+            full_path = Path(full_path)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            config_to_save,flat_params = self._get_save_objects(model_name,description,save_optimizer)
+
+            npz_ram_buffer = io.BytesIO()
+            np.savez_compressed(npz_ram_buffer, **flat_params)
+
+            from ...utility import _NumpyEncoder
+
+            with zipfile.ZipFile(full_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                
+                archive.writestr("config.json", json.dumps(config_to_save, indent=4, cls=_NumpyEncoder))
+                archive.writestr("weights.npz", npz_ram_buffer.getvalue())
+
+            return full_path
+        except Exception as e:
+            raise SavingError(f"Error ocured when saving the model {model_name}. {str(e)}")
+
+    def _get_save_objects(self,model_name: str = None, description: str = None,save_optimizer:bool = True)->tuple[dict[str,Any],dict[str,Any]]:
+        """Internal method to format the data for saving."""
+        self.to("CPU")
+        architecture_config = self.get_config()
+        architecture_config.pop("network_structure")
+
+        metadata = {
+            'model_name': model_name,
+            'model_class': str(self.__class__.__name__),
+            'description': description,
+            'save_timestamp': datetime.datetime.now().isoformat(),
+            'framework_version':__version__,
+            'total_training_iterations': self.num_completed_train_iterations,
+            'total_epochs_iterations':self.num_completed_epochs
+        }
+
+        from ...API import registries
+        if (metadata["model_class"] in registries.registry.legacy_map.keys()):
+            metadata["model_class"] = registries.registry.legacy_map[metadata["model_class"]]
+
+
+        
+        config_to_save = {
+            'architecture': architecture_config,
+            'metadata': metadata
+        }
+
+        if (save_optimizer):
+            config_to_save['optimizer_config'] = self._UPDATE_METHOD.get_config()
+        
+
+        params = self.get_parameters()
+
+        flat_params = {}
+        for layer_key, layer_params in params.items():
+            for param_key, param_value in layer_params.items():
+                flat_params[f"{layer_key}_{param_key}"] = param_value
+        
+        if (save_optimizer):
+            opt_global, opt_layers = self._UPDATE_METHOD.get_state()
+
+            for param_key, val in opt_global.items():
+                flat_params[f"global_opt_{param_key}"] = val 
+
+            for i, layer_opt_dict in enumerate(opt_layers):
+                for param_key, matrix in layer_opt_dict.items():
+                    flat_params[f"layer_{i}_opt_{param_key}"] = matrix
+        
+        return config_to_save,flat_params
+
+    @classmethod
+    def _extract_symnn_archive(cls, path: str) -> tuple["BaseNetwork", dict[str, Any]]:
+        """
+        Internal method to load a .symnn archive.
+        
+        Parameters
+        ----------
+        path : str
+            Path to the .symnn archive.
+        """
+        if not path.endswith(".symnn"):
+            path = path + ".symnn"
+
+        if not os.path.exists(path):
+            raise PathError(f"No file found: {path}")
+
+        try:
+            from ...API import registries
+            with zipfile.ZipFile(path, 'r') as archive:
+                config_bytes = archive.read("config.json")
+                config_wrapper = json.loads(config_bytes)
+                
+                metadata = config_wrapper.get('metadata', {})
+                
+                model_class_name = metadata.get('model_class')
+                TargetNetworkClass = registries.registry._net_map[model_class_name]
+                
+                model = TargetNetworkClass.from_config(config_wrapper, registry_module=registries.registry)
+
+                npz_bytes = archive.read("weights.npz")
+                npz_ram_buffer = io.BytesIO(npz_bytes)
+                
+                layer_params_dict = {}
+                opt_global = {}
+                opt_layers_dicts = [None]*len(model.layers)
+                
+                with np.load(npz_ram_buffer, allow_pickle=False) as data:
+                    for key, value in data.items():
+                        if key.startswith("global_opt_"):
+                            param_name = key.replace("global_opt_", "", 1)
+                            opt_global[param_name] = value.item() if value.ndim == 0 else value
+
+                        elif "_opt_" in key:
+                            parts = key.split("_opt_", 1)
+                            layer_idx = int(parts[0].split("_")[1])
+                            param_name = parts[1]                   
+                            
+                            if (opt_layers_dicts[layer_idx] is None):
+                                opt_layers_dicts[layer_idx] = {}
+                            opt_layers_dicts[layer_idx][param_name] = value
+                            
+                        elif key.startswith("layer_"):
+                            parts = key.split("_", 2)
+                            layer_key = f"{parts[0]}_{parts[1]}"
+                            param_key = parts[2]                 
+                            
+                            if layer_key not in layer_params_dict:
+                                layer_params_dict[layer_key] = {}
+                            layer_params_dict[layer_key][param_key] = value
+                
+                model.set_parameters(layer_params_dict)
+
+                if all(x is None for x in opt_layers_dicts):
+                    opt_layers_dicts = []
+                else:
+                    opt_layers_dicts = [x if x is not None else {} for x in opt_layers_dicts]
+
+                rebuilt_opt_state = {"layer_states":opt_layers_dicts}
+                rebuilt_opt_state.update(opt_global)
+
+                model._UPDATE_METHOD.set_state(rebuilt_opt_state, model._CALCULATION_MANAGER)
+                model._UPDATE_METHOD._initialize_state(model.layers)
+
+                model.num_completed_train_iterations = metadata.get('total_training_iterations', 0)
+                model.num_completed_epochs = metadata.get('total_epochs_iterations', 0)
+
+                return model, metadata
+        except Exception as e:
+            raise LoadingError(f"Failed to load the model from {path}. The .symnn archive may be corrupted. Cause: {e}") from e
+
+    @classmethod
+    @clean_traceback
+    def load_model(cls, path: str) -> "BaseNetwork":
+        """
+        Creates a brand new BaseNetwork (or subclass) and populates it directly from a .symnn archive.
+        
+        Parameters
+        ----------
+        path : str
+            Path to the .symnn archive.
+        """
+        model, _ = cls._extract_symnn_archive(path)
+        return model
+
+    @clean_traceback
+    def load_state(self, path: str) -> None:
+        """
+        Loads a model from a ``.symnn`` ZIP archive created by :meth:`save_model` and overwrites the current parameters of the model.
+
+        Reconstructs the Network weights, optimizer state, etc.
+
+        Parameters
+        ----------
+        path : str
+            Path to the ``.symnn`` file.
+        
+        Raises
+        ------
+        IOError
+            If the file cannot be loaded or has an invalid format.
+        """
+        model, metadata = self._extract_symnn_archive(path)
+        
+        if len(self.layers) != len(model.layers):
+            raise LoadingError("Cannot load state: the saved model has a different number of layers.")
+            
+        for i, (l_self, l_model) in enumerate(zip(self.layers, model.layers)):
+            if l_self.__class__ != l_model.__class__:
+                raise LoadingError(f"Cannot load state: layer {i} type mismatch ({l_self.__class__.__name__} vs {l_model.__class__.__name__}).")
+            if l_self.num_inputs != l_model.num_inputs or l_self.num_nodes != l_model.num_nodes:
+                raise LoadingError(f"Cannot load state: layer {i} dimensions mismatch.")
+                
+        self.set_parameters(model.get_parameters())
+        
+        opt_global, opt_layers = model._UPDATE_METHOD.get_state()
+        rebuilt_opt_state = {"layer_states": opt_layers}
+        rebuilt_opt_state.update(opt_global)
+        
+        self._UPDATE_METHOD.set_state(rebuilt_opt_state, self._CALCULATION_MANAGER)
+        self._UPDATE_METHOD._initialize_state(self.layers)
+        
+        self.num_completed_train_iterations = model.num_completed_train_iterations
+        self.num_completed_epochs = model.num_completed_epochs

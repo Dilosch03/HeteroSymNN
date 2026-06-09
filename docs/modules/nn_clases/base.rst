@@ -23,10 +23,14 @@ Hardware Routing & Memory Safety
 
 The ``BaseNetwork`` acts as the traffic controller for the entire graph. When you trigger the ``change_device("GPU")`` or ``change_device("CPU")`` methods at this level, the base class safely halts execution, flushes the memory queues, and recursively moves the underlying :type:`~HeteroSymNN.types.BackendArray` memory for every individual layer in the network.
 
-State Extraction
-----------------
+State Serialization & Persistence
+---------------------------------
 
-Because HeteroSymNN networks can contain wildly different mathematical equations and dynamic constants per neuron, saving a model's state is complex. The base class handles this safely via ``get_config()``. It traverses through all its layers, extracts the deterministic blueprints and symbolic string configurations from every one, packing them into a single, serializable dictionary.
+Because HeteroSymNN networks can contain wildly different mathematical equations and dynamic constants per neuron, saving a model's state is complex. The base class provides built-in methods to save and load models directly without wrapping them:
+
+* **Saving:** You can call ``save_model(path)`` directly on any network instance to save its architecture, parameter weights, and optimizer states.
+* **Loading as a new instance:** You can call the class method ``BaseNetwork.load_model(path)`` to load and instantiate a saved network from a file.
+* **Loading state into an existing instance:** You can call ``load_state(path)`` to restore parameter weights and optimizer states into an existing model instance.
 
 API Reference
 -------------

@@ -184,7 +184,23 @@ class SymbolicJITCompiler:
         
         for key, expr_string in codegen.COMMON_FORMULAS.items():
             try:
-                base_expr = sp.parse_expr(expr_string, local_dict=local_dict)
+                temp_dict = local_dict.copy()
+                try:
+                    tree = ast.parse(expr_string, mode='eval')
+                    called_names = set()
+                    all_names = set()
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                            called_names.add(node.func.id)
+                        elif isinstance(node, ast.Name):
+                            all_names.add(node.id)
+                    uncalled_symbols = all_names - called_names
+                    for sym_name in uncalled_symbols:
+                        if sym_name not in temp_dict:
+                            temp_dict[sym_name] = sp.symbols(sym_name, real=True)
+                except SyntaxError:
+                    pass
+                base_expr = sp.parse_expr(expr_string, local_dict=temp_dict)
             except Exception as e:
                 warnings.warn(f"Error parsing expression for key '{key}': {e}")
                 continue

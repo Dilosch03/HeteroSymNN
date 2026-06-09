@@ -59,9 +59,10 @@ CPP_USER_FUNCS = {
 
 COMMON_FORMULAS = {
     'relu': "Max(0.0, num)",
+    "leaky_relu": "Piecewise((num * alpha, num < 0), (num, True))",
     'sigmoid': "1 / (1 + exp(-num))",
-    'swish': "num / (1 + exp(-num))",
-    "SiLU": "num / (1 + exp(-num))",
+    'swish': "num / (1 + exp(-beta*num))",
+    "silu": "num / (1 + exp(-num))",
     'softplus': "log(1 + exp(num))",
     'mish': "num * tanh(log(1 + exp(num)))",
     'gelu': "0.5 * num * (1 + erf(num / sqrt(2.0)))",

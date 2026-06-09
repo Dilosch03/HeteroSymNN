@@ -19,21 +19,9 @@ from ..Core import losses, optimizers
 from . import data_transformers, registries
 from ..exceptions import PathError,ShapeMismatchError,ShapeWarning,LoadingError,TrainingError,WrapperError,SavingError
 from ..error_handlers import apply_clean_tracebacks
+from ..utility import _NumpyEncoder
 
 __all__ = ["Wrapper", "GridSearchManager"]
-
-class _NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder that converts numpy types to native Python types."""
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
 
 @apply_clean_tracebacks
 class Wrapper():
@@ -510,25 +498,14 @@ class Wrapper():
             full_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.model.to("CPU")
-            architecture_config = self.model.get_config()
-            architecture_config.pop("network_structure")
+            config_to_save,flat_params= self.model._get_save_objects(model_name, description)
 
-            metadata = {
-                'model_name': model_name,
-                'model_class': str(self.model.__class__.__name__),
+            metadata_extra = {
                 'work_type': self.work_type,
-                'description': description,
-                'save_timestamp': datetime.datetime.now().isoformat(),
-                'framework_version':__version__,
-                'total_training_iterations': self.model.num_completed_train_iterations,
-                'total_epochs_iterations':self.model.num_completed_epochs,
                 'input_transformer':  self._input_transformer.__class__.__name__ if self._input_transformer else None,
                 'output_transformer': self._output_transformer.__class__.__name__ if self._output_transformer else None,
                 "loaded_train_data":self._loaded_train_data
             }
-
-            if (metadata["model_class"] in registries.registry.legacy_map.keys()):
-                metadata["model_class"] = registries.registry.legacy_map[metadata["model_class"]]
 
 
             transformation_configs = {}
@@ -537,30 +514,12 @@ class Wrapper():
             if self.output_transformer is not None:
                 transformation_configs["outputs"] = self.output_transformer.get_config()
             
-            config_to_save = {
-                'architecture': architecture_config,
-                'metadata': metadata,
+            config_to_save.update({
                 'transformation_configs': transformation_configs,
                 'optimizer_config':self.model._UPDATE_METHOD.get_config(),
-            }
-            
+            })
+            config_to_save["metadata"].update(metadata_extra)
 
-            params = self.model.get_parameters()
-
-            flat_params = {}
-            for layer_key, layer_params in params.items():
-                for param_key, param_value in layer_params.items():
-                    flat_params[f"{layer_key}_{param_key}"] = param_value
-            
-            opt_global, opt_layers = self.model._UPDATE_METHOD.get_state()
-
-
-            for param_key, val in opt_global.items():
-                flat_params[f"global_opt_{param_key}"] = val 
-
-            for i, layer_opt_dict in enumerate(opt_layers):
-                for param_key, matrix in layer_opt_dict.items():
-                    flat_params[f"layer_{i}_opt_{param_key}"] = matrix
 
             npz_ram_buffer = io.BytesIO()
             np.savez_compressed(npz_ram_buffer, **flat_params)

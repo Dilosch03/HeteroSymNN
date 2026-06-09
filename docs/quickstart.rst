@@ -31,7 +31,7 @@ If you just need a standard, high-performance neural network where all hidden la
     agent.fit(X_train, y_train, epochs=100)
 
 2. Layer-Level Heterogeneity (The Mixed-Activation Network)
-------------------------------------------------------
+-----------------------------------------------------------
 
 In standard frameworks, mixing different activation functions usually requires custom boilerplate classes. With HeteroSymNN's LinearNet builder, you can effortlessly assign different mathematical strings to different layers.
 
@@ -95,7 +95,16 @@ For example:
 - ``"sin * num"``: Because it lacks parentheses, ``sin`` is treated as a custom variable, NOT the sine function! If you don't provide a dictionary value for it, you will receive a "Missing constants" error.
 
 **Function Aliases:**
-For convenience, HeteroSymNN allows you to use common activation names as standalone strings (e.g., ``"relu"``, ``"sigmoid"``, ``"tanh"``). When an alias is the *only* text in the string, it is safely auto-expanded (e.g., ``"relu"`` becomes ``"Max(0, num)"``). However, if you are composing a larger equation, you **must** use the function call syntax (e.g., ``"relu(num) * alfa"``) so the AST recognizes it correctly.
+For convenience, HeteroSymNN allows you to use common activation names as standalone strings (e.g., ``"relu"``, ``"sigmoid"``, ``"tanh"``). When an alias is the *only* text in the string, it is safely auto-expanded (e.g., ``"relu"`` becomes ``"Max(0, num)"``).
+
+Some aliases include parameterized constants in their definitions:
+
+* ``"leaky_relu"`` auto-expands to ``"Piecewise((num * alpha, num < 0), (num, True))"``, requiring the constant ``alpha`` to be defined.
+* ``"swish"`` auto-expands to ``"num / (1 + exp(-beta*num))"``, requiring the constant ``beta`` to be defined.
+
+If you use these parameterized aliases without providing their constants (e.g. using ``"leaky_relu"`` instead of ``("leaky_relu", {"alpha": 0.01})``), the JIT compiler will catch this and throw a ``FormulaParsingError`` listing the missing constant.
+
+If you are composing a larger equation, you **must** use the function call syntax (e.g., ``"relu(num) * alfa"``) so the AST recognizes it correctly.
 
 5. Zero-Recompile Tuning (Dynamic Constants)
 --------------------------------------------
@@ -115,22 +124,27 @@ HeteroSymNN treats these symbolic constants as mutable kernel arguments. This me
 
 This feature is exceptionally powerful for hyperparameter grid searching or Evolutionary Algorithms, where constants must mutate thousands of times per second.
 
-6. Saving & Loading Custom Models (The Registry)
-------------------------------------------------
+6. Saving & Loading Models (Direct or Wrapped)
+----------------------------------------------
 
-HeteroSymNN allows you to easily serialize your wrapped models to disk. 
+HeteroSymNN allows you to serialize your models to disk, either through the model wrapper or directly using the network class:
 
-However, if you extended the framework by building a **custom class** (e.g., a custom Loss function or custom Layer) and used it in your model, you **must register the class pointer** before loading the model back from disk. This teaches the deserializer how to rebuild your custom architecture.
+* **Using the Wrapper:** Useful when you want to save/restore data scaling parameters alongside the network.
+* **Direct Network Loading:** Useful when you want to bypass wrappers and load raw networks.
 
 .. code-block:: python
 
     from HeteroSymNN.API import Wrapper, registry
+    from HeteroSymNN.Core.Nets import BaseNetwork
     from my_custom_code import MyCustomLoss
 
-    # 1. Register your custom class pointer (NOT an instance!) BEFORE loading
+    # 1. Register any custom class pointer BEFORE loading
     registry.add_loss_func(MyCustomLoss)
 
-    # 2. Safely load the model that was trained with MyCustomLoss
+    # 2a. Load via the API Wrapper (restores data transformers)
     loaded_agent = Wrapper.load_model("my_custom_model.symnn")
 
-The `:class:~HeteroSymNN.API.registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
+    # 2b. Or load the raw network directly without a wrapper
+    raw_model = BaseNetwork.load_model("my_custom_model.symnn")
+
+The :class:`~HeteroSymNN.API.registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
