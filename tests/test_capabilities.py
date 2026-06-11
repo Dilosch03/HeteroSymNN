@@ -1,7 +1,9 @@
 import sys
 import os
+import time
 import pytest
 import numpy as np
+import warnings
 
 # Ensure HeteroSymNN is importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -124,8 +126,40 @@ class TestNetworks:
 
     def test_zero_recompile(self):
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=[("relu", {}), ("tanh(num) * alpha", {"alpha": 1.0})], num_training_iter=1)
-        model.change_constants({1: [(0, "alpha", 2.0)]})
+        
+        # Cold run: Forces initial C++/CUDA JIT compilation
         model.predict(X_dummy)
+        
+        # Dynamically inject the new constant
+        model.change_constants({1: [(0, "alpha", 2.0)]})
+        
+        # Hot run: Should strictly bypass compilation and use cached kernel
+        start_time = time.perf_counter()
+        model.predict(X_dummy)
+        hot_duration = time.perf_counter() - start_time
+        
+        # Compilation takes > 0.5s. If it executes under 0.1s, we prove nvcc wasn't called.
+        assert hot_duration < 0.1, f"Zero-recompile failed, hot run took {hot_duration}s (likely recompiled)"
+
+    def test_graceful_cpu_fallback(self, monkeypatch):
+        # Hijack the available methods to simulate no GPU
+        monkeypatch.setattr(settings, "_available_methods", ["CPU_PYTHON"])
+        
+        # Force the settings back to default warning level to ensure the warning fires
+        settings.set_warning_level("default")
+        
+        # We expect the BackendNotAvailableWarning to trigger when it fails to initialize the backend
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            
+            # Requesting GPU_CUDA explicitly should trigger the fallback sequence
+            settings.set_default_compute_method("GPU_CUDA")
+            model = LinearNet(nodes_structure=[4, 4, 1], activation_config=["relu", "linear"], num_training_iter=1)
+            model.predict(X_dummy)
+            
+            # Verify the warning was properly caught and recorded
+            fallback_warning_found = any(issubclass(warn.category, exceptions.BackendNotAvailableWarning) for warn in w)
+            assert fallback_warning_found, "The framework did not emit a BackendNotAvailableWarning during GPU fallback."
 
     def test_network_save_load(self, tmp_path):
         model = LinearNet(nodes_structure=[4, 8, 1], activation_config=["relu", "linear"], num_training_iter=1)
@@ -261,8 +295,9 @@ class TestLayersLowLevel:
         layer_config = ([("relu", {})], init)
         layer = layers.LinearLayer(num_inputs=4, layer_configuration=layer_config, batch_size=8)
         x = np.random.rand(8, 4).astype(np.float32)
-        out = layer.forward(x.T)
-        err = np.random.rand(*out.shape).astype(np.float32)
+        x_backend = layer._CALCULATION_MANAGER.array(x.T)
+        out = layer.forward(x_backend)
+        err = layer._CALCULATION_MANAGER.array(np.random.rand(*out.shape).astype(np.float32))
         layer.backward(err)
         params = layer.get_parameters()
         layer.set_parameters(params)

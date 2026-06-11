@@ -270,7 +270,7 @@ class Wrapper():
                 raise WrapperError("A DataTransform object was pass but it was never fitted.")
             
             if (len(None_keys) > 0):
-                raise WrapperError(f"Input transformer has {",".join(None_keys)} with None values even though it was fitted.")
+                raise WrapperError(f"Input transformer has {','.join(None_keys)} with None values even though it was fitted.")
                 
             X_norm = self._input_transformer.transform(X_raw)
             
@@ -289,7 +289,7 @@ class Wrapper():
                 raise WrapperError("A DataTransform object was pass but it was never fitted.")
             
             if (len(None_keys) > 0):
-                raise WrapperError(f"Input transformer has {",".join(None_keys)} with None values even though it was fitted.")
+                raise WrapperError(f"Output transformer has {','.join(None_keys)} with None values even though it was fitted.")
                 
             Y_denorm = self._output_transformer.inverse_transform(Y_pred_norm)
         

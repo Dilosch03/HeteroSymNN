@@ -17,6 +17,8 @@ def _validate_gpu_id(gpu_id: int) -> None:
     :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
         If the GPU ID is negative or greater than or equal to the number of available GPUs.
     """
+    if HW.NUM_GPUS == 0:
+        return
     if (gpu_id < 0 or gpu_id >= HW.NUM_GPUS):
         raise InvalidDeviceIDError(
             f"GPU ID {gpu_id} is out of range. "

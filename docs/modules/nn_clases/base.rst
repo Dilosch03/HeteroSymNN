@@ -16,7 +16,7 @@ The Topology Sandbox
 
 The primary way to mix and match different Architecture Families is through the base class's ``network_structure`` initialization parameter. 
 
-Instead of just passing a list of integers (node counts), the base class accepts tuples containing both the node count *and* the explicit Layer Class you want to use. This allows you to snap together a standard LinearNet layer with a future Recurrent or Evolutionary layer in the exact Network.
+The base class accepts a list of the explicit Layer Class you want to use. This allows you to snap together a standard LinearNet layer with a future Recurrent, Evolutionary or convolutional layer in the exact Network.
 
 Hardware Routing & Memory Safety
 --------------------------------

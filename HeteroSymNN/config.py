@@ -211,7 +211,7 @@ class _Settings:
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
             raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
 
-        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
+        if ((new_method == "GPU_CUDA") and not(new_method in self.available_methods)):
             msg_extra = ", but no GPU is available."
             new_method = "CPU_PYTHON"
 

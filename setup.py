@@ -7,7 +7,7 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(name="HeteroSymNN",
-      version="0.3.0b7",
+      version="0.3.0rc4",
       packages=find_packages(),
       python_requires=">=3.10",
       author="Dilosch03",
@@ -16,9 +16,11 @@ setup(name="HeteroSymNN",
               "heterosymnn=HeteroSymNN.__main__:main",
           ],
       },
-      install_requires=["numpy>=2.0,<2.3","sympy~=1.14","platformdirs~=4.5"],
+      install_requires=["numpy>=2.0","sympy~=1.14","platformdirs~=4.5"],
       extras_require={
-        "gpu": ["cupy~=13.6"]
+        "cuda11": ["cupy-cuda11x>=12.0.0"],
+        "cuda12": ["cupy-cuda12x>=12.0.0"],
+        "cuda13": ["cupy-cuda13x>=12.0.0"]
         },
       description="Framework for Heterogeneous Neural Networks using Symbolic Mathematics and Automatic Differentiation using in runtime compilation to generate code for the GPU or paralel CPU.",
       long_description=long_description,
