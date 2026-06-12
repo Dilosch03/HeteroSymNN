@@ -17,11 +17,11 @@ HeteroSymNN defaults to highly portable CPU operations using numpy:
 
    pip install heterosymnn
 
-But can also be installed with high-performance GPU acceleration using CuPy (Requires NVIDIA Drivers):
+But can also be installed with high-performance GPU acceleration using CuPy by specifying your CUDA version (Requires NVIDIA Drivers):
 
 .. code-block:: bash
 
-   pip install heterosymnn[gpu]
+   pip install heterosymnn[cuda12]
 
 :doc:`Read the full installation guide <installation>` for compiler prerequisites and backend details.
 

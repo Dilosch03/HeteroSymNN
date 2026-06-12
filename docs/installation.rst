@@ -20,14 +20,14 @@ The standard installation relies on CPU execution.
 GPU Installation (CUDA)
 -----------------------
 
-To enable the highest-performance ``GPU_CUDA`` backend, install HeteroSymNN with the ``gpu`` flag. This leverages CuPy to compile and execute symbolic kernels directly on the GPU.
+To enable the highest-performance ``GPU_CUDA`` backend, install HeteroSymNN with the appropriate CUDA version flag (``cuda11``, ``cuda12``, or ``cuda13``). This leverages CuPy to compile and execute symbolic kernels directly on the GPU.
 
 .. code-block:: bash
 
-    pip install HeteroSymNN[gpu]
+    pip install HeteroSymNN[cuda12]
 
 .. warning::
-    This requires an NVIDIA GPU and compatible CUDA drivers pre-installed on your system for CuPy to work.
+    This requires an NVIDIA GPU and compatible CUDA drivers pre-installed on your system for CuPy to work. Be sure to select the extra that matches your CUDA toolkit version.
 
 Installation from Source
 ------------------------

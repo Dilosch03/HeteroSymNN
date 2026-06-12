@@ -16,11 +16,11 @@ NEVER:
 
 <directory_structure>
 /HeteroSymNN
-├── types.py, config.py, exceptions.py
-├── /Core: layers.py, losses.py, initializers.py, optimizers.py, /Nets (base.py, linear_net.py, evo.py, functional.py)
+├── __main__.py, cli.py, types.py, config.py, exceptions.py, decorators.py, utils.py
+├── /Core: layers.py, losses.py, initializers.py, optimizers.py, legacy_core_objects.py, /Nets (base.py, dense.py, evo.py, legacy_nets.py, functional.py)
 ├── /JIT: compiler.py, codegen.py
-├── /Backends: hardware.py
-└── /API: registries.py, wrappers.py, data_transformers.py
+├── /Backends: hardware.py, validators.py, tuner.py
+└── /API: registries.py, wrapper.py, data_transformers.py
 </directory_structure>
 
 <type_definitions>

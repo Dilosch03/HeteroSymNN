@@ -36,11 +36,11 @@ pip install HeteroSymNN
 
 ### GPU Installation (CUDA)
 
-To enable the high-performance CUDA backend using CuPy:
+To enable the high-performance CUDA backend using CuPy, specify your CUDA version (`cuda11`, `cuda12`, or `cuda13`):
 ```sh
-pip install HeteroSymNN[gpu]
+pip install HeteroSymNN[cuda12]
 ```
-> **Note:** Requires an NVIDIA GPU and compatible CUDA drivers.
+> **Note:** Requires an NVIDIA GPU and compatible CUDA drivers. Make sure the extra matches your installed CUDA toolkit version.
 
 ## Quickstart
 

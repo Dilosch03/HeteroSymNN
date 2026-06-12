@@ -26,9 +26,15 @@ from HeteroSymNN.config import settings
 </import_patterns>
 
 <symbolic_formulas>
-Parsed to C++/CUDA. Accepted vars: "num", "x", "z" (prefer "num").
-Accepted String Activations: `"relu"`, `"sigmoid"`, `"swish"`/`"SiLU"`, `"softplus"`, `"mish"`, `"gelu"`, `"linear"`.
+Parsed to C++/CUDA. Accepted input variables: "num", "x", "z" (prefer "num").
+Accepted String Activations: `"relu"`, `"sigmoid"`, `"tanh"`, `"swish"`/`"SiLU"`, `"leaky_relu"`, `"softplus"`, `"mish"`, `"gelu"`, `"linear"`.
 Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
+
+**Variable vs. Function Quirks (Golden Rule & Alias Exception):**
+- **Golden Rule**: Any word NOT explicitly called with parentheses is treated as a custom parameter variable (e.g., in `"sin * num"`, `sin` is a variable). Any word explicitly called with parentheses is treated as a mathematical function (e.g., `"sin(num)"`).
+- **Alias Exception**: If a recognized activation alias (like `"relu"`, `"tanh"`) is the *only* text in the string, it is automatically expanded to its functional form. 
+- **Parameterized Aliases**: Aliases like `"leaky_relu"` (requires `alpha`) and `"swish"` (requires `beta`) will throw a `FormulaParsingError` if used without their required constants (e.g., use `("leaky_relu", {"alpha": 0.01})`). 
+- **Composition**: If composing a larger equation, you **must** use explicit function call syntax (e.g., `"relu(num) * alfa"`); otherwise, the alias will be parsed as a variable.
 </symbolic_formulas>
 
 <type_definitions>
