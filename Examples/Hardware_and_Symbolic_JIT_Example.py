@@ -28,7 +28,7 @@ def run_hardware_demo():
 
     print("--- 3. Moving to GPU ---")
     model.set_gpu_id(0)
-    model.to("GPU")
+    model.to("device")
     
     print(f"VRAM after Float32 Load: {mempool.used_bytes() / 1024**2:.2f} MB")
 
@@ -76,7 +76,7 @@ def run_symbolic_demo():
     if "GPU_CUDA" in settings.available_methods:
         print("-> Compiling Custom CUDA Kernel...")
         model.set_gpu_id(0)
-        model.to("GPU")
+        model.to("device")
         model.set_backend("GPU_CUDA") 
         print("Compilation Complete! Kernel loaded to GPU.")
     elif "CPU_JIT"in settings.available_methods:

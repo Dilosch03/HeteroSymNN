@@ -85,7 +85,7 @@ To achieve this granular control, use the node-level configuration arrays:
 4. Mathematical Formula Rules (Variables vs. Functions)
 -------------------------------------------------------
 
-When writing symbolic formulas, the framework uses a highly robust Abstract Syntax Tree (AST) parser to automatically differentiate between your custom variables and known mathematical functions.
+When writing symbolic formulas, the framework uses an Abstract Syntax Tree (AST) parser to automatically differentiate between your custom variables and known mathematical functions.
 
 **The Golden Rule:** Any word not explicitly called with parentheses is treated as a custom parameter variable. Any word followed by parentheses is treated as a mathematical function.
 

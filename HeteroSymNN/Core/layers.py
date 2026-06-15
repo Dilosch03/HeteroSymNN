@@ -46,6 +46,7 @@ class BaseLayer:
         _validate_gpu_id(gpu_id)
         self._GPU_ID = gpu_id
         self._CURRENT_DEVICE = "CPU"
+        self._CURRENT_LOCATION = "host"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self._CURRENT_VECTOR_FORMAT = self._ASNUMPY
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
@@ -158,6 +159,18 @@ class BaseLayer:
         return self._CURRENT_DEVICE
     
     @property
+    def current_location(self)->Literal["host","device"]:
+        """
+        Property to get the current logical location where the parameters are located.
+
+        Returns
+        -------
+        Literal["host","device"]
+            Logical location of the layer parameters.
+        """
+        return self._CURRENT_LOCATION
+    
+    @property
     def initial_nodes_layer_configs(self)->Sequence[NodeConfig]:
         """
         Property to get the initial layer node configurations used during layer construction.
@@ -178,7 +191,7 @@ class BaseLayer:
         reset_constants: bool, optional
             Bool value if you want to also reset the activation function constants, by default False.
         """
-        self.to("CPU")
+        self.to("host")
         if (reset_constants):
             if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
                 with HW.be.cuda.Device(self._GPU_ID):
@@ -227,7 +240,7 @@ class BaseLayer:
         list[:type:`~HeteroSymNN.types.NodeConfig`]
             List of :type:`~HeteroSymNN.types.NodeConfig` with the current constants.
         """
-        self.to("CPU")
+        self.to("host")
         new_layer_config = []
         for i,node in enumerate(self._layer_node_configs):
             node_constant_dict = {}
@@ -315,34 +328,33 @@ class BaseLayer:
             self.batch_size_change(batch_size)
         return self._COMPUTATIONAL_METHOD
 
-    def to(self,device:Literal["CPU","GPU"])->None:
+    def to(self,location:Literal["host","device"])->None:
         """
-        Change the location of the waights, biases, connection mask and activation function constants from CPU to GPU or GPU to CPU.
+        Change the logical location of the weights, biases, connection mask and activation function constants to host or device.
 
         Parameters
         ----------
-        device : Literal["CPU", "GPU"]
-            To which device to change the data of the layer.
+        location : Literal["host", "device"]
+            To which logical location to change the data of the layer.
         """
-        device = device.upper()
-        if not(device in ["CPU","GPU"]):
-            raise DeviceSelectionError("Device not recognized. Expecting CPU or GPU.")
+        location = location.lower()
+        if not(location in ["host","device"]):
+            raise DeviceSelectionError("Location not recognized. Expecting host or device.")
+        
+        target_hardware = "CPU"
+        if location == "device":
+             if "GPU" in self._COMPUTATIONAL_METHOD:
+                 target_hardware = "GPU"
         
         new_vector_format = self._CALCULATION_MANAGER.array
-        if ((device == "GPU") and not(HW.GPU_ENABLED)):
-                warnings.warn("Trying to send the parameters to GPU but no GPU is available."+"Using CPU instead.",BackendNotAvailableWarning,stacklevel=2)
-        if (((device == "GPU") and not(HW.GPU_ENABLED)) or (device == "CPU")):
+        if target_hardware == "CPU":
             new_vector_format = self._ASNUMPY
-            device = "CPU"
 
-        if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            warnings.warn("Tried to send the parameters to the GPU when the CPU was set as the computational device."+"Data routing is restricted to 'CPU'.",HardwareWarning,stacklevel=3)
-            device = "CPU"
-
-        if(device != self._CURRENT_DEVICE):
-            self._CURRENT_DEVICE = device
+        if(location != self._CURRENT_LOCATION):
+            self._CURRENT_LOCATION = location
+            self._CURRENT_DEVICE = target_hardware
             self._CURRENT_VECTOR_FORMAT = new_vector_format
-            if (device == "GPU"):
+            if (target_hardware == "GPU"):
                 with HW.be.cuda.Device(self._GPU_ID):
                     self._funcs_constats = self._CURRENT_VECTOR_FORMAT(self._funcs_constats)
             else:
@@ -647,20 +659,20 @@ class LinearLayer(BaseLayer):
             self._connection_mask = np.array(init_mask).astype(self._DEFAULT_FLOAT_TYPE)
 
 
-    def to(self,device:Literal["CPU","GPU"])->None:
+    def to(self,location:Literal["host","device"])->None:
         """
-        Change the location of the waights, biases, connection mask and activation function constants from CPU to GPU or GPU to CPU.
+        Change the logical location of the weights, biases, connection mask and activation function constants to host or device.
 
         Parameters
         ----------
-        device : Literal["CPU", "GPU"]
-            To which device to change the data of the layer.
+        location : Literal["host", "device"]
+            To which logical location to change the data of the layer.
         """
-        device = device.upper()
-        same = (device == self._CURRENT_DEVICE)
-        super().to(device)
-        if((device == self._CURRENT_DEVICE)and not (same)):
-            if (device == "GPU"):
+        location = location.lower()
+        same = (location == self._CURRENT_LOCATION)
+        super().to(location)
+        if((location == self._CURRENT_LOCATION)and not (same)):
+            if (self._CURRENT_DEVICE == "GPU"):
                 with HW.be.cuda.Device(self._GPU_ID):
                     self._weights = self._CURRENT_VECTOR_FORMAT(self._weights)
                     self._biases = self._CURRENT_VECTOR_FORMAT(self._biases)

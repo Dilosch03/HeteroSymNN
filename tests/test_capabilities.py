@@ -122,7 +122,7 @@ class TestNetworks:
 
     def test_network_change_device(self):
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=["relu", "linear"], num_training_iter=1)
-        model.to("CPU")
+        model.to("host")
 
     def test_zero_recompile(self):
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=[("relu", {}), ("tanh(num) * alpha", {"alpha": 1.0})], num_training_iter=1)

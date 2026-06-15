@@ -28,6 +28,7 @@ class Optimizer:
     def __init__(self, learning_rate: float = None, computational_device:Optional[Literal["GPU", "CPU"]]=None, device_id: Optional[int] = None):
         self.DEVICE_ID = device_id
         self.CURRENT_DEVICE = "CPU"
+        self.CURRENT_LOCATION = "host"
         self.COMPUTATIONAL_DEVICE = settings.default_compute_method.split("_")[0]
         self.be = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
@@ -133,26 +134,29 @@ class Optimizer:
                 with HW.be.cuda.Device(self.DEVICE_ID):
                     self._refresh_parameters(HW.cp.array)
     
-    def _to_device(self, device: Literal["GPU", "CPU"]):
+    def _to_device(self, location: Literal["host", "device"]):
         """
-        Internal method to move optimizer state to a specific device.
+        Internal method to move optimizer state to a specific logical location.
         
         Parameters
         ----------
-        device : Literal["GPU", "CPU"]
-            The target device.
+        location : Literal["host", "device"]
+            The target logical location.
         """
-        if not(device in ["GPU","CPU"]):
-            raise DeviceSelectionError("Device not recognized. Expecting GPU or CPU.")
+        location = location.lower()
+        if not(location in ["host","device"]):
+            raise DeviceSelectionError("Location not recognized. Expecting host or device.")
         
-        if ((device == "GPU")and(self.COMPUTATIONAL_DEVICE == "CPU")):
-            warnings.warn("Tried to send the paramters to the GPU when the CPU was set as the computational device."+"CPU is required.",PerformanceWarning,stacklevel=3)
-            device = "CPU"
+        target_hardware = "CPU"
+        if location == "device":
+             if "GPU" in self.COMPUTATIONAL_DEVICE:
+                 target_hardware = "GPU"
 
-        if (device != self.CURRENT_DEVICE):
-            self.CURRENT_DEVICE = device
+        if (location != self.CURRENT_LOCATION):
+            self.CURRENT_LOCATION = location
+            self.CURRENT_DEVICE = target_hardware
                 
-            if device == "GPU":
+            if target_hardware == "GPU":
                 with HW.be.cuda.Device(self.DEVICE_ID):
                     self._refresh_parameters(self.be.array)
             else:
@@ -190,7 +194,7 @@ class Optimizer:
         layers : list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
             List of layers to update.
         """
-        self._to_device(self.COMPUTATIONAL_DEVICE)
+        self._to_device("device")
         
         if self.CURRENT_DEVICE == "GPU":
             for layer in layers:
@@ -241,7 +245,7 @@ class Optimizer:
               contains the localized matrices for that layer (e.g., the momentum 
               matrix 'm' for Adam).
         """
-        self._to_device("CPU")
+        self._to_device("host")
         return ({},{})
 
     def set_state(self, state:dict[str,any], be):
@@ -258,7 +262,7 @@ class Optimizer:
         be : :mod:`numpy` or :mod:`cupy`
             The backend module (numpy or cupy) to use for creating arrays.
         """
-        self._to_device("CPU")
+        self._to_device("host")
 
     def get_config(self)->dict[str,any]:
         """
@@ -272,7 +276,7 @@ class Optimizer:
         dict[str,any]
             Dictionary containing the configuration parameters.
         """
-        self._to_device("CPU")
+        self._to_device("host")
         return {'class_name': self.__class__.__name__, 'learning_rate': self.learning_rate}
     
     def _initialize_state(self, layers: list):

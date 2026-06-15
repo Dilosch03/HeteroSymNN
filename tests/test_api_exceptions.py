@@ -53,7 +53,7 @@ class TestNetworkExceptions:
     def test_device_selection_error(self):
         """Test changing device to an unknown hardware type."""
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=["relu", "linear"], num_training_iter=1)
-        with pytest.raises(DeviceSelectionError, match="is not GPU or CPU"):
+        with pytest.raises(DeviceSelectionError, match="is not host or device"):
             model.to("TPU")
 
     def test_shape_mismatch_predict(self):

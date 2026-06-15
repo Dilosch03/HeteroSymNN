@@ -497,7 +497,7 @@ class Wrapper():
             full_path = Path(full_path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self.model.to("CPU")
+            self.model.to("host")
             config_to_save,flat_params= self.model._get_save_objects(model_name, description)
 
             metadata_extra = {
@@ -755,7 +755,7 @@ class GridSearchManager:
         Wrapper
             Fresh wrapper with the mutated configuration.
         """
-        self.template_wrapper.model.to("CPU")
+        self.template_wrapper.model.to("host")
         architecture_config = self.template_wrapper.model.get_config()
 
         base_config = {

@@ -31,7 +31,7 @@ def run_mixed_activation_demo():
     if HW.GPU_ENABLED:
         model.set_gpu_id(0)
         model.set_backend("GPU_CUDA")
-        model.to("GPU")
+        model.to("device")
         print("Compiled mixed CUDA kernel.")
     else:
         model.set_backend("CPU_JIT")

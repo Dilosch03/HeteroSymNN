@@ -128,6 +128,7 @@ class BaseNetwork:
         self._GPU_ID = gpu_id
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
         self._CURRENT_DEVICE = "CPU"
+        self._CURRENT_LOCATION = "host"
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         self.num_training_epochs = num_epochs
         self._NETWORK_STRUCTURE = network_structure
@@ -243,6 +244,7 @@ class BaseNetwork:
         instance._ASNUMPY = settings.default_asnumpy
         instance._DEFAULT_FLOAT_TYPE = settings.default_dtype
         instance._CURRENT_DEVICE = "CPU"
+        instance._CURRENT_LOCATION = "host"
         instance._COMPUTATIONAL_METHOD = settings.default_compute_method
         instance._GPU_ID = 0
         
@@ -377,6 +379,19 @@ class BaseNetwork:
         return self._CURRENT_DEVICE
     
     @property
+    def current_location(self)->Literal["host","device"]:
+        """
+        Property to get the current logical location where the network parameters are located. Read-only.
+
+        For changing location of the network parameters use the :obj:`~to` method.
+        
+        Returns
+        -------
+        Literal["host","device"]
+        """
+        return self._CURRENT_LOCATION
+    
+    @property
     def computational_method(self)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Property to get the current computational method being used by the network. Read-only.
@@ -454,7 +469,7 @@ class BaseNetwork:
         """
         if (self._GPU_ID != new_id):
             _validate_gpu_id(new_id)
-            self.to("CPU")
+            self.to("host")
             self._GPU_ID = new_id
             self._LOSS_FUNCTION.set_gpu_id(self._GPU_ID)
             self._UPDATE_METHOD.set_gpu_id(self._GPU_ID)
@@ -513,7 +528,7 @@ class BaseNetwork:
                 PerformanceWarning,
                 stacklevel=2
                 )
-                self._to("CPU")
+                self.to("host")
                 self._COMPUTATIONAL_METHOD = new_method
                 self._GPU_ID = gpu_id
                 if ("CPU" in new_method):
@@ -562,30 +577,29 @@ class BaseNetwork:
         self._change_COMPUTATIONAL_METHOD(new_method=backend, gpu_id=gpu_id)
 
     @clean_traceback
-    def to(self, device:Literal["CPU","GPU"])->None:
+    def to(self, location:Literal["host","device"])->None:
         """
-        Change location of the network parameters to the specified device.
+        Change logical location of the network parameters to the specified location.
 
         Parameters
         ----------
-        device : Literal["CPU","GPU"]
-            Device to move the network parameters to.
+        location : Literal["host","device"]
+            Location to move the network parameters to.
         """
-        device = device.upper()
-        if not(device in ["CPU","GPU"]):
-            raise DeviceSelectionError("Specify device is not GPU or CPU.")
-        
-        if ((device == "GPU") and not(HW.GPU_ENABLED)):
-            warnings.warn("Tried to change to use 'GPU', but no GPU is available. CPU is required.",BackendNotAvailableWarning,stacklevel=2)
-            device = "CPU"
+        location = location.lower()
+        if not(location in ["host","device"]):
+            raise DeviceSelectionError("Specify location is not host or device.")
 
-        if ((device == "GPU")and("CPU" in self._COMPUTATIONAL_METHOD)):
-            warnings.warn(f"Tried to send the parameters to the GPU when the CPU was set as the computational device. Data routing is restricted to 'CPU'.",HardwareWarning,stacklevel=2)
-            device = "CPU"
+        if(location != self._CURRENT_LOCATION):
+                self._CURRENT_LOCATION = location
+                
+                target_hardware = "CPU"
+                if location == "device":
+                     if "GPU" in self._COMPUTATIONAL_METHOD:
+                         target_hardware = "GPU"
+                self._CURRENT_DEVICE = target_hardware
 
-        if(device != self._CURRENT_DEVICE):
-                self._CURRENT_DEVICE = device
-                self._to(device)
+                self._to(location)
 
     def cast_arrays(self, *tensors: np.ndarray, gpu_id: int = None)->Union[BackendArray,tuple[BackendArray]]:
         """
@@ -636,19 +650,19 @@ class BaseNetwork:
         return result[0] if len(result) == 1 else result
         
 
-    def _to(self, device:Literal["CPU","GPU"]):
+    def _to(self, location:Literal["host","device"]):
         """
-        Internal method to move the network parameters to the specified device.
+        Internal method to move the network parameters to the specified logical location.
         
         Parameters
         ----------
-        device : Literal["CPU","GPU"]
-            Device to move the network parameters to.
+        location : Literal["host","device"]
+            Location to move the network parameters to.
         """
-        device = device.upper()
-        self._UPDATE_METHOD._to_device(device)
+        location = location.lower()
+        self._UPDATE_METHOD._to_device(location)
         for layer in self._LAYERS:
-            layer.to(device)
+            layer.to(location)
 
     def forward(self,input_values:BackendArray)->BackendArray:
         """
@@ -684,7 +698,7 @@ class BaseNetwork:
         :obj:`~HeteroSymNN.types.BackendArray`
             Error values propagated back to the input layer.
         """
-        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to("device")
         next_layer_error_sum =self._CALCULATION_MANAGER.array(error_values, dtype=self._CALCULATION_MANAGER.float32)
         
         for layer in reversed(self._LAYERS):
@@ -708,7 +722,7 @@ class BaseNetwork:
         float
             Computed loss for the training step.
         """
-        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to("device")
         self.num_completed_train_iterations += 1
         
         y_pred = self.forward(x_input)
@@ -725,7 +739,7 @@ class BaseNetwork:
         """
         Update the network parameters using the optimizer.
         """
-        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to("device")
         self._UPDATE_METHOD.step(self._LAYERS) 
 
     def train(self,training_inputs: list[list[float]], training_targets: list[list[float]],num_iterations = None,
@@ -749,7 +763,7 @@ class BaseNetwork:
         list[float]
             List of loss values recorded at each epoch during training.
         """
-        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to("device")
         train_data,train_targets = self.cast_arrays(training_inputs,training_targets)
         train_data = train_data.T
         train_targets:BackendArray = train_targets.T
@@ -806,7 +820,7 @@ class BaseNetwork:
         np.ndarray or :obj:`~HeteroSymNN.types.BackendArray`
             Predicted output values.
         """
-        self.to(self._COMPUTATIONAL_METHOD.split("_")[0])
+        self.to("device")
         if not isinstance(input_values, (np.ndarray, self._CALCULATION_MANAGER.ndarray)):
             current_a = self._CALCULATION_MANAGER.array(input_values, dtype=self._DEFAULT_FLOAT_TYPE)
         else:
@@ -851,7 +865,7 @@ class BaseNetwork:
         params : dict[Union[str,int],dict[str,np.ndarray]]
             Dictionary containing the parameters for each layer.
         """
-        self.to("CPU")
+        self.to("host")
         for key in params:
             index = key
             if (type(key) != int):
@@ -887,7 +901,7 @@ class BaseNetwork:
                 * **"loss_config"** (*dict[str, Any]*): Configuration of the loss function.
                 * **"num_training_epochs"** (*int*): Number of training iterations (epochs).
         """
-        self.to("CPU")
+        self.to("host")
         layers_configs = {}
         for i,layer in enumerate(self._LAYERS):
             layers_configs.update({"layer_"+str(i):layer.get_config()})
@@ -977,7 +991,7 @@ class BaseNetwork:
 
     def _get_save_objects(self,model_name: str = None, description: str = None,save_optimizer:bool = True)->tuple[dict[str,Any],dict[str,Any]]:
         """Internal method to format the data for saving."""
-        self.to("CPU")
+        self.to("host")
         architecture_config = self.get_config()
         architecture_config.pop("network_structure")
 
