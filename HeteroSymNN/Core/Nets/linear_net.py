@@ -29,7 +29,7 @@ class HeteroLinearNet(BaseNetwork):
         batch_size : int, optional
             Batch size to use during training, by default 32. If set to -1, it uses the full dataset size for batch training.
         loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
+            Loss function to use during training. Must be an instance of :class:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
         optimizer : Optional[:class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
             Optimizer to use for updating the network parameters. Must be an instance of :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If not provided, :class:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.,value by default is None.
         num_training_iter : int, optional
@@ -93,7 +93,7 @@ class HeteroLinearNet(BaseNetwork):
 class LinearNet(HeteroLinearNet):
     """
     Intermediate class for creating linear_net neural networks with diferent activation functions per layer.
-    Child class of :obj:`~HeteroSymNN.Core.Nets.LinearNet.HeteroLinearNet`.
+    Child class of :class:`~HeteroSymNN.Core.Nets.LinearNet.HeteroLinearNet`.
     
     Parameters
     ----------
@@ -243,10 +243,10 @@ class MLP(LinearNet):
         Learning rate for the network., by default 0.001
     batch_size : int, optional
         Batch size to use during training. If set to -1, it uses the full dataset size for batch training., by default 32
-    loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-        Loss function to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
-    optimizer : :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
-        Optimizer to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used., by default None
+    loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
+        Loss function to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
+    optimizer : :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
+        Optimizer to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used., by default None
     num_training_iter : int, optional
         Number of training iterations (epochs)., by default 1000
     

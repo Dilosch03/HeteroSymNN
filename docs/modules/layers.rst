@@ -5,12 +5,12 @@ Layer Classes
 
 In standard deep learning frameworks, layers are usually rigidly coupled to their specific mathematical operations. HeteroSymNN separates these concerns. Because the mathematical physics are handled dynamically by the JIT Compiler, **Layers in HeteroSymNN act purely as Physical Memory Managers.**
 
-They are responsible for allocating the underlying :data:`~HeteroSymNN.types.BackendArray` buffers (in CPU RAM or GPU VRAM), securely storing the execution pointers to your compiled C++/CUDA kernels, and safely routing the forward and backward pass data streams between the hardware and the Python interface.
+They are responsible for allocating the underlying :type:`~HeteroSymNN.types.BackendArray` buffers (in CPU RAM or GPU VRAM), securely storing the execution pointers to your compiled C++/CUDA kernels, and safely routing the forward and backward pass data streams between the hardware and the Python interface.
 
 Why Read This Section?
 ----------------------
 
-Most researchers will never need to instantiate these classes directly—they are automatically constructed, linked, and managed by the high-level Network Builders (like :class:`~HeteroSymNN.Core.Nets.LinearNet` or :class:`~HeteroSymNN.Core.Nets.HeteroLinearNet`).
+Most researchers will never need to instantiate these classes directly—they are automatically constructed, linked, and managed by the high-level Network Builders (like :customref:`LinearNet <dense-network>` or :customref:`HeteroLinearNet <heterodense-network>`).
 
 You should only consult this documentation if:
 
@@ -35,7 +35,7 @@ Layer Implementations
 Under the Hood: Core Architecture
 ---------------------------------
 
-* **BaseLayer:** The abstract foundation. To prevent hardware-routing crashes and memory leaks, any custom layer topology you build *must* inherit from this class to guarantee compatibility with the ``BaseNetwork`` orchestrator.
+* **BaseLayer:** The abstract foundation. To prevent hardware-routing crashes and memory leaks, any custom layer topology you build *must* inherit from this class to guarantee compatibility with the :customref:`BaseNetwork <base-network>` orchestrator.
 
 .. toctree::
     :maxdepth: 1

@@ -22,7 +22,7 @@ Data Transformer Base Contract
 Standard Transformers
 ---------------------
 
-The following transformers scale data automatically during the ``fit`` phase and handle descale operations during predictions.
+The following transformers scale data automatically during the :meth:`~HeteroSymNN.API.wrappers.fit` phase and handle descale operations during predictions.
 
 .. automodule:: HeteroSymNN.API.data_transformers
    :members:

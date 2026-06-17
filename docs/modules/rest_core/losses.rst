@@ -91,6 +91,6 @@ If you want to package a custom loss function into a **permanent, reusable class
    Because you are bypassing the automatic compiler, your subclass must manually implement hardware state synchronization:
 
    * **Initialization**: If you override ``__init__``, you **must** call ``super().__init__(computational_method, gpu_id)``.
-   * **``forward(y_pred, y_true)`` & ``backward(y_pred, y_true)``**: Must execute the math and return exactly shaped :data:`~HeteroSymNN.types.BackendArray` objects. Raw NumPy arrays will crash the GPU pipeline.
+   * **``forward(y_pred, y_true)`` & ``backward(y_pred, y_true)``**: Must execute the math and return exactly shaped :type:`~HeteroSymNN.types.BackendArray` objects. Raw NumPy arrays will crash the GPU pipeline.
    * **``_change_COMPUTATIONAL_METHOD(new_method, gpu_id)``**: You must intercept this call to migrate any of your internal loss constants from Host RAM (NumPy) to Device VRAM (CuPy).
    * **``set_gpu_id(new_id)``**: Must update the internal pointer for the active hardware device.

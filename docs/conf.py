@@ -26,7 +26,7 @@ autodoc_mock_imports = [
 project = 'HeteroSymNN'
 copyright = '2025, Dilosch03'
 author = 'Dilosch03'
-release = '0.2.0'  # The full version, including alpha/beta/rc tags
+release = '0.3.0rc4'  # The full version, including alpha/beta/rc tags
 
 # -- General configuration ---------------------------------------------------
 
@@ -47,3 +47,28 @@ html_theme = 'sphinx_rtd_theme'
 autodoc_preserve_defaults = True
 autodoc_typehints_format = "short"
 python_use_unqualified_type_names = True
+
+# -- Custom Roles ------------------------------------------------------------
+from sphinx.roles import XRefRole
+from docutils import nodes
+
+def resolve_customref(app, env, node, contnode):
+    if node.get('reftype') == 'customref':
+        std = env.get_domain('std')
+        node['reftype'] = 'ref'
+        res = std.resolve_xref(env, node.get('refdoc', ''), app.builder, 'ref', node['reftarget'], node, contnode)
+        node['reftype'] = 'customref'
+        
+        if res is not None:
+            if len(res) > 0 and isinstance(res[0], nodes.inline):
+                literal = nodes.literal('', res[0].astext(), classes=['xref', 'py', 'py-obj'])
+                res.replace(res[0], literal)
+            return res
+    return None
+
+def setup(app):
+    """
+    Registers custom roles for Sphinx.
+    """
+    app.add_role('customref', XRefRole(lowercase=True, warn_dangling=True))
+    app.connect('missing-reference', resolve_customref)

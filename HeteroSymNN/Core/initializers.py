@@ -15,7 +15,7 @@ class Initializer:
     """
     Base class for all initializers.
     
-    Should act as a shape-filling utility for Layers. The Layer dictates the shape.
+    Should act as a shape-filling utility for :class:`~HeteroSymNN.Core.Layers.BaseLayer`. The :class:`~HeteroSymNN.Core.Layers.BaseLayer` dictates the shape.
     """
     def __init__(self):
         pass
@@ -175,7 +175,7 @@ class RandomNormal(BaseInitializer):
     """
     Initializer that generates tensors with a normal distribution.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
     
     Recommended for generic, custom, or un-normalized layers where bounded noise is needed.
 
@@ -218,9 +218,6 @@ class RandomNormal(BaseInitializer):
         """
         Returns the configuration of the initializer.
 
-        This method should be implemented by subclasses to return a dictionary containing 
-        the configuration parameters necessary to reconstruct the initializer instance.
-
         Returns
         -------
         dict[str, Any]
@@ -244,7 +241,7 @@ class RandomUniform(BaseInitializer):
     """
     Initializer that generates tensors with a uniform distribution.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
     
     Recommended for generic, custom, or un-normalized layers where strictly bounded noise is needed.
 
@@ -287,9 +284,6 @@ class RandomUniform(BaseInitializer):
         """
         Returns the configuration of the initializer.
 
-        This method should be implemented by subclasses to return a dictionary containing 
-        the configuration parameters necessary to reconstruct the initializer instance.
-
         Returns
         -------
         dict[str, Any]
@@ -312,7 +306,7 @@ class XavierUniform(BaseInitializer):
     """
     Xavier (Glorot) uniform initializer.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
     
     Recommended if using Sigmoid, Tanh, or Softmax activation functions.
     
@@ -346,7 +340,7 @@ class XavierNormal(BaseInitializer):
     """
     Xavier (Glorot) normal initializer.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
     
     Recommended if using Sigmoid, Tanh, or Softmax activation functions.
     
@@ -380,7 +374,7 @@ class HeUniform(BaseInitializer):
     """
     He uniform variance scaling initializer.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
     
     Recommended if using ReLU, LeakyReLU, and ELU activation functions.
     
@@ -414,7 +408,7 @@ class HeNormal(BaseInitializer):
     """
     He normal initializer.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
 
     Recommended if using ReLU, LeakyReLU, and ELU activation functions.
     
@@ -448,7 +442,7 @@ class LecunNormal(BaseInitializer):
     """
     LeCun normal initializer.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
 
     Recommended if using SELU activations or for heterogeneous/mixed activation layers.
     
@@ -482,7 +476,7 @@ class Orthogonal(BaseInitializer):
     """
     Initializer that generates an orthogonal matrix.
     
-    Acts as a shape-filling utility for Layers. The Layer dictates the shape.
+    Acts as a shape-filling utility for ``Layers``. The ``Layer`` dictates the shape.
 
     Recommended for Recurrent Neural Networks (RNNs) or using heterogeneous layers.
     
@@ -525,9 +519,6 @@ class Orthogonal(BaseInitializer):
     def get_config(self)->dict[str,Any]:
         """
         Returns the configuration of the initializer.
-
-        This method should be implemented by subclasses to return a dictionary containing 
-        the configuration parameters necessary to reconstruct the initializer instance.
 
         Returns
         -------

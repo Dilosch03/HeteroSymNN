@@ -3,7 +3,7 @@
 LinearNet (The Mixed-Activation Network)
 ============================
 
-The ``LinearNet`` class expands the capabilities of the standard :class:`~HeteroSymNN.Core.Nets.MLP` by allowing you to define completely different activation functions on a per-layer basis. 
+The ``LinearNet`` class expands the capabilities of the :customref:`MLP <mlp-network>` by allowing you to define completely different activation functions on a per-layer basis. 
 
 When to Use
 -----------

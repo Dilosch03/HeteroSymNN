@@ -45,7 +45,7 @@ If you are building a custom weight initialization algorithm (e.g., a custom var
    * **``generate_from_distribution(self, shape, fan_in, fan_out)``**: Implement this if your initialization relies on statistical variance scaling (using the incoming/outgoing node counts).
    * **``generate_constant(self, shape, value)``**: Implement this for initializations that require the exact same value across the entire tensor.
    * **``generate_binary_mask(self, shape)``**: Implement this for the creation of topological boolean masks.
-   * *Hardware Rule:* Initializers execute **strictly on the CPU**. All methods must generate and return standard ``np.ndarray`` (NumPy) objects. The calling Layer is responsible for pushing these arrays to the active device as ``BackendArray`` structures.
+   * *Hardware Rule:* Initializers execute **strictly on the CPU**. All methods must generate and return standard ``np.ndarray`` (NumPy) objects. The calling Layer is responsible for pushing these arrays to the active device as :type:`~HeteroSymNN.types.BackendArray` structures.
 
 .. admonition:: Phase 2: Serialization 
    :class: note

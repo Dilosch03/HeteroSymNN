@@ -104,7 +104,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,losses.Loss]
+        dict[str, :class:`~HeteroSymNN.Core.losses.Loss`]
         """
         return self._loss_fn_map
     
@@ -115,7 +115,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,optimizers.Optimizer]
+        dict[str, :class:`~HeteroSymNN.Core.optimizers.Optimizer`]
         """
         return self._optimizers_map
     
@@ -126,7 +126,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,initializers.Initializer]
+        dict[str, :class:`~HeteroSymNN.Core.initializers.Initializer`]
         """
         return self._initializers_map
     
@@ -137,7 +137,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,layers.BaseLayer]
+        dict[str, :class:`~HeteroSymNN.Core.layers.BaseLayer`]
         """
         return self._layers_map
     
@@ -148,7 +148,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,Nets.BaseNetwork]
+        dict[str, :class:`~HeteroSymNN.Core.Nets.BaseNetwork`]
         """
         return self._net_map
 
@@ -159,7 +159,7 @@ class _Registry:
         
         Returns
         -------
-        dict[str,utilities.DataTransformer]
+        dict[str, :class:`~HeteroSymNN.API.data_transformers.DataTransformer`]
         """
         return self._transformers_map
     
@@ -169,7 +169,7 @@ class _Registry:
 
         Parameters
         ----------
-        custom_initializer : type[initializers.Initializer]
+        custom_initializer : type[:class:`~HeteroSymNN.Core.initializers.Initializer`]
             Class object of the new class.
         
         Raises
@@ -187,7 +187,7 @@ class _Registry:
 
         Parameters
         ----------
-        custom_loss : type[losses.Loss]
+        custom_loss : type[:class:`~HeteroSymNN.Core.losses.Loss`]
             Class object of the new class.
 
         Raises
@@ -205,7 +205,7 @@ class _Registry:
 
         Parameters
         ----------
-        custom_optimizer : type[optimizers.Optimizer]
+        custom_optimizer : type[:class:`~HeteroSymNN.Core.optimizers.Optimizer`]
             Class object of the new class.
 
         Raises
@@ -223,7 +223,7 @@ class _Registry:
 
         Parameters
         ----------
-        custom_layer : type[layers.BaseLayer]
+        custom_layer : type[:class:`~HeteroSymNN.Core.layers.BaseLayer`]
             Class object of the new class.
 
         Raises
@@ -241,7 +241,7 @@ class _Registry:
 
         Parameters
         ----------
-        custom_net : type[Nets.BaseNetwork]
+        custom_net : type[:class:`~HeteroSymNN.Core.Nets.BaseNetwork`]
             Class object of the new class.
 
         Raises
@@ -259,12 +259,12 @@ class _Registry:
         
         Parameters
         ----------
-        custom_data_transformer : type[data_transformers.DataTransformer]
+        custom_data_transformer : type[:class:`~HeteroSymNN.API.data_transformers.DataTransformer`]
             Class object of the new class.
 
         Raises
         ------
-        :obj:`~HeteroSymNN.exceptions.DataTypeError`
+        :exc:`~HeteroSymNN.exceptions.DataTypeError`
             If the given class is not a sub class of the base Data Transformer class (data_transformers.DataTransformer).
         """
         if not(issubclass(custom_data_transformer,data_transformers.DataTransformer)):

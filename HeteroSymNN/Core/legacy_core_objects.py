@@ -14,8 +14,8 @@ class Layer(LinearLayer):
         ----------
         _num_inputs : int
             Number of inputs the layer is going to receive.
-        layer_configuration : :obj:`~HeteroSymNN.types.LayerConstructionConfig`
-            Configuration of the layer including the node activation functions and their constants as well as the initial _weights, _biases and connection mask.
+        layer_configuration : :type:`~HeteroSymNN.types.LayerConstructionConfig`
+            Configuration of the layer including the node activation functions and their constants as well as the initial weights, biases and connection mask.
         batch_size : int, optional
             Initial batch size for the layer, by default 1.
         Gpu_id : int, optional

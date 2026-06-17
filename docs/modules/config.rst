@@ -7,7 +7,10 @@ The ``config`` module acts as the central nervous system for HeteroSymNN. It man
 
 To ensure a perfectly synchronized state across all layers and wrappers, the configuration relies on a Singleton design pattern. Upon importing the library, an internal ``_Settings`` class is instantiated as the global ``settings`` object. 
 
+Settings are automatically persisted to a local ``settings.json`` file in your OS user configuration directory (using ``platformdirs``), so your preferences for caching, threads, and hardware survive across sessions.
+
 During initialization, this object automatically evaluates your hardware environment and assigns the fastest available compute method:
+
 1. **``GPU_CUDA``** (If a compatible NVIDIA GPU and CuPy are detected)
 2. **``CPU_JIT``** (If a C++ compiler is available for Just-In-Time compilation)
 3. **``CPU_PYTHON``** (Safe fallback to standard NumPy arrays)
@@ -17,27 +20,35 @@ When to Use
 Because the framework automatically detects and utilizes the best hardware available, most users will never need to touch this module. You should only interact with the global settings if you need to:
 
 * **Override Hardware:** Force the engine to use the CPU (for debugging or direct memory inspection) even if a GPU is present.
-* **Manage Threads:** Restrict the number of CPU threads the framework is allowed to consume in constrained container environments.
-* **Clear the Compiler Cache:** Purge the local disk of previously compiled C++/CUDA binaries to free up space or force a clean recompilation.
+* **Manage Threads:** Restrict the number of CPU threads the framework is allowed to consume via ``n_jobs`` in constrained container environments.
+* **Manage Cache Locations:** Move your compiled C++ kernels to a custom directory utilizing :meth:`~HeteroSymNN.config.set_cache_location()`.
+* **Clear the Compiler Cache:** Purge the local disk of previously compiled binaries to free up space or force a clean recompilation.
 
 Code Example
 ------------
-You can interact directly with the ``settings`` object or use the module-level helper functions to tailor HeteroSymNN to your current workload.
+You can interact directly with the ``settings`` object to tailor HeteroSymNN to your current workload.
 
 .. code-block:: python
 
     from HeteroSymNN import settings
 
     # 1. Hardware Forcing
-    # Force the engine to bypass the JIT compiler and use standard Python/NumPy
+    # Force the engine to bypass the GPU/JIT compiler and use standard Python/NumPy
     settings.set_default_compute_method("CPU_PYTHON")
 
     # 2. Warning Management
-    # How warnings are treated.
+    # Determine how strictly warnings are treated ("error", "ignore", "always", "default", "module", "once").
     settings.set_warning_level("error")
 
-    # 3. Cache Management
-    # Clear all compiled C++ and CUDA binaries from the local disk cache
+    # 3. Thread Management
+    # Restrict OpenMP and internal parallelization to a specific number of threads
+    settings.n_jobs = 4
+
+    # 4. Cache Management
+    # Move the local cache to a specific drive and carry over existing compiled kernels
+    settings.set_cache_location("D:/HeteroSymNN_Cache", move_existing_cache=True)
+
+    # Clear all compiled CPU and GPU binaries from the local disk and RAM cache
     settings.clear_kernel_cache(cache_type="ALL")
 
 API Reference

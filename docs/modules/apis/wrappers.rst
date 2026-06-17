@@ -36,7 +36,6 @@ Use the ``Wrapper`` class for all day-to-day model training, evaluation, and dat
 .. autoclass:: HeteroSymNN.API.wrappers.Wrapper
    :members:
    :undoc-members:
-   :show-inheritance:
 
 2. Grid Search Manager
 ----------------------

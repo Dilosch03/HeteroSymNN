@@ -65,8 +65,8 @@ To achieve this granular control, use the node-level configuration arrays:
 .. code-block:: python
 
     from HeteroSymNN.Core.Nets import HeteroLinearNet
-    # Define a small network: 2 inputs, a hidden layer with 3 neurons, 1 output
-    # We explicitly define the math for each of the 3 hidden neurons:
+    # Define a small network: 2 inputs, a hidden layer with 12 neurons, 1 output
+    # We explicitly define the math for each of the 3 hidden neurons funtion types:
     hidden_activations = [
         ("sin(num)",{}),                        # Neuron type 1: Periodic sine wave
         ("Max(0, num)", {}),                     # Neuron type 2: Standard ReLU
@@ -91,7 +91,7 @@ When writing symbolic formulas, the framework uses an Abstract Syntax Tree (AST)
 
 For example:
 
-- ``"sin(num) * alfa"``: The parser correctly sees ``sin`` as a function and ``alfa`` as a variable parameter.
+- ``"sin(num) * alpha"``: The parser correctly sees ``sin`` as a function and ``alpha`` as a variable parameter.
 - ``"sin * num"``: Because it lacks parentheses, ``sin`` is treated as a custom variable, NOT the sine function! If you don't provide a dictionary value for it, you will receive a "Missing constants" error.
 
 **Function Aliases:**
@@ -102,14 +102,14 @@ Some aliases include parameterized constants in their definitions:
 * ``"leaky_relu"`` auto-expands to ``"Piecewise((num * alpha, num < 0), (num, True))"``, requiring the constant ``alpha`` to be defined.
 * ``"swish"`` auto-expands to ``"num / (1 + exp(-beta*num))"``, requiring the constant ``beta`` to be defined.
 
-If you use these parameterized aliases without providing their constants (e.g. using ``"leaky_relu"`` instead of ``("leaky_relu", {"alpha": 0.01})``), the JIT compiler will catch this and throw a ``FormulaParsingError`` listing the missing constant.
+If you use these parameterized aliases without providing their constants (e.g. using ``"leaky_relu"`` instead of ``("leaky_relu", {"alpha": 0.01})``), the JIT compiler will catch this and throw a :exc:`~HeteroSymNN.exceptions.FormulaParsingError` listing the missing constant.
 
-If you are composing a larger equation, you **must** use the function call syntax (e.g., ``"relu(num) * alfa"``) so the AST recognizes it correctly.
+If you are composing a larger equation, you **must** use the function call syntax (e.g., ``"relu(num) * alpha"``) so the AST recognizes it correctly.
 
 5. Zero-Recompile Tuning (Dynamic Constants)
 --------------------------------------------
 
-Notice the variables ``a`` and ``beta`` in the examples above. You are not forced to hard-code numerical constraints in your strings.
+Notice the variables ``a`` and ``beta`` in the networks above. You are not forced to hard-code numerical constraints in your strings.
 
 HeteroSymNN treats these symbolic constants as mutable kernel arguments. This means you can update these hyperparameters dynamically on the fly without triggering a slow C++/CUDA recompilation.
 
@@ -147,4 +147,4 @@ HeteroSymNN allows you to serialize your models to disk, either through the mode
     # 2b. Or load the raw network directly without a wrapper
     raw_model = BaseNetwork.load_model("my_custom_model.symnn")
 
-The :class:`~HeteroSymNN.API.registry` provides methods for all extendable components: `add_net()`, `add_layer()`, `add_loss_func()`, `add_optimizer()`, `add_initializer()`, and `add_data_transformer()`.
+The :customref:`registry <registries>` provides methods for all extendable components: :meth:`~HeteroSymNN.API.registries._Registry.add_net`, :meth:`~HeteroSymNN.API.registries._Registry.add_layer`, :meth:`~HeteroSymNN.API.registries._Registry.add_loss_func`, :meth:`~HeteroSymNN.API.registries._Registry.add_optimizer`, :meth:`~HeteroSymNN.API.registries._Registry.add_initializer`, and :meth:`~HeteroSymNN.API.registries._Registry.add_data_transformer`.

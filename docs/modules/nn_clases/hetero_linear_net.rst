@@ -11,7 +11,7 @@ Use this class when your research demands absolute, microscopic control. It prov
 
 Code Example
 ------------
-Instantiating this class requires that you assign a detailed list of activation functions to each layer using the :data:`~HeteroSymNN.types.NodeConfig` format.
+Instantiating this class requires that you assign a detailed list of activation functions to each layer using the :type:`~HeteroSymNN.types.NodeConfig` format.
 
 .. code-block:: python
 

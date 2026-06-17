@@ -52,17 +52,11 @@ class Wrapper():
 
     Attributes
     ----------
-    model : :class:`~HeteroSymNN.Core.Nets.BaseNetwork`, read-only
-        The underlying neural network instance.
-    input_transformer : :obj:`HeteroSymNN.API.DataTransformer`, read-only
-        The transformer used to scale input data. If the input data is not ben transform this would be `None`.
-    output_trasformer : :class:`HeteroSymNN.API.DataTransformer`, read-only
-        The transformer used to scale output data. If the output data is not ben transform this would be `None`.
     work_type: str read-write
         The type of problem the model solves.
     
     """
-    def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[data_transformers.DataTransformer] = None, output_transformer: Optional[data_transformers.DataTransformer] = None):
+    def __init__(self, model: BaseNetwork,work_type:Literal["class","reg"],input_transformer: Optional[data_transformers.DataTransformer] = None, output_transformer: Optional[data_transformers.DataTransformer] = None, shuffle_samples: bool = False):
         if not(issubclass(type(model), BaseNetwork)):
             raise WrapperError("The model that was pass is not a subclass of BaseNetwork.")
         
@@ -73,6 +67,7 @@ class Wrapper():
         self.work_type = work_type
         self._loaded_train_data = False
         self.model_name = model.__class__.__name__
+        self.shuffle_samples = shuffle_samples
 
     @property
     def model(self)->BaseNetwork:
@@ -146,7 +141,7 @@ class Wrapper():
         
         Raises
         ------
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.ShapeMismatchError`
             If dimensions do not match the model's expected input/output size.
         """
         self.load_training(training_data, expected_results)
@@ -170,7 +165,7 @@ class Wrapper():
         
         Raises
         ------
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.ShapeMismatchError`
             If dimensions do not match the model's expected input/output size.
         """
         self._loaded_train_data = True
@@ -231,14 +226,71 @@ class Wrapper():
         """
         if self.training_data is None:
             raise TrainingError("No Training data loaded. Use load_training() first.")
+            
+        self.model.to("device")
         
-        losses = self.model.train(
-            self.training_data_norm[0],
-            self.training_data_norm[1],
-            num_iterations=num_iterations,
-            batch_size=batch_size
-        )
-        return losses
+        # Keep full dataset as NumPy on CPU, slice there, cast batches later
+        train_data = self.training_data_norm[0]
+        train_targets = self.training_data_norm[1]
+        
+        b_size = self.model.batch_size if batch_size is None else batch_size
+        if num_iterations is None:
+            num_iterations = self.model.num_training_epochs
+
+        if b_size == -1:
+            b_size = len(train_data)
+
+        if b_size != self.model.batch_size:
+            self.model._BATCH_SIZE = b_size
+            for layer in self.model.layers:
+                layer.batch_size_change(b_size)
+        
+        num_samples = train_data.shape[0]
+        
+        for _ in range(num_iterations):
+            self.model.num_completed_epochs += 1
+            iter_loss = self.model._CALCULATION_MANAGER.array(0.0, dtype=self.model._DEFAULT_FLOAT_TYPE)
+            
+            # Using numpy since train_data is on CPU
+            if self.shuffle_samples:
+                indices = np.random.permutation(num_samples)
+            else:
+                indices = np.arange(num_samples)
+
+            for start_idx in range(0, num_samples, b_size):
+                end_idx = min(start_idx + b_size, num_samples)
+                batch_indices = indices[start_idx:end_idx]
+                
+                x_batch = train_data[batch_indices, :]
+                y_batch = train_targets[batch_indices, :]
+                
+                # 1. Hardware abstraction: Send data to current backend (CPU/GPU)
+                x, y = self.model.cast_arrays(x_batch, y_batch)
+                
+                # Transpose to match layer expectations (num_features, batch_size)
+                x_t = x.T
+                y_t = y.T
+                
+                # 2. Forward pass
+                y_pred = self.model.forward(x_t)
+                
+                # 3. Loss Calculation
+                loss_val = self.model.loss_function.forward(y_pred, y_t)
+                error = self.model.loss_function.backward(y_pred, y_t)
+                
+                # 4. Backward Pass
+                self.model.backward(error)
+                
+                # 5. Parameter Update
+                self.model.update_params()
+                self.model.num_completed_train_iterations += 1
+                
+                iter_loss += loss_val * (end_idx - start_idx)
+
+            avg_loss = self.model._ASNUMPY(iter_loss) / num_samples
+            self.model.history_losses.append(avg_loss)
+
+        return self.model.history_losses
     
     def predict(self, data: list)->np.ndarray:
         """
@@ -255,6 +307,12 @@ class Wrapper():
         -------
         np.ndarray
             Predicted values.
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If there is a state problem with the DataTransformer objects.
+        
         """
         X_raw = np.array(data)
         
@@ -315,6 +373,11 @@ class Wrapper():
             
         *   `reg`: dict[str,float]
         *   `class`: tuple[dict[str, float], dict[str, int]
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If the WorkType attribute is not set to 'reg' or 'class'.
         """
         results = {}
         if (self.work_type == "reg"):
@@ -331,6 +394,15 @@ class Wrapper():
         Calculates classification metrics (Accuracy, Precision, Recall/TPR, F1 Score).
 
         Note: Currently assumes binary classification or multi-label, default threshold is 0.5.
+
+        Parameters
+        ----------
+        test_data : list or np.ndarray
+            Input features for testing.
+        expected_results : list or np.ndarray
+            Ground truth values.
+        threshold : float, optional
+            Threshold for binary classification. Default is 0.5.
 
         Returns
         -------
@@ -383,6 +455,13 @@ class Wrapper():
     def regression_test_accuracy(self, test_data: list, expected_results: list)->dict[str, float]:
         """
         Calculates regression metrics (R2, MSE, RMSE, MAE, MAPE, AIC, BIC).
+
+        Parameters
+        ----------
+        test_data : list or np.ndarray
+            Input features for testing.
+        expected_results : list or np.ndarray
+            Ground truth values.
 
         Returns
         -------
@@ -463,6 +542,19 @@ class Wrapper():
             Name of the model that is going to be saved (will be used for the filename).
         description : str, optional
             Optional description to store in metadata.
+        overwrite : bool, optional
+            Whether to overwrite the file if it already exists.
+
+        Returns
+        -------
+        str
+            The path to the saved file.
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If the file cannot be saved.
+        
         """
         if (model_name is None):
             model_name = self.model_name
@@ -504,7 +596,8 @@ class Wrapper():
                 'work_type': self.work_type,
                 'input_transformer':  self._input_transformer.__class__.__name__ if self._input_transformer else None,
                 'output_transformer': self._output_transformer.__class__.__name__ if self._output_transformer else None,
-                "loaded_train_data":self._loaded_train_data
+                "loaded_train_data":self._loaded_train_data,
+                "shuffle_samples": self.shuffle_samples
             }
 
 
@@ -556,6 +649,7 @@ class Wrapper():
         self._output_transformer = output_transformer
         self.model_name = metadata.get('model_name')
         self.work_type = metadata.get('work_type')
+        self.shuffle_samples = metadata.get('shuffle_samples', False)
         
     @classmethod
     def load_model(cls, path: str) -> "Wrapper":
@@ -570,7 +664,8 @@ class Wrapper():
         model,input_transformer,output_transformer,metadata = cls._extract_symnn_archive(path)
 
         saved_work_type = metadata.get('work_type')
-        instance = cls(model=model, work_type=saved_work_type,input_transformer=input_transformer,output_transformer=output_transformer)
+        saved_shuffle_samples = metadata.get('shuffle_samples', False)
+        instance = cls(model=model, work_type=saved_work_type,input_transformer=input_transformer,output_transformer=output_transformer, shuffle_samples=saved_shuffle_samples)
 
         instance.model_name = metadata.get('model_name')
         return instance
@@ -672,13 +767,13 @@ class GridSearchManager:
     """
     An independent orchestrator that performs Hyperparameter Grid Search using Composition.
     
-    Instead of inheriting from Wrapper, the manager takes a template Wrapper, 
+    The manager takes a template Wrapper, 
     mutates its architectural DNA based on a parameter grid, spawns completely independent 
-    clones, and races them to find the optimal configuration.
+    clones, and compares them to find the optimal configuration using a specified metric.
 
     Parameters
     ----------
-    template_wrapper : Wrapper
+    template_wrapper : :class:`~HeteroSymNN.API.wrappers.Wrapper`
         A fully initialized Wrapper that serves as the base blueprint.
     param_grid : dict[str, list[any]]
         Dictionary where keys are parameter names and values are lists of possibilities to try.
@@ -702,7 +797,25 @@ class GridSearchManager:
         self.grid_search_results: list[dict[str, any]] = []
 
     def load_data(self, training_data: list, expected_results: list, shuffle: bool = True) -> None:
-        """Loads data and splits it into Training and Validation sets."""
+        """
+        Loads data and splits it into Training and Validation sets.
+
+        Parameters
+        ----------
+        training_data : list
+            The training data.
+        expected_results : list
+            The expected results.
+        shuffle : bool, optional
+            Whether to shuffle the data (default True).
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If the validation split is not between 0 and 1.
+        :exc:`~HeteroSymNN.exceptions.ShapeMismatchError`
+            If the number of samples in input and output data do not match.
+        """
         X_full = np.array(training_data)
         Y_full = np.array(expected_results)
 
@@ -752,8 +865,13 @@ class GridSearchManager:
 
         Returns
         -------
-        Wrapper
+        :class:`~HeteroSymNN.API.wrappers.Wrapper`
             Fresh wrapper with the mutated configuration.
+        
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If the model cannot be cloned.
         """
         self.template_wrapper.model.to("host")
         architecture_config = self.template_wrapper.model.get_config()
@@ -765,6 +883,7 @@ class GridSearchManager:
                 'work_type': self.template_wrapper.work_type,
                 'input_transformer': self.template_wrapper.input_transformer.__class__.__name__ if self.template_wrapper.input_transformer else None,
                 'output_transformer': self.template_wrapper.output_transformer.__class__.__name__ if self.template_wrapper.output_transformer else None,
+                'shuffle_samples': self.template_wrapper.shuffle_samples,
             },
             'transformation_configs': {},
             'optimizer_config': self.template_wrapper.model._UPDATE_METHOD.get_config(),
@@ -805,7 +924,8 @@ class GridSearchManager:
             model=new_model,
             work_type=meta['work_type'],
             input_transformer=in_scaler,
-            output_transformer=out_scaler
+            output_transformer=out_scaler,
+            shuffle_samples=meta.get('shuffle_samples', False)
         )
         new_wrapper.load_training(self._X_train, self._y_train)
         return new_wrapper
@@ -825,6 +945,12 @@ class GridSearchManager:
         -------
         tuple
             Returns ``(best_wrapper, best_params, all_results)``.
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.WrapperError`
+            If the trainig data was not loaded before the search.
+        
         """
         if self._X_train is None:
             raise WrapperError("No data loaded. Call load_data() before execute_search().")

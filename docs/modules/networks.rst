@@ -25,7 +25,7 @@ Within the Feed-Forward family, the classes are organized by their **level of ma
   When you need to establish a rapid standard baseline. It enforces a homogeneous topology where all hidden layers share the same math (e.g., standard ReLU networks).
 
 * **Level 2: LinearNet (The Mixed-Activation Network)** - *The Macroscopic Step.*
-  When your research requires macroscopic heterogeneity. The ``LinearNet`` class allows you to effortlessly assign different mathematical strings to different layers.
+  When your research requires macroscopic heterogeneity. The :customref:`LinearNet <dense-network>` class allows you to effortlessly assign different mathematical strings to different layers.
 
 * **Level 3: HeteroLinearNet (Node-Level Customization)** - *The Microscopic Frontier.*
   When you need per node control. It allows you to define a unique mathematical equation and dynamic constants for *every single neuron* in the network.

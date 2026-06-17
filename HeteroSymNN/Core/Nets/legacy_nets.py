@@ -15,12 +15,12 @@ class ConfigurableNN(HeteroLinearNet):
         ----------
         nodes_structure : list[int]
             List with the number of nodes per layer including input and output layers.
-        detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
+        detailed_activations : list[list[:type:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
-        initial_values : Optional[list[:obj:`~HeteroSymNN.types.LayerValues`]], optional
+        initial_values : Optional[list[:type:`~HeteroSymNN.types.LayerValues`]], optional
             Optional list of initial values for each layer. If not provided, weights and biases will be initialized using the specified initializer., by default None
-        initializer : Optional[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-            Initializer to use for weights and biases if initial_values is not provided. Most pass an instance of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and the default uses :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`, value by default is None.
+        initializer : Optional[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+            Initializer to use for weights and biases if initial_values is not provided. Most pass an instance of :class:`~HeteroSymNN.Core.Nets.initializers.Initializer` and the default uses :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal`, value by default is None.
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
@@ -29,10 +29,10 @@ class ConfigurableNN(HeteroLinearNet):
             Training mode to use during training. Options are "batch", "mini-batch", and "stochastic". By default "mini-batch".
         learning_mode : str, optional
             Learning mode of the network. Currently only "Static" is supported., by default "Static"
-        loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, ::obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
-        optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
-            Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.,value by default is None.
+        loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
+            Loss function to use during training. Must be an instance of :class:`~HeteroSymNN.Core.Nets.losses.Loss`. If not provided, ::class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., value by default is None.
+        optimizer : Optional[:class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
+            Optimizer to use for updating the network parameters. Must be an instance of :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If not provided, :class:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.,value by default is None.
         num_treaning_iter : int, optional
             Number of Epochs to use during training, by default 1000
 
@@ -128,12 +128,12 @@ class FlexibleNN(LinearNet):
     ----------
     nodes_structure : list[int]
         List containing the number of nodes in each layer including input and output layers.
-    activation_config : list[:obj:`~HeteroSymNN.types.FlexibleNodeConfig`]
+    activation_config : list[:type:`~HeteroSymNN.types.FlexibleNodeConfig`]
         List containing the activation configuration for each layer. Each element can be a string (activation name) or a tuple (activation name, parameters dictionary).
-    initial_values : Optional[list[:obj:`~HeteroSymNN.types.LayerValues`]], optional
+    initial_values : Optional[list[:type:`~HeteroSymNN.types.LayerValues`]], optional
         List of initial values for weights and biases for each layer. If not provided, weights and biases will be initialized using the specified initializer., by default None
-    initializer : Optional[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-        Initializer to use for initializing weights and biases. If not provided, :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
+    initializer : Optional[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+        Initializer to use for initializing weights and biases. If not provided, :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
     learning_rate : float, optional
         Learning rate for the network., by default 0.001
     learning_mode : str, optional
@@ -142,8 +142,8 @@ class FlexibleNN(LinearNet):
         Training mode to use during training. In case of "batch" or "stochastic" the batch size attribute will be ignored., by default "stochastic"
     batch_size : int, optional
         Batch size to use during training. In the case of using "stochastic" or "batch" training mode this attribute will be ignored and in training time the batch size will be set to 1 or to the full dataset size respectively., by default 32
-    loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-        Loss function to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
+    loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
+        Loss function to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
     optimizer : :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
         Optimizer to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used., by default None
     num_treaning_iter : int, optional
@@ -219,12 +219,12 @@ class SimpleNN(MLP):
     ----------
     nodes_structure : list[int]
         List containing the number of nodes in each layer including input and output layers.
-    activation : :obj:`~HeteroSymNN.types.FlexibleNodeConfig`, optional
+    activation : :type:`~HeteroSymNN.types.FlexibleNodeConfig`, optional
         Activation function configuration for hidden layers. Can be a string (activation name) or a tuple (activation name, parameters dictionary)., by default "relu
-    output_activation : :obj:`~HeteroSymNN.types.FlexibleNodeConfig`, optional
+    output_activation : :type:`~HeteroSymNN.types.FlexibleNodeConfig`, optional
         Activation function configuration for the output layer. Can be a string (activation name) or a tuple (activation name, parameters dictionary)., by default "num
-    initializer : Optional[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-        Initializer to use for initializing weights and biases. If not provided, :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
+    initializer : Optional[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+        Initializer to use for initializing weights and biases. If not provided, :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal` will be used., by default None
     learning_rate : float, optional
         Learning rate for the network., by default 0.001
     learning_mode : str, optional
@@ -233,10 +233,10 @@ class SimpleNN(MLP):
         Training mode to use during training. In case of "batch" or "stochastic" the batch size attribute will be ignored., by default "stochastic"
     batch_size : int, optional
         Batch size to use during training. In the case of using "stochastic" or "batch" training mode this attribute will be ignored and in training time the batch size will be set to 1 or to the full dataset size respectively., by default 32
-    loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-        Loss function to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
-    optimizer : :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
-        Optimizer to use for training. If not provided, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used., by default None
+    loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
+        Loss function to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used., by default None
+    optimizer : :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`, optional
+        Optimizer to use for training. If not provided, :class:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used., by default None
     num_treaning_iter : int, optional
         Number of training iterations (epochs)., by default 1000
 

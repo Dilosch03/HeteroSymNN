@@ -9,7 +9,7 @@ from ..types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
 from ..JIT.compiler import SymbolicJITCompiler
 from .initializers import Initializer
 from ..config import settings
-from ..exceptions import LayerConfigurationError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError, ComputationalMethodValueError, DeviceSelectionError
+from ..exceptions import LayerConfigurationError, RuntimeStateError, BackendNotAvailableWarning, HardwareWarning,JITError, ComputationalMethodValueError, HeteroSymNNValueError
 from ..error_handlers import clean_traceback
 
 __all__ = ["BaseLayer", "LinearLayer"]
@@ -20,7 +20,7 @@ class BaseLayer:
         
         Parameters
         ----------
-        _num_inputs : int
+        input_shape : int
             Number of inputs the layer is going to receive.
         layer_configuration : :type:`~HeteroSymNN.types.LayerConstruction`
             Configuration of the layer including the node activation functions and their constants as well as the initializer used for the parameters of the layer.
@@ -39,7 +39,7 @@ class BaseLayer:
             values per neuron of the input of the layer after applying the mask and the biases.
     """
     @clean_traceback
-    def __init__(self,num_inputs:int,layer_configuration:LayerConstruction,batch_size:int = 1,gpu_id:int = 0):
+    def __init__(self,input_shape:int,layer_configuration:LayerConstruction,batch_size:int = 1,gpu_id:int = 0):
         
         self._CALCULATION_MANAGER = settings.default_manager
         self._ASNUMPY = settings.default_asnumpy
@@ -51,7 +51,7 @@ class BaseLayer:
         self._CURRENT_VECTOR_FORMAT = self._ASNUMPY
         self._DEFAULT_FLOAT_TYPE = settings.default_dtype
 
-        self._num_inputs = num_inputs
+        self._num_inputs = input_shape
         self._num_nodes = len(layer_configuration[0])
         self._layer_node_configs = layer_configuration[0]
         self._initializer = layer_configuration[1]
@@ -233,7 +233,7 @@ class BaseLayer:
 
     def reconstruct_layer_config (self)->Sequence[NodeConfig]:
         """
-        Regenerates the list of NodeConfig with the updated activation funcion constants.
+        Regenerates the list of :type:`~HeteroSymNN.types.NodeConfig` with the updated activation funcion constants.
 
         Returns
         -------
@@ -255,13 +255,14 @@ class BaseLayer:
     def set_gpu_id(self,new_id:int)->None:
         """
         Method to change the GPU that is going to be used for the calculations.
-
-        If computer does not have valid GPUs the function will raise a ValueError.
         
         Parameters
         ----------
         new_id : int
             New GPU Id to use.
+
+        :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
+            If the GPU ID is negative or greater than or equal to the number of available GPUs.
         """
         if (new_id != self._GPU_ID):
             _validate_gpu_id(new_id)
@@ -284,6 +285,11 @@ class BaseLayer:
         -------
         Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
             The computational method that was set. This could be different from the requested one if the requested one is not available or encontered an error with out :attr:`~HeteroSymNN.config.settings.warning_level` been set to "error".
+        
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.ComputationalMethodValueError`
+            If the passed value is not "GPU_CUDA", "CPU_JIT" or "CPU_PYTHON".
         """
         new_method = new_method.upper()
         try_method = new_method
@@ -336,10 +342,15 @@ class BaseLayer:
         ----------
         location : Literal["host", "device"]
             To which logical location to change the data of the layer.
+        
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.HeteroSymNNValueError`
+            If the passed value is not "host" or "device".
         """
         location = location.lower()
         if not(location in ["host","device"]):
-            raise DeviceSelectionError("Location not recognized. Expecting host or device.")
+            raise HeteroSymNNValueError("Location not recognized. Expecting host or device.")
         
         target_hardware = "CPU"
         if location == "device":
@@ -647,8 +658,10 @@ class LinearLayer(BaseLayer):
         ----------
         reset_constants: bool, optional
             Bool value if you want to also reset the activation function constants, by default False.
+        reset_mask: bool, optional
+            Bool value if you want to also reset the connection mask, by default False.
         """
-        super().reset_parameters(reset_constants)
+        super().reset_parameters(reset_constants,reset_mask)
         init_biases = self._initializer.generate_constant([self._num_nodes,1])
         init_weights = self._initializer.generate_from_distribution([self._num_nodes,self._num_inputs],self._num_inputs,self._num_nodes)
         init_mask = self._initializer.generate_binary_mask([self._num_nodes,self._num_inputs])
@@ -739,8 +752,10 @@ class LinearLayer(BaseLayer):
         """
         Method to get the parameters of the layer.
         
-        :return: Dictionary of the parameters by string.
-        :rtype: dict[str, ndarray]
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Dictionary containing the parameters with keys 'weights', 'biases' and 'connection_mask'.
         """
         return {
             'weights': self._ASNUMPY(self._weights).T,

@@ -7,9 +7,9 @@ The ``LinearLayer`` is the concrete implementation of a standard, fully-connecte
 
 When to Use
 -----------
-This is the default topological layer used automatically by the entire Feed-Forward family (:class:`~HeteroSymNN.Core.Nets.MLP`, :class:`~HeteroSymNN.Core.Nets.LinearNet`, :class:`~HeteroSymNN.Core.Nets.HeteroLinearNet`). 
+This is the default topological layer used automatically by the entire Feed-Forward family (:customref:`MLP <mlp-network>`, :customref:`LinearNet <dense-network>`, :customref:`HeteroLinearNet <heterodense-network>`). 
 
-You generally do not need to use this class manually. You should only pass the class definition directly if you are using the :class:`~HeteroSymNN.Core.Nets.base_classes.BaseNetwork` to manually build a custom "Frankenstein" architecture that mixes different topological families.
+You generally do not need to use this class manually. You should only pass the class definition directly if you are using the :customref:`BaseNetwork <base-network>` to manually build a custom "Frankenstein" architecture that mixes different topological families.
 
 Code Example
 ------------

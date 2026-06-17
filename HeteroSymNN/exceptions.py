@@ -111,7 +111,7 @@ class WrapperWarning(WrapperError, HeteroSymNNWarnings):
     """
     pass
 
-class RuntimeStateError(HeteroSymNNError):
+class RuntimeStateError(HeteroSymNNError,RuntimeError):
     """
     Exception raised when a method is called in an invalid execution state or order 
     (e.g., calling a backward pass before a forward pass).
@@ -228,7 +228,6 @@ class JITCompilationWarning(JITCompilationError, JITWarning):
     """
     pass
 
-# Keep original name CompilationWarning for backwards compatibility
 class CompilationWarning(JITCompilationWarning):
     """
     Warning raised when there was a problem with the creation of the kernels.
@@ -278,7 +277,7 @@ class LayerConfigurationWarning(LayerConfigurationError, ConfigWarning):
     """
     pass
 
-class PathError(ConfigError):
+class PathError(ConfigError,OSError):
     """
     Exception raised when there is an issue with the path.
     """
@@ -302,7 +301,7 @@ class TrainingWarning(TrainingError, WrapperWarning):
     """
     pass
 
-class LoadingError(WrapperError):
+class LoadingError(WrapperError,IOError):
     """
     Exception raised when an error occurs during the loading process of models.
     """
@@ -314,7 +313,7 @@ class LoadingWarning(LoadingError, WrapperWarning):
     """
     pass
 
-class SavingError(WrapperError):
+class SavingError(WrapperError,IOError):
     """
     Exception raised when an error occurs during the saving process of models.
     """
@@ -383,7 +382,7 @@ class HeteroSymNNDeprecationWarning(HeteroSymNNDeprecationError, HeteroSymNNWarn
             
         super().__init__(message)
 
-class HeteroSymNNValueError(HeteroSymNNError):
+class HeteroSymNNValueError(HeteroSymNNError,ValueError):
     """
     HeteroSymNN exception for value errors.
     """

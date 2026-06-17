@@ -54,7 +54,7 @@ class DataTransformer:
         
         Raises
         ---------
-        RuntimeStateError
+        :exc:`~HeteroSymNN.exceptions.RuntimeStateError`
             If the scaler is not fitted.
         """
         if not(self._fitted):
@@ -76,7 +76,7 @@ class DataTransformer:
         
         Raises
         ---------
-        RuntimeStateError
+        :exc:`~HeteroSymNN.exceptions.RuntimeStateError`
             If the scaler is not fitted.
         """
         if not(self._fitted):

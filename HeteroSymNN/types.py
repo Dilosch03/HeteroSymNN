@@ -69,7 +69,7 @@ else:
     """LayerValues represents the parameters of a neural network layer, including biases, weights, and connection masks in that order.
         Definition: ``tuple[list[float], list[list[float]], list[list[float]]]``"""
     LayerConstruction: TypeAlias = tuple[list[NodeConfig], "Initializer"]
-    """LayerConstructionConfig encapsulates the configuration needed to construct a neural network layer, including a list of :obj:`~NodeConfig` for each node and the corresponding :obj:`~LayerValues`.
+    """LayerConstructionConfig encapsulates the configuration needed to construct a neural network layer, including a list of :obj:`~NodeConfig` for each node and the corresponding :class:`~HeteroSymNN.Core.initializers.Initializer`.
          Definition: ``tuple[list[NodeConfig], Initializer]``"""
     BackendArray: TypeAlias = np.ndarray
     """BackendArray represents an array type used in the backend computations, can be either a NumPy array or a CuPy array depending on the hardware backend."""

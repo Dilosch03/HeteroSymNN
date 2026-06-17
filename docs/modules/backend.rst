@@ -11,7 +11,7 @@ It searches for CUDA-compatible NVIDIA GPUs, verifies CuPy installations, and sc
 
 When to Use (Debugging Hardware)
 --------------------------------
-Because hardware routing is fully automated by the global :class:`~HeteroSymNN.config._Settings` object, you usually do not need to interact with this module directly. 
+Because hardware routing is fully automated by the global :customref:`settings <configuration>` object, you usually do not need to interact with this module directly. 
 
 However, if your network is running significantly slower than expected (e.g., it is silently falling back to the pure Python safety net), you should use this module to **debug your hardware detection**. By inspecting these flags, you can quickly determine if the framework failed to detect your GPU or C++ compiler due to missing PATH variables or broken package dependencies.
 

@@ -6,7 +6,7 @@ import concurrent.futures
 
 from ..Backend import hardware as HW
 from ..Backend.validators import _validate_gpu_id
-from ..exceptions import PerformanceWarning,BackendNotAvailableWarning,DeviceSelectionError
+from ..exceptions import PerformanceWarning,BackendNotAvailableWarning,DeviceSelectionError,HeteroSymNNValueError
 from ..config import settings
 from ..types import BackendArray
 
@@ -145,7 +145,7 @@ class Optimizer:
         """
         location = location.lower()
         if not(location in ["host","device"]):
-            raise DeviceSelectionError("Location not recognized. Expecting host or device.")
+            raise HeteroSymNNValueError("Location not recognized. Expecting host or device.")
         
         target_hardware = "CPU"
         if location == "device":

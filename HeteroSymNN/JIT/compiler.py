@@ -137,6 +137,23 @@ class SymbolicJITCompiler:
         """
         Internal method that parses a string expression into SymPy expressions.
         Extracts free variables as required constants and returns the base function and derivative.
+        
+        Parameters
+        ----------
+        func_str : str
+            The mathematical expression to parse.
+        provided_constants : tuple, optional
+            Tuple of expected constants keys.
+        
+        Returns
+        -------
+        tuple
+            A tuple containing the evaluated function expression, its derivative, and the required constants.
+            
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.FormulaParsingError`
+            If the formula contains invalid syntax or unsupported operations.
         """
         local_dict = {}
         general_constants = {'e': sp.E.evalf(), 'pi': sp.pi.evalf(), 'tau': (2 * sp.pi).evalf(), 'phi': ((1 + sp.sqrt(5)) / 2).evalf()}
@@ -292,6 +309,30 @@ class SymbolicJITCompiler:
                                  user_funcs: dict = None, float_regex: re.Pattern = None):
         """
         Internal method that generates the core logic for the kernels, either as C++/CUDA code strings or Python lambdas.
+        
+        Parameters
+        ----------
+        configs : list[:type:`~HeteroSymNN.types.NodeConfig`]
+            List of function configurations to compile.
+        target_key : Literal["CPP", "PY", "GPU"]
+            The target platform for the generated code.
+        mode : Literal['string', 'lambda']
+            Whether to generate string representations of code or executable lambda functions.
+        user_funcs : dict, optional
+            Dictionary mapping function names to custom operations for generation.
+        float_regex : re.Pattern, optional
+            Compiled regex pattern used to enforce float literals.
+            
+        Returns
+        -------
+        dict or tuple
+            If mode is 'string', returns a tuple containing the forward and backward switch cases strings.
+            If mode is 'lambda', returns a dictionary mapping function IDs to their executable lambdas.
+            
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.FormulaParsingError`
+            If a formula cannot be parsed or lacks necessary constants.
         """
         unique_funcs = {} 
         compiled_code = {} 
@@ -424,7 +465,7 @@ class SymbolicJITCompiler:
         
         Raises
         ------
-        Exception
+        :exc:`~HeteroSymNN.exceptions.JITCompilationError`
             If the C++ compiler is not found or compilation fails. If strict warnings mode is false will try with "CPU_PYTHON" backend.
         """
 
@@ -626,8 +667,8 @@ class SymbolicJITCompiler:
         
         Raises
         ------
-        RuntimeError
-            If CUDA compilation fails and strict mode is enabled. If strict warnings mode is false will try with "CPU_JIT" backend.
+        :exc:`~HeteroSymNN.exceptions.PerformanceWarning`
+            Warns if CUDA compilation fails and falls back to CPU execution.
         """
         float_regex = re.compile(r"(\d+\.\d*([eE][+-]?\d+)?)")
 
@@ -706,6 +747,13 @@ class SymbolicJITCompiler:
         -------
         Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
             The actual calculation method set (might differ from requested if fallback occurs).
+            
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.ComputationalMethodValueError`
+            If the requested method is invalid.
+        :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
+            If an invalid GPU ID is supplied.
         """
         new_calculatuion_method = new_calculatuion_method.upper()
         if(new_calculatuion_method != self.calculation_method):
@@ -745,6 +793,11 @@ class SymbolicJITCompiler:
         ----------
         new_id : int
             The new GPU device ID.
+            
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
+            If the GPU ID is negative or greater than or equal to the number of available GPUs.
         """
         _validate_gpu_id(new_id)
         

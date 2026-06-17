@@ -7,7 +7,7 @@ The ``registries`` module solves a fundamental problem in dynamic framework arch
 
 When you save a model to a ``.symnn`` archive, the system records the *string names* of your network topology, layers, loss functions, and optimizers. Upon loading, the framework needs a way to translate those strings back into executable Python classes without using highly insecure ``eval()`` operations. 
 
-The internal ``_Registry`` acts as this translation layer. Upon initialization, it automatically scans the Core modules and dynamically builds a dictionary mapping every string identifier to its actual class object in memory.
+The internal :class:`~HeteroSymNN.API.registries._Registry` acts as this translation layer. Upon initialization, it automatically scans the Core modules and dynamically builds a dictionary mapping every string identifier to its actual class object in memory.
 
 When to Use
 -----------
@@ -37,9 +37,7 @@ API Reference
 
 .. autodata:: registry
    :annotation: = Global instance of _Registry
-
-   The active singleton managing all class mappings. You can inspect the currently registered components by accessing its read-only dictionary properties:
-
+   
    * ``registry._net_map``: Available network architectures.
    * ``registry._transformers_map``: Available data scaling transformers.
    * ``registry._loss_fn_map``: Available symbolic loss functions.

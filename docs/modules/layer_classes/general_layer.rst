@@ -5,7 +5,7 @@ BaseLayer
 
 The Concept
 -----------
-The ``BaseLayer`` is the abstract topological foundation of HeteroSymNN. It establishes a strict physical contract that guarantees the central :class:`~HeteroSymNN.Core.Nets.base_classes.BaseNetwork` orchestrator can safely calculate dimensions, route gradients, and move memory arrays between the CPU and GPU without knowing the specific internal mechanics of the layer.
+The ``BaseLayer`` is the abstract topological foundation of HeteroSymNN. It establishes a strict physical contract that guarantees the central :customref:`BaseNetwork <base-network>` orchestrator can safely calculate dimensions, route gradients, and move memory arrays between the CPU and GPU without knowing the specific internal mechanics of the layer.
 
 When to Use
 -----------
@@ -18,7 +18,6 @@ API Reference
 .. autoclass:: HeteroSymNN.Core.layers.BaseLayer
    :members:
    :undoc-members:
-   :show-inheritance:
 
 .. _developer_contract_layers:
 
@@ -41,7 +40,7 @@ If you are building a custom layer topology, your subclass must inherit from :cl
 
    You must override the primary execution hooks. The JIT compiler handles the symbolic activation math, but your layer is responsible for the macroscopic data flow.
 
-   * **``forward(self, inputs)``**: Must calculate the pre-activation outputs (usually stored in ``self.z``) and route them to the activation functions, returning a strictly shaped :data:`~HeteroSymNN.types.BackendArray`.
+   * **``forward(self, inputs)``**: Must calculate the pre-activation outputs (usually stored in ``self.z``) and route them to the activation functions, returning a strictly shaped :type:`~HeteroSymNN.types.BackendArray`.
    * **``backward(self, next_layer_errors)``**: Must calculate the local gradient (``self.delta``) and correctly route the error backwards through the topological structure.
    * **Optimization Hooks**: For backpropagation to successfully update the layer, you must also define and expose the ``working_parameters``, ``working_gradients``, and ``working_masks`` properties so the framework's optimizers can read and safely mutate your custom structures.
 

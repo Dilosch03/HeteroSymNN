@@ -49,13 +49,19 @@ Once installed, you can quickly verify which hardware backend HeteroSymNN has se
     
     HeteroSymNN hardware
 
-    Expected Output:
+**Expected Output:**
 
+.. code-block:: bash
+    
     Default Compute Method: CPU_PYTHON
     Available Compute Methods: CPU_PYTHON, GPU_CUDA
     Detected GPUs: 1
 
-or
+Checking Settings
+-------------------
+
+Alternatively, you can check the backend settings from within your Python script:
+
 .. code-block:: python
 
     from HeteroSymNN import settings

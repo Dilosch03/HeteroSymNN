@@ -16,7 +16,7 @@ from ...Backend.validators import _validate_gpu_id
 from .. import losses as lossC, optimizers as OptiC, initializers as InitC
 from ..layers import BaseLayer
 from ...types import LayerConstruction,NodeConfig,BackendArray,ConstantToUpdate
-from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError,LoadingError,BackendNotAvailableWarning,PerformanceWarning,HardwareWarning,ComputationalMethodValueError,DeviceSelectionError, SavingError, PathError
+from ...exceptions import NetworkStructureError, LayerConfigurationError, MethodMigrationError, ShapeMismatchError,LoadingError,BackendNotAvailableWarning,PerformanceWarning, SavingError, PathError,HeteroSymNNValueError
 from ...error_handlers import clean_traceback
 from ...config import settings
 
@@ -30,23 +30,22 @@ class BaseNetwork:
         ----------
         num_inputs : int
             Number of input units to the network.
-        network_structure : list[type[BaseLayer]]
+        network_structure : list[type[:class:`~HeteroSymNN.Core.layers.BaseLayer`]]
             List with the type of layers that will be used for each step of the network.
         extra_layer_parameters : list[dict[str,Any]]
             list of dictionaries with the extra parameters that the layer need to work correctly.
-        detailed_activations : list[list[:obj:`~HeteroSymNN.types.NodeConfig`]]
+        detailed_activations : list[list[:type:`~HeteroSymNN.types.NodeConfig`]]
             List of lists containing the activation configuration for each node in each layer.
-            Optional list of initial values for each layer. If not provided, weights and biases will be initialized using the specified initializer., by default None
-        initializers : List[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
-            List of initializers to use for weights and biases if initial_values is not provided. Must pass instances of :obj:`~HeteroSymNN.Core.Nets.initializers.Initializer` and if value is left as None it will use :obj:`~HeteroSymNN.Core.Nets.initializers.HeNormal`.
+        initializers : list[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`], optional
+            List of initializers to use for weights and biases if initial_values is not provided. Must pass instances of :class:`~HeteroSymNN.Core.Nets.initializers.Initializer` and if value is left as None it will use :class:`~HeteroSymNN.Core.Nets.initializers.HeNormal`.
         learning_rate : float, optional
             Learning rate for the network. In the case that a custom optimizer is provided with its own learning rate this value will be overwritten., by default 0.001
         batch_size : int, optional
             Batch size to use during training, by default 32. If set to -1, it uses the full dataset size for batch training.
-        loss_function : :obj:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
-            Loss function to use during training. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
-        optimizer : Optional[:obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
-            Optimizer to use for updating the network parameters. Must be an instance of :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If value is left as None, :obj:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.
+        loss_function : :class:`~HeteroSymNN.Core.Nets.losses.Loss`, optional
+            Loss function to use during training. Must be an instance of :class:`~HeteroSymNN.Core.Nets.losses.Loss`. If value is left as None, :class:`~HeteroSymNN.Core.Nets.losses.MSELoss` will be used.
+        optimizer : Optional[:class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`], optional
+            Optimizer to use for updating the network parameters. Must be an instance of :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`. If value is left as None, :class:`~HeteroSymNN.Core.Nets.optimizers.AdamOptimizer` will be used.
         num_epochs: int, optional
             Number of Epochs to use during training, by default 1000
         gpu_id: int, optional
@@ -234,7 +233,7 @@ class BaseNetwork:
             
         Returns
         -------
-        :obj:`~HeteroSymNN.Core.Nets.BaseNetwork`
+        :class:`~HeteroSymNN.Core.Nets.BaseNetwork`
             instanced object of the network class.
         """
         
@@ -326,7 +325,7 @@ class BaseNetwork:
         
         Returns
         -------
-        list[:obj:`~HeteroSymNN.Core.Nets.layers.Layer`]
+        list[:class:`~HeteroSymNN.Core.Nets.layers.BaseLayer`]
         """
         return self._LAYERS
     
@@ -346,7 +345,7 @@ class BaseNetwork:
         """
         Property to get the current GPU ID being used by the network. Read-only.
         
-        For setting a new GPU ID, use the :obj:`~set_gpu_id` method.
+        For setting a new GPU ID, use the :meth:`set_gpu_id` method.
 
         Returns
         -------
@@ -370,7 +369,7 @@ class BaseNetwork:
         """
         Property to get the current device where the network parameters are located. Read-only.
 
-        For changing location of the network parameters use the :obj:`~to` method.
+        For changing location of the network parameters use the :meth:`to` method.
         
         Returns
         -------
@@ -383,7 +382,7 @@ class BaseNetwork:
         """
         Property to get the current logical location where the network parameters are located. Read-only.
 
-        For changing location of the network parameters use the :obj:`~to` method.
+        For changing location of the network parameters use the :meth:`to` method.
         
         Returns
         -------
@@ -396,7 +395,7 @@ class BaseNetwork:
         """
         Property to get the current computational method being used by the network. Read-only.
 
-        To change the computational method use the :obj:`~set_backend` method.
+        To change the computational method use the :meth:`set_backend` method.
         
         Returns
         -------
@@ -411,7 +410,7 @@ class BaseNetwork:
 
         Returns
         -------
-        :obj:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`
+        :class:`~HeteroSymNN.Core.Nets.optimizers.Optimizer`
         """
         return self._UPDATE_METHOD
 
@@ -422,7 +421,7 @@ class BaseNetwork:
 
         Returns
         -------
-        :obj:`~HeteroSymNN.Core.Nets.losses.Loss`
+        :class:`~HeteroSymNN.Core.Nets.losses.Loss`
         """
         return self._LOSS_FUNCTION
     
@@ -433,7 +432,7 @@ class BaseNetwork:
 
         Returns
         -------
-        list[:obj:`~HeteroSymNN.Core.Nets.initializers.Initializer`]
+        list[:class:`~HeteroSymNN.Core.Nets.initializers.Initializer`]
         """
         return self._initializers
 
@@ -464,7 +463,7 @@ class BaseNetwork:
         
         Raises
         ------
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
             If the Id for the new GPU is greater than the number of available GPUs.
         """
         if (self._GPU_ID != new_id):
@@ -490,7 +489,7 @@ class BaseNetwork:
         
        Raises
         ------
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.HeteroSymNNValueError`
             If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
         :exc:`~HeteroSymNN.exceptions.BackendNotAvailableError`
             If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
@@ -504,7 +503,7 @@ class BaseNetwork:
         try_method = new_method
         msg_extra = ""
         if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+            raise HeteroSymNNValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
         
         if (gpu_id == None):
             gpu_id = self._GPU_ID
@@ -564,7 +563,7 @@ class BaseNetwork:
         
         Raises
         ------
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.HeteroSymNNValueError`
             If the new method is not one of "GPU_CUDA", "CPU_JIT", or "CPU_PYTHON".
         :exc:`~HeteroSymNN.exceptions.BackendNotAvailableError`
             If trying to set "GPU_CUDA" without a valid GPU or "CPU_JIT" without a valid C++ compiler when strict warnings mode is enabled. If not enabled, it will fallback to the next available method and throw a warning.
@@ -585,10 +584,15 @@ class BaseNetwork:
         ----------
         location : Literal["host","device"]
             Location to move the network parameters to.
+        
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.HeteroSymNNValueError`
+            If the location is not "host" or "device".
         """
         location = location.lower()
         if not(location in ["host","device"]):
-            raise DeviceSelectionError("Specify location is not host or device.")
+            raise HeteroSymNNValueError("Specify location is not host or device.")
 
         if(location != self._CURRENT_LOCATION):
                 self._CURRENT_LOCATION = location
@@ -614,7 +618,7 @@ class BaseNetwork:
         
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray` or tuple[:obj:`~HeteroSymNN.types.BackendArray`]
+        :type:`~HeteroSymNN.types.BackendArray` or tuple[:type:`~HeteroSymNN.types.BackendArray`]
             The casted arrays using the internal computational manager of the network.
         """
         if (gpu_id == None):
@@ -637,7 +641,7 @@ class BaseNetwork:
         
         Parameters
         ----------
-        *tensors : :obj:`~HeteroSymNN.types.BackendArray`
+        *tensors : :type:`~HeteroSymNN.types.BackendArray`
             Arrays to cast
 
         Returns
@@ -670,12 +674,12 @@ class BaseNetwork:
         
         Parameters
         ----------
-        input_values : :obj:`~HeteroSymNN.types.BackendArray`
+        input_values : :type:`~HeteroSymNN.types.BackendArray`
             Input values for the network.
         
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Output values from the network.
         """
         current_a = input_values
@@ -690,12 +694,12 @@ class BaseNetwork:
         
         Parameters
         ----------
-        error_values : :obj:`~HeteroSymNN.types.BackendArray`
+        error_values : :type:`~HeteroSymNN.types.BackendArray`
             Error values to propagate back through the network.
 
         Returns
         -------
-        :obj:`~HeteroSymNN.types.BackendArray`
+        :type:`~HeteroSymNN.types.BackendArray`
             Error values propagated back to the input layer.
         """
         self.to("device")
@@ -712,23 +716,42 @@ class BaseNetwork:
 
         Parameters
         ----------
-        x_input : :obj:`~HeteroSymNN.types.BackendArray`
-            Input values to train the network on.
-        y_target : :obj:`~HeteroSymNN.types.BackendArray`
-            Target output values for the network.
+        x_input : :type:`~HeteroSymNN.types.BackendArray`
+            Input values to train the network on. Shape should be (batch_size, num_inputs).
+        y_target : :type:`~HeteroSymNN.types.BackendArray`
+            Target output values for the network. Shape should be (batch_size, num_outputs).
         
         Returns
         -------
         float
             Computed loss for the training step.
+        
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.ShapeMismatchError`
+            If the input features or target features mismatch the network architecture.
         """
         self.to("device")
+        
+        x_input_t = x_input.T
+        y_target_t = y_target.T
+        
+        expected_inputs = self._LAYERS[0].num_inputs
+        expected_outputs = self._LAYERS[-1].num_nodes
+        
+        if x_input_t.shape[0] != expected_inputs:
+            raise ShapeMismatchError(f"Input features mismatch. Expected {expected_inputs}, got {x_input_t.shape[0]}.")
+        if y_target_t.shape[0] != expected_outputs:
+            raise ShapeMismatchError(f"Target features mismatch. Expected {expected_outputs}, got {y_target_t.shape[0]}.")
+        if x_input_t.shape[1] != y_target_t.shape[1]:
+            raise ShapeMismatchError(f"Batch size mismatch between inputs ({x_input_t.shape[1]}) and targets ({y_target_t.shape[1]}).")
+
         self.num_completed_train_iterations += 1
         
-        y_pred = self.forward(x_input)
+        y_pred = self.forward(x_input_t)
         
-        loss = self._LOSS_FUNCTION.forward(y_pred, y_target)
-        error_to_propagate = self._LOSS_FUNCTION.backward(y_pred, y_target)
+        loss = self._LOSS_FUNCTION.forward(y_pred, y_target_t)
+        error_to_propagate = self._LOSS_FUNCTION.backward(y_pred, y_target_t)
 
         self.backward(error_to_propagate)
         self.update_params()
@@ -742,66 +765,7 @@ class BaseNetwork:
         self.to("device")
         self._UPDATE_METHOD.step(self._LAYERS) 
 
-    def train(self,training_inputs: list[list[float]], training_targets: list[list[float]],num_iterations = None,
-              batch_size: int = None)->list[float]:
-        """
-        Train the neural network using the provided training data.
 
-        Parameters
-        ----------
-        training_inputs : list[list[float]]
-            List of input samples for training. Shape should be (num_samples, num_features).
-        training_targets : list[list[float]]
-            List of target output samples for training. Shape should be (num_samples, num_outputs).
-        num_iterations : int, optional
-            Number of training iterations (epochs) to perform. If not provided, uses the value of the attribute :obj:`~num_training_epochs`., by default None
-        batch_size : int, optional
-            Batch size to use during training. If not provided, uses the current value of the attribute :obj:`~batch_size`., by default None
-        
-        Returns
-        -------
-        list[float]
-            List of loss values recorded at each epoch during training.
-        """
-        self.to("device")
-        train_data,train_targets = self.cast_arrays(training_inputs,training_targets)
-        train_data = train_data.T
-        train_targets:BackendArray = train_targets.T
-        
-
-        b_size = self._BATCH_SIZE if batch_size is None else batch_size
-        if (num_iterations == None):
-            num_iterations = self.num_training_epochs
-
-        if b_size == -1:
-            b_size = len(training_inputs)
-
-        if (b_size != self._BATCH_SIZE):
-            self._BATCH_SIZE = b_size
-            for layer in self._LAYERS:
-                layer.batch_size_change(b_size)
-        
-        num_samples = train_data.shape[1]
-        for _ in range(num_iterations):
-            self.num_completed_epochs += 1
-            iter_loss = self._CALCULATION_MANAGER.array(0.0, dtype=self._DEFAULT_FLOAT_TYPE)
-            indices = self._CALCULATION_MANAGER.random.permutation(num_samples)
-
-            for start_idx in range(0, num_samples, b_size):
-                end_idx = min(start_idx + b_size, num_samples)
-                batch_indices = indices[start_idx:end_idx]
-                
-                x = train_data[:, batch_indices]
-                y = train_targets[:, batch_indices]
-                
-                loss = self.train_step(x, y)
-                
-                iter_loss += loss * (end_idx - start_idx)
-
-            avg_loss = self._ASNUMPY(iter_loss) / num_samples
-            self.history_losses.append(avg_loss)
-
-        return self.history_losses
     
     @clean_traceback
     def predict(self,input_values:Union[list,list[list]],to_cpu:bool = True)->Union[np.ndarray,BackendArray]:
@@ -813,12 +777,17 @@ class BaseNetwork:
         input_values : list or list[list]
             Input values for making predictions. In case of multiple samples, shape should be (num_samples, num_features) or (num_features, num_samples).
         to_cpu : bool, optional
-            Whether to return the predictions as a NumPy array on the CPU. If False, returns in the current backend array format. by default True
+            Whether to return the predictions as a NumPy array on the CPU. If False, returns in the current :type:`~HeteroSymNN.types.BackendArray` format. by default True
         
         Returns
         -------
-        np.ndarray or :obj:`~HeteroSymNN.types.BackendArray`
+        np.ndarray or :type:`~HeteroSymNN.types.BackendArray`
             Predicted output values.
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.ShapeMismatchError`
+            If the input features mismatch the network architecture.
         """
         self.to("device")
         if not isinstance(input_values, (np.ndarray, self._CALCULATION_MANAGER.ndarray)):
@@ -850,7 +819,7 @@ class BaseNetwork:
         
         Returns
         -------
-        dict[Union[str,int],dict[str,np.ndarray]]
+        dict[str,dict[str,np.ndarray]]
             Dictionary containing the parameters of each layer.
         """
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self._LAYERS)}
@@ -879,7 +848,7 @@ class BaseNetwork:
         
         Parameters
         ----------
-        new_constants : dict[int,Union[list[:obj:`~HeteroSymNN.types.ConstantToUpdate`], :obj:`~HeteroSymNN.types.ConstantToUpdate`]]
+        new_constants : dict[int,Union[list[:type:`~HeteroSymNN.types.ConstantToUpdate`], :type:`~HeteroSymNN.types.ConstantToUpdate`]]
             Dictionary mapping layer indices to new constant values for the activation functions."""
         for num_layer in new_constants.keys():
             self._LAYERS[num_layer].change_constant(new_constants[num_layer])
@@ -894,6 +863,7 @@ class BaseNetwork:
             Dictionary containing the configuration of the network.
 
             Parameters include:
+            
                 * **"network_structure"** (*list[int]*): List of number of nodes per layer and the type of layer.
                 * **"layer_configs"** (*dict[str,any]*): Configuration of each layer.
                 * **"learning_rate"** (*float*): Learning rate of the network.

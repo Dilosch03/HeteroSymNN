@@ -107,6 +107,21 @@ class _Settings:
         return self._warning_level
 
     def set_warning_level(self, value: Literal["error", "ignore", "always", "default", "module","once"]):
+        """
+        Sets how the framework treats warnings.
+
+        Args:
+            value (Literal["error", "ignore", "always", "default", "module","once"]):
+                "error" - Treat all warnings as errors
+                "ignore" - Ignore all warnings
+                "always" - Always show warnings
+                "default" - Show warnings once
+                "module" - Show warnings once per module
+                "once" - Show warnings once
+
+        Raises:
+            ConfigError: If the warning level is invalid.
+        """
         value = value.lower()
         if (value in ["error", "ignore", "always", "default", "module","once"]):
             self._warning_level = value
@@ -180,7 +195,7 @@ class _Settings:
                 self.save()
 
     def save(self):
-        """Saves the current state of the settings object to the JSON file."""
+        """Saves the current state of the settings object to the JSON file to act as the default settings for any project and future sessions. Creates a new file if it doesn't exist."""
         data = {
             "debug_mode": self.debug_mode,
             "use_kernel_cache": self._use_kernel_cache,
@@ -202,8 +217,15 @@ class _Settings:
 
         Parameters
         ----------
-        method : {"GPU_CUDA", "CPU_JIT", "CPU_PYTHON"}
+        method : Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]
             The method to set as default.
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.ComputationalMethodValueError`
+            If the method is not one of the available methods.
+        :exc:`~HeteroSymNN.exceptions.BackendNotAvailableWarning`
+            If the method is not available on the current system.
         """
         new_method = method.upper()
         try_method = new_method
@@ -309,10 +331,9 @@ class _Settings:
             
         Raises
         ------
-        OSError
-            If the directory cannot be created or accessed.
-        ValueError
+        :exc:`~HeteroSymNN.exceptions.PathError`
             If the path is the filesystem root. For security reasons it can not be set as the parent of the new cache directory.
+            If the directory cannot be created or accessed.
         """
         if isinstance(path,str):
             path = Path(path).resolve()
