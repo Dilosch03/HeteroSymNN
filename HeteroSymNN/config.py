@@ -8,7 +8,7 @@ import numpy as np
 import json
 
 from .Backend.hardware import GPU_ENABLED
-from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning,ConfigError,ConfigWarning,ComputationalMethodValueError,DataTypeError
+from .exceptions import PathWarning,PathError,BackendNotAvailableWarning,HeteroSymNNWarnings,PerformanceWarning,ConfigError,ConfigWarning,ComputationalMethodValueError,DataTypeError, HeteroSymNNValueError
 from .Backend import hardware as HW
 
 __all__ = ["settings"]
@@ -86,6 +86,10 @@ class _Settings:
     def n_jobs(self, value: int):
         if (value > os.cpu_count()):
             warnings.warn("Tried to use more threads than available. Using all available threads",PerformanceWarning,stacklevel=3)
+        if (value == -1):
+            value = os.cpu_count()
+        if (value < 1):
+            raise HeteroSymNNValueError("Thread value can't be less than 1, unless is -1 to signify all available threads.")
         self._num_cpu_threads = value
 
     

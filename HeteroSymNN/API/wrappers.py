@@ -119,7 +119,7 @@ class Wrapper():
         if(self._loaded_train_data):
             self.training_data_norm[1] = new_transformer.fit_transform(self.training_data[1])
 
-    def fit(self, training_data: list, expected_results: list, epochs: int = None, batch_size: int = None)->list[float]:
+    def fit(self, training_data: list, expected_results: list, epochs: int = None, batch_size: int = None, return_batch_losses: bool = False)->list[float]:
         """
         Method like Scikit Learn for training the model.
 
@@ -133,11 +133,16 @@ class Wrapper():
             Number of epochs to train. If None, uses the model's configured default.
         batch_size : int, optional
             Size of the batch. If not pass, uses the model's configured default.
+        return_batch_losses: bool, optional
+            Whether to return the loss for each batch or the average loss for each epoch.
+            Default is False.
 
         Returns
         -------
         list[float]
             A list of loss values recorded during training.
+            If ``return_batch_losses`` is True, it returns the loss for each batch.
+            If ``return_batch_losses`` is False, it returns the average loss for each epoch.
         
         Raises
         ------
@@ -145,7 +150,7 @@ class Wrapper():
             If dimensions do not match the model's expected input/output size.
         """
         self.load_training(training_data, expected_results)
-        return self.run_training(epochs, batch_size=batch_size)
+        return self.run_training(epochs, batch_size=batch_size, return_batch_losses=return_batch_losses)
 
     def load_training(self, training_data: list, expected_results: list)->None:
         """
@@ -208,7 +213,7 @@ class Wrapper():
         
         self.training_data_norm = (X_norm, Y_norm)
 
-    def run_training(self, num_iterations:int = None, batch_size: int = None)->list[float]:
+    def run_training(self, num_iterations:int = None, batch_size: int = None, return_batch_losses: bool = False)->list[float]:
         """
         Executes the training loop on the loaded data.
 
@@ -218,11 +223,16 @@ class Wrapper():
             Number of epochs to train. If None, uses the model's configured default.
         batch_size : int, optional
             Size of the batch. If not pass, uses the model's configured default.
+        return_batch_losses: bool, optional
+            Whether to return the loss for each batch or the average loss for each epoch.
+            Default is False.
 
         Returns
         -------
         list[float]
             A list of loss values recorded during training.
+            If ``return_batch_losses`` is True, it returns the loss for each batch.
+            If ``return_batch_losses`` is False, it returns the average loss for each epoch.
         """
         if self.training_data is None:
             raise TrainingError("No Training data loaded. Use load_training() first.")
@@ -230,23 +240,24 @@ class Wrapper():
         self.model.to("device")
         
         # Keep full dataset as NumPy on CPU, slice there, cast batches later
-        train_data = self.training_data_norm[0]
-        train_targets = self.training_data_norm[1]
+        train_data = self.training_data_norm[0].T
+        train_targets = self.training_data_norm[1].T
+        
+        num_samples = self.training_data_norm[0].shape[0]
         
         b_size = self.model.batch_size if batch_size is None else batch_size
         if num_iterations is None:
             num_iterations = self.model.num_training_epochs
 
         if b_size == -1:
-            b_size = len(train_data)
+            b_size = num_samples
 
         if b_size != self.model.batch_size:
             self.model._BATCH_SIZE = b_size
             for layer in self.model.layers:
                 layer.batch_size_change(b_size)
         
-        num_samples = train_data.shape[0]
-        
+        batch_losses_list = []
         for _ in range(num_iterations):
             self.model.num_completed_epochs += 1
             iter_loss = self.model._CALCULATION_MANAGER.array(0.0, dtype=self.model._DEFAULT_FLOAT_TYPE)
@@ -261,22 +272,18 @@ class Wrapper():
                 end_idx = min(start_idx + b_size, num_samples)
                 batch_indices = indices[start_idx:end_idx]
                 
-                x_batch = train_data[batch_indices, :]
-                y_batch = train_targets[batch_indices, :]
+                x_batch = train_data[:,batch_indices]
+                y_batch = train_targets[:,batch_indices]
                 
                 # 1. Hardware abstraction: Send data to current backend (CPU/GPU)
                 x, y = self.model.cast_arrays(x_batch, y_batch)
                 
-                # Transpose to match layer expectations (num_features, batch_size)
-                x_t = x.T
-                y_t = y.T
-                
                 # 2. Forward pass
-                y_pred = self.model.forward(x_t)
+                y_pred = self.model.forward(x)
                 
                 # 3. Loss Calculation
-                loss_val = self.model.loss_function.forward(y_pred, y_t)
-                error = self.model.loss_function.backward(y_pred, y_t)
+                loss_val = self.model.loss_function.forward(y_pred, y)
+                error = self.model.loss_function.backward(y_pred, y)
                 
                 # 4. Backward Pass
                 self.model.backward(error)
@@ -285,11 +292,16 @@ class Wrapper():
                 self.model.update_params()
                 self.model.num_completed_train_iterations += 1
                 
+                if return_batch_losses:
+                    batch_losses_list.append(float(self.model._ASNUMPY(loss_val)))
+
                 iter_loss += loss_val * (end_idx - start_idx)
 
-            avg_loss = self.model._ASNUMPY(iter_loss) / num_samples
+            avg_loss = float(self.model._ASNUMPY(iter_loss) / num_samples)
             self.model.history_losses.append(avg_loss)
 
+        if return_batch_losses:
+            return batch_losses_list
         return self.model.history_losses
     
     def predict(self, data: list)->np.ndarray:
@@ -413,28 +425,34 @@ class Wrapper():
             2.  Dictionary of raw counts (TP, TN, FP, FN).
         """
         predictions_raw = self.predict(test_data)
+        expected_results = np.array(expected_results)
         
-        predictions = (predictions_raw > threshold).astype(int).flatten()
+        if predictions_raw.ndim == 1:
+            predictions_raw = predictions_raw.reshape(-1, 1)
+        if expected_results.ndim == 1:
+            expected_results = expected_results.reshape(-1, 1)
+            
+        predictions = (predictions_raw > threshold).astype(int)
         
-        expected_results = list(expected_results)
         results_compare = {"correc_pos":0, "correct_neg":0, "false_pos":0, "false_neg":0}
 
-        for i in range(len(expected_results)):
-            is_equal = (predictions[i] == expected_results[i])
-            if(is_equal):
-                if(predictions[i]):
-                    results_compare["correc_pos"] += 1
+        for i in range(expected_results.shape[0]):
+            for j in range(expected_results.shape[1]):
+                is_equal = (predictions[i, j] == expected_results[i, j])
+                if(is_equal):
+                    if(predictions[i, j]):
+                        results_compare["correc_pos"] += 1
+                    else:
+                        results_compare["correct_neg"] += 1
                 else:
-                    results_compare["correct_neg"] += 1
-            else:
-                if(predictions[i]):
-                    results_compare["false_pos"] += 1
-                else:
-                    results_compare["false_neg"] += 1
+                    if(predictions[i, j]):
+                        results_compare["false_pos"] += 1
+                    else:
+                        results_compare["false_neg"] += 1
         
         evals = {"Acur":-1, "Press":-1, "TPR":-1, "F1":-1}
         correct = results_compare["correc_pos"] + results_compare["correct_neg"]
-        total = len(expected_results)
+        total = expected_results.size
         
         try:
             evals["Acur"] = correct / total
@@ -469,30 +487,31 @@ class Wrapper():
             Dictionary containing the calculated metrics.
         """
         predictions_raw = self.predict(test_data)
+        expected_results = np.array(expected_results)
         
-        if predictions_raw.ndim == 2 and predictions_raw.shape[1] == 1:
-            results = predictions_raw.flatten()
-        else:
-            results = predictions_raw
+        if predictions_raw.ndim == 1:
+            predictions_raw = predictions_raw.reshape(-1, 1)
+        if expected_results.ndim == 1:
+            expected_results = expected_results.reshape(-1, 1)
             
-        expected_results = np.array(expected_results).flatten()
+        results = predictions_raw
         
         if (results.shape != expected_results.shape):
-            raise ShapeMismatchError(f"The expected results are not in the expected shape, Resived {expected_results.shape} and expected {results.shape}.")
+            raise ShapeMismatchError(f"The expected results are not in the expected shape, Received {expected_results.shape} and expected {results.shape}.")
 
         mean = np.mean(expected_results)
         rss = np.sum((expected_results - results)**2)
-        ssr = np.sum((results- mean)**2)
+        ssr = np.sum((results - mean)**2)
         mae = np.sum(np.abs(expected_results - results))
         with np.errstate(divide='ignore', invalid='ignore'):
-            mape_array = np.where(expected_results != 0,np.abs((expected_results - results) / expected_results),0)
+            mape_array = np.where(expected_results != 0, np.abs((expected_results - results) / expected_results), 0)
             mape = np.sum(mape_array)
 
         if (np.isnan(mape)):
             mape = 0
         
         tss = rss + ssr
-        n = len(expected_results)
+        n = expected_results.size
         k = self.model.layers[0].num_inputs
         
         evaluations = {"TSS":tss, "RSS":rss, "SSR":ssr, "R2":np.nan, "MSE":np.nan, "RMSE":np.nan,

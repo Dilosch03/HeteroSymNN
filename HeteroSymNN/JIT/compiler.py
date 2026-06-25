@@ -341,6 +341,13 @@ class SymbolicJITCompiler:
 
         for idx, (func_str, consts) in enumerate(configs):
             consts = consts or {}
+            
+            # Inject defaults if it's a known alias
+            if func_str in codegen.ALIAS_DEFAULTS:
+                for default_key, default_val in codegen.ALIAS_DEFAULTS[func_str].items():
+                    if default_key not in consts:
+                        consts[default_key] = default_val
+                        
             consts_keys = tuple(sorted(consts.keys()))
             
             # The relative offsets depend on the full dictionary provided
@@ -398,8 +405,12 @@ class SymbolicJITCompiler:
                                 off_sym = sp.symbols('offset')
 
                                 lambda_args = self.main_vars + [p_sym, off_sym]
-                                ccode_fwd = sp.lambdify(lambda_args, func_expr, 'numpy')
-                                ccode_bwd = sp.lambdify(lambda_args, deriv_expr, 'numpy')
+                                # Import the list of functions that need vectorization from codegen
+                                vectorized_math = {name: np.vectorize(getattr(mth, name)) for name in codegen.PYTHON_VECTORIZED_FUNCS if hasattr(mth, name)}
+                                custom_modules = [vectorized_math, 'numpy']
+                                
+                                ccode_fwd = sp.lambdify(lambda_args, func_expr, custom_modules)
+                                ccode_bwd = sp.lambdify(lambda_args, deriv_expr, custom_modules)
                                 compiled_code[new_id] = (ccode_fwd, ccode_bwd)
                                 try:
                                     dummy_args = [np.array([0.5], dtype=np.float32) for _ in self.main_vars] + [np.array([0.5]*len(required_constants)), 0]

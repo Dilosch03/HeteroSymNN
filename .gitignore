@@ -184,6 +184,8 @@ cython_debug/
 *test.py
 
 *.symnn
+*.csv
 bandit_report.json
 .vscode/settings.json
 pytest.ini
+mnist/

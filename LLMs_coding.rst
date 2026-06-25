@@ -15,6 +15,13 @@ NEVER:
 - Instantiate Abstract Bases: Strictly subclass: `Initializer`, `BaseInitializer`, `DataTransformer`, `Optimizer`, `Loss`, `BaseLayer`.
 </forbidden_actions>
 
+<preferred_actions>
+WHEN CODING WITH HETEROSYNN TRY TO FOLLOW THIS PROTOCOLS:
+- Set the batch sizes and number of epochs/iterations at instantiation time for making optimizations before model runtime.
+- When making a custom training loop using the network primitive methods (``forward``, ``backward``, ``loss.backward`` and ``update_params``) make sure to increment the ``num_completed_train_iter`` and ``num_completed_epochs`` counters.
+- When using a custom training loop try to pre send the dataset to the device ram to avoid unnecessary data transfers by using the ``cast_arrays`` method from the network and that they have the following data layout: ``(features,samples)``.
+</preferred_actions>
+
 <import_patterns>
 ```python
 from HeteroSymNN.Core.Nets import HeteroLinearNet, LinearNet, MLP, BaseNetwork
@@ -27,12 +34,12 @@ from HeteroSymNN.config import settings
 
 <symbolic_formulas>
 Parsed to C++/CUDA. Accepted input variables: "num", "x", "z" (prefer "num").
-Accepted String Activations: `"relu"`, `"sigmoid"`, `"tanh"`, `"swish"`/`"SiLU"`, `"leaky_relu"`, `"softplus"`, `"mish"`, `"gelu"`, `"linear"`.
+Accepted String Activations: `"relu"`, `"sigmoid"`, `"swish"`/`"SiLU"`, `"leaky_relu"`, `"softplus"`, `"mish"`, `"gelu"`, `"linear"`.
 Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 
 **Variable vs. Function Quirks (Golden Rule & Alias Exception):**
 - **Golden Rule**: Any word NOT explicitly called with parentheses is treated as a custom parameter variable (e.g., in `"sin * num"`, `sin` is a variable). Any word explicitly called with parentheses is treated as a mathematical function (e.g., `"sin(num)"`).
-- **Alias Exception**: If a recognized activation alias (like `"relu"`, `"tanh"`) is the *only* text in the string, it is automatically expanded to its functional form. 
+- **Alias Exception**: If a recognized activation alias (like `"relu"`, `"sigmoid"`) is the *only* text in the string, it is automatically expanded to its functional form. 
 - **Parameterized Aliases**: Aliases like `"leaky_relu"` (requires `alpha`) and `"swish"` (requires `beta`) will throw a `FormulaParsingError` if used without their required constants (e.g., use `("leaky_relu", {"alpha": 0.01})`). 
 - **Composition**: If composing a larger equation, you **must** use explicit function call syntax (e.g., `"relu(num) * alfa"`); otherwise, the alias will be parsed as a variable.
 </symbolic_formulas>
@@ -71,11 +78,11 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 <wrapper_api>
 *Wrapper*
 - `__init__(model: BaseNetwork, work_type: Literal["class","reg"], input_transformer: Optional[data_transformers.DataTransformer] = None, output_transformer: Optional[data_transformers.DataTransformer] = None)`
-- `fit(X: list, y: list, epochs: int = None, ...) -> list[float]`
+- `fit(X: list, y: list, epochs: int = None, batch_size: int = None, return_batch_losses:bool = False) -> list[float]`
 - `predict(data: list) -> np.ndarray`
 - `test_accuracy(X: list, y: list) -> Union[dict, tuple]`
 - `load_training(X: np.ndarray, y: np.ndarray) -> None`
-- `run_training(num_iterations: int, batch_size: int = None) -> None`
+- `run_training(num_iterations: int, batch_size: int = None, return_batch_losses:bool = False) -> list[float]`
 - `classification_test_accuracy(X: np.ndarray, y: np.ndarray) -> tuple[dict, Any]`
 - `regression_test_accuracy(X: np.ndarray, y: np.ndarray) -> dict`
 - `save_model(path: str) -> None`
@@ -107,7 +114,7 @@ Accepted String Losses: `"mse"`, `"mae"`, `"huber"`, `"bce"`.
 *FlexibleLoss*
 - `__init__(loss_expression: str = "(y_pred - y_true)**2", constants: dict[str, float] = None, computational_method: Literal["GPU_CUDA","CPU_PYTHON"] = None, gpu_id: int = 0)`
 
-*Standard Losses (MSELoss, MAELoss, BinaryCrossEntropy)*
+*Standard Losses (MSELoss, MAELoss, BinaryCrossEntropy, CategoricalCrossEntropy)*
 - `__init__(computational_method: Literal["GPU_CUDA","CPU_PYTHON"] = None, gpu_id: int = 0)`
 
 *HuberLoss*

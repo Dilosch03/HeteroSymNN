@@ -756,7 +756,7 @@ class BaseNetwork:
         self.backward(error_to_propagate)
         self.update_params()
 
-        return loss
+        return self._ASNUMPY(loss)
     
     def update_params(self)->None:
         """
@@ -823,6 +823,27 @@ class BaseNetwork:
             Dictionary containing the parameters of each layer.
         """
         return {f'layer_{i}': layer.get_parameters() for i, layer in enumerate(self._LAYERS)}
+
+    @property
+    def total_parameters(self)->int:
+        """
+        Get the total number of trainable parameters in the network.
+
+        Counts weights and biases across all layers, excluding structural
+        arrays such as connection masks.
+
+        Returns
+        -------
+        int
+            Total number of trainable parameters.
+        """
+        _EXCLUDED_KEYS = {'connection_mask'}
+        count = 0
+        for layer in self._LAYERS:
+            for key, value in layer.get_parameters().items():
+                if key not in _EXCLUDED_KEYS:
+                    count += value.size
+        return count
 
     @clean_traceback
     def set_parameters(self, params:dict[Union[str,int],dict[str,np.ndarray]])->None:

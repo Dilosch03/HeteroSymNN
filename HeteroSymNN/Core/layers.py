@@ -58,6 +58,7 @@ class BaseLayer:
         self.delta = None
         self.a = None
         self.z = None
+        self._prev_error_buffer = None
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
             with HW.be.cuda.Device(self._GPU_ID):
@@ -381,17 +382,20 @@ class BaseLayer:
             New batch size for the layer.
         """
         expected_shape = (self._num_nodes, batch_size)
+        expected_shape_prev = (self._num_inputs, batch_size)
 
         if  ((self.z is None)or(self.z.shape != expected_shape)):
             if ("GPU" in self._COMPUTATIONAL_METHOD):
                 with HW.be.cuda.Device(self._GPU_ID):
-                    self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
-                    self.a = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
-                    self.delta = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
+                    self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE,order="C")
+                    self.a = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE,order="C")
+                    self.delta = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE,order="C")
+                    self._prev_error_buffer = self._CALCULATION_MANAGER.zeros(expected_shape_prev, dtype=self._DEFAULT_FLOAT_TYPE,order="C")
             else:
                 self.z = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.a = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
                 self.delta = self._CALCULATION_MANAGER.zeros(expected_shape, dtype=self._DEFAULT_FLOAT_TYPE)
+                self._prev_error_buffer = self._CALCULATION_MANAGER.zeros(expected_shape_prev, dtype=self._DEFAULT_FLOAT_TYPE)
 
     @property
     def working_parameters(self) -> dict[str, BackendArray]:
@@ -718,7 +722,8 @@ class LinearLayer(BaseLayer):
         batch_size = input_values.shape[1]
         self.batch_size_change(batch_size)
         effective_weights = self._weights * self._connection_mask
-        self.z = self._CALCULATION_MANAGER.dot(effective_weights, input_values) + self._biases
+        self._CALCULATION_MANAGER.dot(effective_weights, input_values, out=self.z)
+        self.z += self._biases
 
         self._act_funcions_manager.forward_kernel(self.z, self.a, self._funcs_constats, self.param_offsets, self._num_nodes,batch_size)
         return self.a
@@ -744,9 +749,9 @@ class LinearLayer(BaseLayer):
         self._grad_biases = self._CALCULATION_MANAGER.mean(self.delta, axis=1, keepdims=True)
         self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T) / self._DEFAULT_FLOAT_TYPE(batch_size)
         effective_weights = self._weights * self._connection_mask
-        prev_layer_error_sum = self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta)
+        self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta, out=self._prev_error_buffer)
         
-        return prev_layer_error_sum
+        return self._prev_error_buffer
 
     def get_parameters(self)->dict[str,np.ndarray]:
         """

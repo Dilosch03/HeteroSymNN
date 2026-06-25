@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from typing import Literal
+from typing import Literal, Optional
 import warnings
 
 from ..Backend import hardware as HW
@@ -13,7 +13,7 @@ from ..error_handlers import clean_traceback
 
 __all__ = [
     "Loss", "FlexibleLoss",
-    "MSELoss", "MAELoss", "HuberLoss", "BinaryCrossEntropy",
+    "MSELoss", "MAELoss", "HuberLoss", "BinaryCrossEntropy", "CategoricalCrossEntropy"
 ]
 
 
@@ -21,28 +21,56 @@ class Loss:
     """
     Base class for all loss functions.
     """
-    def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
-        """
-        Internal method to change the computational backend.
+    @clean_traceback
+    def __init__(self, computational_method: Optional[Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]] = None, gpu_id: int = 0):
+        self._CALCULATION_MANAGER = settings.default_manager
+        self._ASNUMPY = settings.default_asnumpy
+        self._COMPUTATIONAL_METHOD = settings.default_compute_method
+        _validate_gpu_id(gpu_id)
+        self._GPU_ID = gpu_id
 
-        This method must be implemented by subclasses to handle the transfer of internal data 
-        (e.g., constants) between GPU and CPU memory spaces when switching devices. It must also 
-        update the execution strategy (distinguishing between ``CPU_JIT`` and ``CPU_PYTHON``) 
-        to ensure the correct processing path is used.
-        """
-        pass
-    def set_gpu_id(self,new_id:int):
-        """
-        Sets the GPU ID for computation.
+        if computational_method is not None:
+            self._change_COMPUTATIONAL_METHOD(computational_method, gpu_id)
 
-        This method must be implemented by subclasses to update the GPU ID used for internal calculations.
+    def _change_COMPUTATIONAL_METHOD(self, new_method: Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"], gpu_id: int = None) -> Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]:
+        new_method = new_method.upper()
+        try_method = new_method
+        msg_extra = ""
+        if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
+            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+        
+        if (gpu_id == None):
+            gpu_id = self._GPU_ID
+        else:
+            _validate_gpu_id(gpu_id)
 
-        Parameters
-        ----------
-        new_id : int
-            The new GPU ID.
-        """
-        pass
+        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
+            msg_extra = ", but no GPU is available."
+            new_method = "CPU_PYTHON"
+
+        if ((new_method == "CPU_JIT")):
+                msg_extra = ", but currently is not available"
+                new_method = "CPU_PYTHON"
+
+        if (try_method != new_method):
+                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
+
+        if(new_method != self._COMPUTATIONAL_METHOD):
+            self._COMPUTATIONAL_METHOD = new_method
+            self._GPU_ID = gpu_id
+            if ("CPU" in new_method):
+                self._CALCULATION_MANAGER = np
+                self._ASNUMPY = np.array
+            elif ("GPU" in new_method):
+                self._CALCULATION_MANAGER = HW.cp
+                self._ASNUMPY = HW.cp.asnumpy
+        return self._COMPUTATIONAL_METHOD
+
+    def set_gpu_id(self, new_id: int):
+        if (new_id != self._GPU_ID):
+            _validate_gpu_id(new_id)
+            self._GPU_ID = new_id
+
     def forward(self, y_pred:BackendArray, y_true:BackendArray)->BackendArray:
         """
         Computes the loss value.
@@ -122,42 +150,9 @@ class FlexibleLoss(Loss):
     @clean_traceback
     def __init__(self, loss_expression: str = "(y_pred - y_true)**2", constants: dict[str, float] = None,
                  computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
+        super().__init__(computational_method, gpu_id)
         self._loss_expression = loss_expression
         self._constants = constants or {}
-        self._COMPUTATIONAL_METHOD = settings.default_compute_method
-        
-        _validate_gpu_id(gpu_id)
-        self._GPU_ID = gpu_id
-        self._be = settings.default_manager
-        self._asnumpy = settings.default_asnumpy
-
-        if not(computational_method is None):
-            computational_method = computational_method.upper()
-            try_method = computational_method
-            msg_extra = ""
-            if not(computational_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-                raise ComputationalMethodValueError("Tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
-
-            if ((computational_method == "GPU_CUDA") and not(computational_method in settings.available_methods)):
-                msg_extra = ", but no GPU is available."
-                computational_method = "CPU_PYTHON"
-
-            if ((computational_method == "CPU_JIT")):
-                    msg_extra = ", but currently is not available"
-                    computational_method = "CPU_PYTHON"
-
-            if (try_method != computational_method):
-                    warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {computational_method} is required",BackendNotAvailableWarning,stacklevel=2)
-
-            if (computational_method == "GPU_CUDA"):
-                self._be = HW.cp
-                self._asnumpy = HW.cp.asnumpy
-            else:
-                self._be = np
-                self._asnumpy = np.array
-
-            self._COMPUTATIONAL_METHOD = computational_method
-
         self.set_constants(self._constants)
 
         self._compiler = SymbolicJITCompiler(
@@ -227,10 +222,10 @@ class FlexibleLoss(Loss):
             temp.append(0.0)
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            with HW.be.cuda.Device(self._GPU_ID):
-                self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
+            with self._CALCULATION_MANAGER.cuda.Device(self._GPU_ID):
+                self.arr_constants = self._CALCULATION_MANAGER.array(temp,dtype=settings.default_dtype)
         else:
-            self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
+            self.arr_constants = self._CALCULATION_MANAGER.array(temp,dtype=settings.default_dtype)
 
     def set_gpu_id(self,new_id:int)->None:
         """
@@ -239,10 +234,14 @@ class FlexibleLoss(Loss):
         Parameters
         ----------
         new_id : int
+
+        Raises
+        ------
+        :exc:`~HeteroSymNN.exceptions.InvalidDeviceIDError`
+            If the GPU ID is negative or greater than or equal to the number of available GPUs.
         """
-        if (new_id != self._GPU_ID):
-            self._compiler.set_gpu_id(new_id)
-            self._GPU_ID = new_id
+        super().set_gpu_id(new_id)
+        self._compiler.set_gpu_id(new_id)
 
     def _change_COMPUTATIONAL_METHOD(self,new_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
@@ -269,43 +268,31 @@ class FlexibleLoss(Loss):
         Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]
             New computational method it was able to be set. In case that there was an error in the recompilation and `HeteroSymNN.Backend.hardware.WARNINGS_STRICT_MODE` is set to false the method that was requested will differ with the returned method.
         """
-        new_method = new_method.upper()
-        try_method = new_method
-        msg_extra = ""
-        if not(new_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
-            raise ComputationalMethodValueError("tried to change the computational method to something that isn't GPU_CUDA, CPU_JIT or CPU_PYTHON")
+        old_method = self._COMPUTATIONAL_METHOD
+        old_gpu_id = self._GPU_ID
+        old_asnumpy = self._ASNUMPY
         
-        if (gpu_id == None):
-            gpu_id = self._GPU_ID
-        else:
-            _validate_gpu_id(gpu_id)
-
-        if ((new_method == "GPU_CUDA") and not(new_method in settings.available_methods)):
-            msg_extra = ", but no GPU is available."
-            new_method = "CPU_PYTHON"
-
-        if ((new_method == "CPU_JIT")):
-                msg_extra = ", but currently is not available"
-                new_method = "CPU_PYTHON"
-
-        if (try_method != new_method):
-                warnings.warn(f"Tried to change to use '{try_method}'{msg_extra}. {new_method} is required",BackendNotAvailableWarning,stacklevel=2)
-
+        # 1. Call base class implementation to perform validation, fallback, and update _CALCULATION_MANAGER/_ASNUMPY
+        super()._change_COMPUTATIONAL_METHOD(new_method, gpu_id)
         
-        if (new_method != self._COMPUTATIONAL_METHOD):
-            self._COMPUTATIONAL_METHOD = new_method
-            self._GPU_ID = gpu_id
-            temp = self._asnumpy(self.arr_constants)
+        # 2. If the method actually changed, compile/migrate the JIT kernels and move constants
+        if (self._COMPUTATIONAL_METHOD != old_method or self._GPU_ID != old_gpu_id):
+            # Use the pre-migration converter to bring constants to CPU before the backend changed
+            temp = old_asnumpy(self.arr_constants)
             
-            self._COMPUTATIONAL_METHOD = self._compiler._change_method(self._COMPUTATIONAL_METHOD,self._GPU_ID)
+            # Migrate JIT compiler kernels
+            self._COMPUTATIONAL_METHOD = self._compiler._change_method(self._COMPUTATIONAL_METHOD, self._GPU_ID)
+            
+            # Sync the backend variables again based on what the JIT compiler resolved (which might fallback)
             if (self._COMPUTATIONAL_METHOD == "GPU_CUDA"):
-                self._asnumpy = HW.cp.asnumpy
-                self._be = HW.cp
+                self._CALCULATION_MANAGER = HW.cp
+                self._ASNUMPY = HW.cp.asnumpy
             else:
-                self._asnumpy = np.array
-                self._be = np
+                self._CALCULATION_MANAGER = np
+                self._ASNUMPY = np.array
 
-            self.arr_constants = self._be.array(temp,dtype=settings.default_dtype)
+            # Reload constants array onto the new device
+            self.arr_constants = self._CALCULATION_MANAGER.array(temp, dtype=settings.default_dtype)
 
         return self._COMPUTATIONAL_METHOD
 
@@ -326,9 +313,10 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Loss value.
         """
-        loss_vec = self._be.zeros_like(y_pred,dtype=settings.default_dtype)
+        y_true = self._CALCULATION_MANAGER.ascontiguousarray(y_true)
+        loss_vec = self._CALCULATION_MANAGER.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
-        return self._be.mean(loss_vec) 
+        return self._CALCULATION_MANAGER.mean(loss_vec) 
 
     @clean_traceback
     def backward(self, y_pred:BackendArray, y_true:BackendArray):
@@ -347,7 +335,8 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Gradient of the loss with respect to the predicted values.
         """
-        grad_vec = self._be.zeros_like(y_pred,dtype=settings.default_dtype)
+        y_true = self._CALCULATION_MANAGER.ascontiguousarray(y_true)
+        grad_vec = self._CALCULATION_MANAGER.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         return grad_vec * (1.0 / y_pred.size) 
     
@@ -359,9 +348,10 @@ class FlexibleLoss(Loss):
         -------
         dict[str,float]
         """
-        temp_array = self.arr_constants.copy()
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            temp_array = self._be.asnumpy(temp_array)
+            temp_array = self._CALCULATION_MANAGER.asnumpy(temp_array)
+        else:
+            temp_array = self.arr_constants.copy()
         
         reconstructed_constants = {}
         for i,key in enumerate(sorted(self._constants.keys())):
@@ -458,3 +448,18 @@ class BinaryCrossEntropy(FlexibleLoss):
     @clean_traceback
     def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
         super().__init__("bce",computational_method=computational_method,gpu_id=gpu_id)
+
+class CategoricalCrossEntropy(FlexibleLoss):
+    """
+    High level class for calling for a Categorical Cross Entropy loss function.
+    
+    Parameters
+    ----------
+    computational_method : Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"], optional
+        The computational method that is going to be used, by default None.
+    gpu_id : int, optional
+        The GPU ID that is going to be used if method is "GPU_CUDA", by default 0.
+    """
+    @clean_traceback
+    def __init__(self,computational_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"] = None,gpu_id:int = 0):
+        super().__init__("-(y_true * log(y_pred + 1e-7))",computational_method=computational_method,gpu_id=gpu_id)

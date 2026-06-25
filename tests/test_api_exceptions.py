@@ -17,7 +17,8 @@ from HeteroSymNN.exceptions import (
     TrainingError,
     LoadingError,
     SavingError,
-    PathError
+    PathError,
+    HeteroSymNNValueError
 )
 from HeteroSymNN.Core.Nets import LinearNet
 from HeteroSymNN.API.wrappers import Wrapper
@@ -47,13 +48,13 @@ class TestNetworkExceptions:
     def test_computational_method_value_error(self):
         """Test setting an unknown computational method."""
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=["relu", "linear"], num_training_iter=1)
-        with pytest.raises(ComputationalMethodValueError, match="isn't GPU_CUDA, CPU_JIT or CPU_PYTHON"):
+        with pytest.raises(HeteroSymNNValueError, match="isn't GPU_CUDA, CPU_JIT or CPU_PYTHON"):
             model.set_backend("TPU_MAGIC")
 
     def test_device_selection_error(self):
         """Test changing device to an unknown hardware type."""
         model = LinearNet(nodes_structure=[4, 4, 1], activation_config=["relu", "linear"], num_training_iter=1)
-        with pytest.raises(DeviceSelectionError, match="is not host or device"):
+        with pytest.raises(HeteroSymNNValueError, match="is not host or device"):
             model.to("TPU")
 
     def test_shape_mismatch_predict(self):

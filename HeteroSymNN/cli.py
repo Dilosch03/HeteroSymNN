@@ -23,6 +23,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="HeteroSymNN CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    #Version
+    parser_version = subparsers.add_parser("version", help="Get the version of the framework.")
+
     #Hardware
     parser_hardware = subparsers.add_parser("hardware", help="Get the detected harware of the system.")
 
@@ -305,5 +308,9 @@ def main() -> int:
 
         except Exception as e:
             print(f"Error inspecting model: {e}")
+
+    elif args.command == "version":
+        from . import __version__
+        print(f"Version: {__version__}")
 
     return 0

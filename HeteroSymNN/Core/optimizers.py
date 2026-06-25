@@ -201,7 +201,7 @@ class Optimizer:
                 self._route_layer(layer)
         else:
             if self._thread_pool is None:
-                self._thread_pool = concurrent.futures.ThreadPoolExecutor()
+                self._thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings.n_jobs)
             
             list(self._thread_pool.map(self._route_layer, layers))
 

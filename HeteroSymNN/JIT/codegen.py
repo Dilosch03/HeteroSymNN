@@ -1,7 +1,7 @@
 from string import Template
 
 __all__ = [
-    "CUDA_USER_FUNCS", "CPP_USER_FUNCS", "COMMON_FORMULAS",
+    "CUDA_USER_FUNCS", "CPP_USER_FUNCS", "COMMON_FORMULAS", "PYTHON_VECTORIZED_FUNCS", "ALIAS_DEFAULTS",
     "CUDA_KERNEL_TEMPLATE_ACTIVATION", "CUDA_KERNEL_TEMPLATE_LOSS",
     "CPP_KERNEL_TEMPLATE_ACTIVATION", "CPP_KERNEL_TEMPLATE_LOSS",
 ]
@@ -33,7 +33,10 @@ CUDA_USER_FUNCS = {
     # --- FUNCIONES AVANZADAS ---
     "Max": "fmaxf",          # ReLU usa esto
     "Heaviside": "heavisidef", # Derivada de ReLU
-    "erf": "erff"            # Necesaria para GELU
+    "erf": "erff",            # Necesaria para GELU
+    "erfc": "erfcf",
+    "gamma": "tgammaf",
+    "lgamma": "lgammaf"
 }
 
 CPP_USER_FUNCS = {
@@ -54,15 +57,25 @@ CPP_USER_FUNCS = {
     "tanh": "tanh",
     "Max": "fmax", 
     "Heaviside": "heaviside",
-    "erf": "erf"
+    "erf": "erf",
+    "erfc": "erfc",
+    "gamma": "tgamma",
+    "lgamma": "lgamma"
 }
+
+PYTHON_VECTORIZED_FUNCS = [
+    "erf",
+    "erfc",
+    "gamma",
+    "lgamma"
+]
 
 COMMON_FORMULAS = {
     'relu': "Max(0.0, num)",
     "leaky_relu": "Piecewise((num * alpha, num < 0), (num, True))",
     'sigmoid': "1 / (1 + exp(-num))",
     'swish': "num / (1 + exp(-beta*num))",
-    "silu": "num / (1 + exp(-num))",
+    "silu": "num * (1 + tanh(num/2)) / 2",
     'softplus': "log(1 + exp(num))",
     'mish': "num * tanh(log(1 + exp(num)))",
     'gelu': "0.5 * num * (1 + erf(num / sqrt(2.0)))",
@@ -72,6 +85,11 @@ COMMON_FORMULAS = {
     'mae': "Abs(y_pred - y_true)",
     'huber': "Piecewise((0.5 * (y_pred - y_true)**2, Abs(y_pred - y_true) <= 1.0), (Abs(y_pred - y_true) - 0.5, True))",
     'bce': "-(y_true * log(y_pred + 1e-7) + (1 - y_true) * log(1 - y_pred + 1e-7))"
+}
+
+ALIAS_DEFAULTS = {
+    'leaky_relu': {'alpha': 0.01},
+    'swish': {'beta': 1.0}
 }
 
 CUDA_KERNEL_TEMPLATE_ACTIVATION = Template("""

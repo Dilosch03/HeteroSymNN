@@ -188,3 +188,19 @@ registry.add_net(MyCustomNet)
 # registry.add_data_transformer(Class)
 ```
 </registries>
+
+<executable_contract>
+# Executable Developer Contract:
+# A complete, working implementation of this developer contract is available at:
+# [custom_extensions_template.py](file:///c:/Users/dilos/Documents/GitHub/HeteroSymNN/Examples/custom_extensions_template.py)
+#
+# This script:
+# 1. Shows minimal, clean, CPU/GPU-portable subclasses for:
+#    - `Loss` (Log-Cosh Loss)
+#    - `Optimizer` (SGD with L2 Weight Decay)
+#    - `Initializer` (Constant Scale Initializer)
+#    - `DataTransformer` (Value Clipping Transformer)
+# 2. Demonstrates how to register these custom classes with the global `registry`.
+# 3. Runs an end-to-end training, saving, and loading verification check to guarantee that the JIT compiler and serialization systems reconstruct the custom classes cleanly.
+# 4. Serves as a copy-pasteable boilerplate for extending the framework.
+</executable_contract>
