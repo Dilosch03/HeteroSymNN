@@ -82,8 +82,7 @@ def train_custom_loop():
     for epoch in range(1, epochs + 1):
         # Shuffle indices at the start of each epoch
         shuffled_indices = np.random.permutation(num_train_samples)
-        epoch_loss_accum = 0.0
-        batch_count = 0
+        batch_losses, batch_sizes = [], []
 
         # Mini-batch training
         for start_idx in range(0, num_train_samples, batch_size):
@@ -104,9 +103,9 @@ def train_custom_loop():
             loss_val = model.loss_function.forward(y_pred, y_batch)
             error = model.loss_function.backward(y_pred, y_batch)
             
-            # Accumulate loss (converting JIT array back to python float)
-            epoch_loss_accum += float(model._ASNUMPY(loss_val))
-            batch_count += 1
+            # Keep the batch loss on the device; the loss function decides how batches combine
+            batch_losses.append(loss_val)
+            batch_sizes.append(len(batch_indices))
             
             # 4. Run Backward Pass (backpropagates gradients through JIT layers)
             model.backward(error)
@@ -114,8 +113,8 @@ def train_custom_loop():
             # 5. Update Parameters (optimizer updates weights/biases on device)
             model.update_params()
 
-        # Calculate average training loss for this epoch
-        train_loss = epoch_loss_accum / batch_count
+        # Epoch loss as defined by the loss function (one device-to-host transfer per epoch)
+        train_loss = float(model._ASNUMPY(model.loss_function.combine_batches(batch_losses, batch_sizes)))
 
         # ---------------------------------------------------------------------
         # Validation Pass (Forward Pass only - no backward or updates)

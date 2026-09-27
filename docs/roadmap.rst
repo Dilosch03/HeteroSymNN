@@ -8,6 +8,15 @@ HeteroSymNN is currently in active beta. The architecture is evolving towards a 
 Current Phase: v0.3.x (API Stabilization)
 -----------------------------------------
 * **[Completed]** Restructure of the project for scalability and modularity.
+* **[Completed]** Formula string safeguards: every formula is checked against a math-only allowlist (``JIT/validator.py``) before SymPy parses it, including formulas loaded from ``.symnn`` files.
+* **[Completed]** The loss object is the single source of truth for the loss value and gradient scaling. Layers apply the plain chain rule, and training loops combine batch losses through ``Loss.combine_batches``.
+* **[Planned, v0.3.x]** Parameter and configuration editing rework:
+
+  * ``set_parameters`` writes new values directly in each layer's current format (host or device), with no host round trip for the whole network. Only the changed layers are transferred.
+  * Setters apply immediately and never change the model's location. Users who make many edits can group them between ``to("host")`` and ``to("device")``.
+  * Review the defensive copies and conversions in ``get_parameters`` / ``get_config`` / ``set_*`` and keep only the ones that protect against real aliasing.
+
+* **[Planned, v0.3.x]** A shared save/load helper used by both ``BaseNetwork`` and ``Wrapper``, so the ``.symnn`` format lives in one place.
 
 Upcoming: v0.4.0 (API, Persistence & Heterogeneous Systems)
 -----------------------------------------------------------
@@ -15,9 +24,16 @@ Upcoming: v0.4.0 (API, Persistence & Heterogeneous Systems)
 
   * Converting magic routing strings (like ``"GPU_CUDA"``) into strict String-Enums to enable IDE autocomplete and prevent typos.
 
-* **JIT Compiler Evolution**: Implementing string safeguards.
+* **JIT Compiler Evolution**: Making a modular architecture for expansion of capabilities.
 
-  * Making a modular architecture for expansion of capabilities.
+* **Configurable Loss Reductions:** The loss defines how its value and gradient scale with the batch.
+
+  * The ``Loss`` base class owns the reduction. Subclasses implement only element-wise math (``elementwise`` / ``elementwise_gradient``), and the base class applies the same weights to the value and the gradient, so they can never disagree.
+  * ``reduction`` parameter: ``"mean"`` (all elements, current default), ``"batch_mean"`` (sum over outputs, mean over samples) and ``"sum"``, saved in the ``.symnn`` config.
+  * ``output_weights`` to prioritize outputs (the base for the multi-objective losses below).
+  * Only linear reductions (weighted sums) go through this path. Non-linear ones (e.g. RMSE) override ``forward``/``backward`` directly.
+  * ``combine_batches`` follows the reduction automatically, and the docs warn that ``"sum"`` makes the effective learning rate grow with the batch size.
+  * Later: per-sample weights passed as data through ``Wrapper.fit(..., sample_weight=...)``.
 
 * **Custom class Persistence:** Adding a hierarchical registry loading of custom classes.
 * **Expansion of classes:** Adding more types of initializers, optimizers, losses and data transformers.

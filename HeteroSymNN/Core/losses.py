@@ -23,8 +23,8 @@ class Loss:
     """
     @clean_traceback
     def __init__(self, computational_method: Optional[Literal["GPU_CUDA", "CPU_JIT", "CPU_PYTHON"]] = None, gpu_id: int = 0):
-        self._CALCULATION_MANAGER = settings.default_manager
-        self._ASNUMPY = settings.default_asnumpy
+        self.be = settings.default_manager
+        self.asnumpy = settings.default_asnumpy
         self._COMPUTATIONAL_METHOD = settings.default_compute_method
         _validate_gpu_id(gpu_id)
         self._GPU_ID = gpu_id
@@ -59,11 +59,11 @@ class Loss:
             self._COMPUTATIONAL_METHOD = new_method
             self._GPU_ID = gpu_id
             if ("CPU" in new_method):
-                self._CALCULATION_MANAGER = np
-                self._ASNUMPY = np.array
+                self.be = np
+                self.asnumpy = np.array
             elif ("GPU" in new_method):
-                self._CALCULATION_MANAGER = HW.cp
-                self._ASNUMPY = HW.cp.asnumpy
+                self.be = HW.cp
+                self.asnumpy = HW.cp.asnumpy
         return self._COMPUTATIONAL_METHOD
 
     def set_gpu_id(self, new_id: int):
@@ -87,7 +87,8 @@ class Loss:
         Returns
         -------
         :type:`~HeteroSymNN.types.BackendArray`
-            The loss value.
+            The loss value, reduced to a scalar. The loss is the only component that decides how
+            element-wise values are reduced (mean, sum, ...): networks and wrappers use this value as-is.
         """
         raise NotImplementedError
 
@@ -96,6 +97,8 @@ class Loss:
         Computes the gradient of the loss.
 
         This method must be implemented by subclasses to define the backward pass (gradient computation) of the loss function.
+        It must be the exact gradient of :meth:`forward`, including its reduction (e.g. divided by ``y_pred.size``
+        for a mean). Layers apply the plain chain rule and never rescale it.
 
         Parameters
         ----------
@@ -107,9 +110,32 @@ class Loss:
         Returns
         -------
         :type:`~HeteroSymNN.types.BackendArray`
-            The gradient of the loss.
+            The gradient of :meth:`forward` w.r.t. ``y_pred``, with the same shape as ``y_pred``.
         """
         raise NotImplementedError
+
+    def combine_batches(self, batch_losses:list[BackendArray], batch_sizes:list[int])->BackendArray:
+        """
+        Combines the values returned by :meth:`forward` for several batches into the value for all of them together.
+
+        Used by the training loops to report one loss per epoch. The default matches a mean reduction: each batch
+        is weighted by its number of samples, so a smaller last batch counts less. Subclasses whose :meth:`forward`
+        uses another reduction (e.g. a sum) must override it.
+
+        Parameters
+        ----------
+        batch_losses : list[:type:`~HeteroSymNN.types.BackendArray`]
+            Values returned by :meth:`forward`, one per batch. They can stay on the device.
+        batch_sizes : list[int]
+            Number of samples in each batch.
+
+        Returns
+        -------
+        :type:`~HeteroSymNN.types.BackendArray`
+            The combined loss value (on the same device as the inputs).
+        """
+        total = sum(loss * size for loss, size in zip(batch_losses, batch_sizes))
+        return total / sum(batch_sizes)
 
     def get_config(self):
         """
@@ -222,10 +248,10 @@ class FlexibleLoss(Loss):
             temp.append(0.0)
 
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            with self._CALCULATION_MANAGER.cuda.Device(self._GPU_ID):
-                self.arr_constants = self._CALCULATION_MANAGER.array(temp,dtype=settings.default_dtype)
+            with self.be.cuda.Device(self._GPU_ID):
+                self.arr_constants = self.be.array(temp,dtype=settings.default_dtype)
         else:
-            self.arr_constants = self._CALCULATION_MANAGER.array(temp,dtype=settings.default_dtype)
+            self.arr_constants = self.be.array(temp,dtype=settings.default_dtype)
 
     def set_gpu_id(self,new_id:int)->None:
         """
@@ -270,9 +296,9 @@ class FlexibleLoss(Loss):
         """
         old_method = self._COMPUTATIONAL_METHOD
         old_gpu_id = self._GPU_ID
-        old_asnumpy = self._ASNUMPY
+        old_asnumpy = self.asnumpy
         
-        # 1. Call base class implementation to perform validation, fallback, and update _CALCULATION_MANAGER/_ASNUMPY
+        # 1. Call base class implementation to perform validation, fallback, and update be/asnumpy
         super()._change_COMPUTATIONAL_METHOD(new_method, gpu_id)
         
         # 2. If the method actually changed, compile/migrate the JIT kernels and move constants
@@ -285,14 +311,14 @@ class FlexibleLoss(Loss):
             
             # Sync the backend variables again based on what the JIT compiler resolved (which might fallback)
             if (self._COMPUTATIONAL_METHOD == "GPU_CUDA"):
-                self._CALCULATION_MANAGER = HW.cp
-                self._ASNUMPY = HW.cp.asnumpy
+                self.be = HW.cp
+                self.asnumpy = HW.cp.asnumpy
             else:
-                self._CALCULATION_MANAGER = np
-                self._ASNUMPY = np.array
+                self.be = np
+                self.asnumpy = np.array
 
             # Reload constants array onto the new device
-            self.arr_constants = self._CALCULATION_MANAGER.array(temp, dtype=settings.default_dtype)
+            self.arr_constants = self.be.array(temp, dtype=settings.default_dtype)
 
         return self._COMPUTATIONAL_METHOD
 
@@ -313,10 +339,10 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Loss value.
         """
-        y_true = self._CALCULATION_MANAGER.ascontiguousarray(y_true)
-        loss_vec = self._CALCULATION_MANAGER.zeros_like(y_pred,dtype=settings.default_dtype)
+        y_true = self.be.ascontiguousarray(y_true)
+        loss_vec = self.be.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.forward_kernel(y_pred, y_true, loss_vec,self.arr_constants)
-        return self._CALCULATION_MANAGER.mean(loss_vec) 
+        return self.be.mean(loss_vec) 
 
     @clean_traceback
     def backward(self, y_pred:BackendArray, y_true:BackendArray):
@@ -335,8 +361,8 @@ class FlexibleLoss(Loss):
         :type:`~HeteroSymNN.types.BackendArray`
             Gradient of the loss with respect to the predicted values.
         """
-        y_true = self._CALCULATION_MANAGER.ascontiguousarray(y_true)
-        grad_vec = self._CALCULATION_MANAGER.zeros_like(y_pred,dtype=settings.default_dtype)
+        y_true = self.be.ascontiguousarray(y_true)
+        grad_vec = self.be.zeros_like(y_pred,dtype=settings.default_dtype)
         self._compiler.backward_kernel(y_pred, y_true, grad_vec,self.arr_constants)
         return grad_vec * (1.0 / y_pred.size) 
     
@@ -349,7 +375,7 @@ class FlexibleLoss(Loss):
         dict[str,float]
         """
         if (self._COMPUTATIONAL_METHOD.split("_")[0] == "GPU"):
-            temp_array = self._CALCULATION_MANAGER.asnumpy(temp_array)
+            temp_array = self.be.asnumpy(temp_array)
         else:
             temp_array = self.arr_constants.copy()
         

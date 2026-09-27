@@ -69,13 +69,13 @@ class TestSymbolicJITCompilerExceptions:
             SymbolicJITCompiler(configs, "CPU_PYTHON", 0, "activation")
 
     def test_unsupported_backend_translation(self):
-        """Test that math operations with no C++/NumPy equivalent fail gracefully."""
+        """Test that math operations with no C++/NumPy equivalent are rejected before compilation."""
         configs = [("factorial(num)", {})]
         with pytest.raises(FormulaParsingError) as exc_info:
             SymbolicJITCompiler(configs, "CPU_PYTHON", 0, "activation")
-            
-        assert "Failed to generate executable code" in str(exc_info.value)
-        assert "SymPy found the derivative but cannot translate it" in str(exc_info.value)
+
+        assert "'factorial'" in str(exc_info.value)
+        assert "is not a supported function" in str(exc_info.value)
 
     def test_comprehensive_error_report(self):
         """Test that multiple broken formulas across different nodes report all at once."""

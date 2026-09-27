@@ -158,7 +158,7 @@ class LinearNet(HeteroLinearNet):
         if len(activation_config) != num_layers:
              raise NetworkStructureError(f"The list of the activation functions have {len(activation_config)} elements, but was set {num_layers} layers in nodes_structure.")
         
-        # Single object multiple references, could be a problem for initializers with states (e.g. seed or drop_out)
+        # Update when implementing statefull initializers
         if not isinstance(initializer, list):                                                       
             if not(initializer is None):
                 initializer = [initializer] * num_layers
@@ -282,7 +282,6 @@ class MLP(LinearNet):
         if len(nodes_structure) < 2:
             raise NetworkStructureError("node_structure must have at least 2 elements (input layer and output layer).")
 
-        #check edge case where there are no hidden layers
         num_hidden_layers = len(nodes_structure) - 2 
         
         activations_list = [activation] * num_hidden_layers

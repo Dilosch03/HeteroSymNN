@@ -3,32 +3,40 @@
 Performance & Benchmarks
 ========================
 
-To demonstrate the potential of the project, HeteroSymNN was tested against the Google JAX and Meta PyTorch frameworks across 4 distinct scenarios:
+HeteroSymNN was compared against PyTorch and JAX in four scenarios, plus one internal comparison of its own backends:
 
-1. Increasing Heterogeneity in a layer.
-2. VRAM/RAM scaling with batch sizes.
-3. General Computing (Wide & Shallow vs. Deep & Narrow Homogeneous Networks).
-4. Function constant mutation.
+1. Increasing heterogeneity (number of distinct activation functions) in one layer.
+2. GPU memory as the batch size grows.
+3. Standard homogeneous networks (wide & shallow vs. deep & narrow).
+4. Changing an activation constant during training.
+5. HeteroSymNN backends compared with each other.
 
-Additionally, a fifth internal benchmark is included to demonstrate the framework's hardware agnosticism and backend performance.
+**Summary.** HeteroSymNN's step time stays flat as a layer becomes more heterogeneous, and it uses less GPU memory than a straightforward PyTorch implementation of a mixed-activation layer. On standard homogeneous networks it is slower than both PyTorch and JAX. Choose it for flexibility, not raw speed.
 
 Testing Environment
 --------------------
-The tests were conducted on Windows WSL2 environment (Ubuntu), utilizing an Intel Core i9-13900HX CPU and an NVIDIA RTX 4060 Laptop GPU (8GB VRAM) running CUDA 13.x.
+The tests were run in WSL2 (Ubuntu) on an Intel Core i9-13900HX CPU and an NVIDIA RTX 4060 Laptop GPU (8 GB VRAM) with CUDA 13.x.
 
-Each scenario was executed three times in isolation. We report the mean and standard deviation to eliminate potential OS background noise and thermal throttling artifacts.
+Each measurement is the mean ± standard deviation of repeated trials (100 training steps per trial, 5 trials unless stated otherwise). A training step is forward pass + loss + backward pass + parameter update.
 
-**Methodological Rigor (Fair-Play Benchmarking)**
+Methodology
+-----------
 
-To ensure objective and defensible data, the underlying test script enforced strict operational constraints:
+* **Synchronization:** ``torch.cuda.synchronize()``, ``jax.block_until_ready()`` and ``cp.cuda.get_current_stream().synchronize()`` were called before stopping each timer, so the times include the GPU work and not only Python's asynchronous dispatch.
+* **Warmup:** Unmeasured steps were run before timing, so compilation, lazy initialization and first allocations are excluded from step times. HeteroSymNN compile times are reported separately where relevant.
+* **Memory isolation:** Memory pools and caches were cleared between frameworks (``torch.cuda.empty_cache()``, ``jax.clear_caches()``, CuPy pool release). JAX's default preallocation of 90% of VRAM was disabled (``XLA_PYTHON_CLIENT_PREALLOCATE="false"``).
+* **JAX:** Training loops were compiled with ``jax.jit``. Scenarios 1 and 3 also use ``jax.lax.scan``, so the whole loop runs as a single XLA program.
+* **Compilation caches:** Compiled kernels (CuPy NVRTC disk cache, JAX XLA cache) persist across scenarios within one run, so compile times of later scenarios can be lower. Step times are not affected.
 
-* **JAX VRAM Allocation Restrictions:** JAX's default behavior of aggressively preallocating 90% of available GPU VRAM was explicitly disabled (`XLA_PYTHON_CLIENT_PREALLOCATE="false"`). This ensures fair and accurate memory footprint comparisons, which is especially crucial for the Batch Size benchmark.
-* **Asynchronous Execution Synchronization:** Hardware-level barriers (`torch.cuda.synchronize()`, `jax.block_until_ready()`, and `cp.cuda.get_current_stream().synchronize()`) were enforced before stopping timers. This guarantees we measured true sustained hardware execution latency, not merely Python's asynchronous dispatch time.
-* **Warmup Passes:** Unmeasured forward and backward passes were executed prior to starting the timers. This isolates the frameworks' cold-start, lazy initialization, and initial memory allocation penalties from the actual computation benchmark.
-* **Strict Memory Isolation:** Aggressive garbage collection and VRAM purging (`torch.cuda.empty_cache()`, `jax.clear_caches()`, etc.) were forced between framework passes to prevent memory fragmentation and cross-contamination.
-* **JAX Optimization (Anti-Sandbagging):** To give the JAX baseline its optimal "best-case" performance, its execution loops were heavily optimized using the static compilation (`@partial(jax.jit)` and `jax.lax.scan`), ensuring maximum cache hits and completely unrolled C++ execution.
-* **Kernel Compilation Caching:** While active VRAM and object states are purged between runs, compiled binary caches (e.g., CuPy's NVRTC temp-disk cache, JAX's XLA RAM cache) persist across the script's sequential execution. Consequently, similar graph structures or mathematical operations evaluated in later scenarios benefit from compilation cache hits. This causes *compile times* to progressively skew lower as the benchmark advances, which accurately reflects a real-world, iterative development lifecycle where frameworks reuse previously built kernels.
-* **Sequential Hardware Caching:** Configurations and trials are executed sequentially. While software-level memory pools are actively purged, the underlying GPU instruction caches (L1/L2/L3) and the CUDA context remain "warm." This sequential design intentionally allows all frameworks to benefit from low-level hardware cache hits, ensuring the reported execution metrics reflect optimal, steady-state throughput rather than anomalous cold-boot latencies.
+Known differences between the setups
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Read the results with these differences in mind:
+
+* **Optimizer:** PyTorch and HeteroSymNN use Adam. The JAX baselines use a plain SGD update, which does less work per step.
+* **Memory measurement:** PyTorch memory is ``torch.cuda.max_memory_allocated()`` (peak, includes the input batch). HeteroSymNN memory is the drop in free device memory (``cudaMemGetInfo``) around model creation and one training step, measured after the input batch was already on the GPU. The two numbers are indicative, not directly equivalent.
+* **PyTorch baseline for heterogeneous layers:** Implemented the straightforward way: slice the pre-activations per function, apply each function, concatenate. Other implementations (masking, ``torch.compile``) could behave differently.
+* **Scenario 4 JAX setup:** The constant was declared as a static (compile-time) argument. This forces a recompilation for every new value. See the scenario for details.
 
 Benchmark Scenarios
 -------------------
@@ -36,12 +44,12 @@ Benchmark Scenarios
 1. Degree of Heterogeneity
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Setup:** This benchmark utilizes a single hidden layer (1024 neurons) partitioned into `N` distinct mathematical functions (Total network parameters: 264,193). 
+**Setup:** One hidden layer of 1,024 neurons (256 → 1024 → 1, 264,193 parameters, batch 2,048), split into `N` groups that each use a different activation function.
 
-.. list-table:: VRAM and Execution Time vs. Unique Functions
+.. list-table:: Memory and step time vs. number of distinct functions
    :header-rows: 1
 
-   * - Unique Functions
+   * - Distinct Functions
      - PyTorch VRAM
      - PyTorch (ms)
      - JAX XLA (ms)
@@ -84,21 +92,23 @@ Benchmark Scenarios
      - 31.1 MB
      - 1.28 ± 0.02
 
-**Analysis:** Both PyTorch and JAX exhibit scaling execution times as graph fragmentation increases, struggling with internal tensor slicing and concatenation. In contrast, HeteroSymNN demonstrates an `O(1)` scaling of VRAM usage relative to layer slicing, a direct result of its single-kernel function switching architecture.
+**Analysis:** HeteroSymNN's step time stays between 1.25 and 1.59 ms and its memory stays at 31.1 MB whatever the number of functions. All functions of the layer live in one kernel, so more functions do not mean more kernels or intermediate tensors. PyTorch slows down as the layer is split into more slices (0.95 → 2.37 ms), and JAX varies with the fragmentation but is faster than HeteroSymNN up to 16 functions.
+
+In practice: with fewer than ~16 distinct functions per layer, PyTorch and JAX are faster. From ~16 (PyTorch) or ~32 (JAX) distinct functions, HeteroSymNN is the fastest of the three here.
 
 
 2. Batch Size Scaling
 ^^^^^^^^^^^^^^^^^^^^^
 
-**Setup:** This scenario evaluates how VRAM usage scales with batch size in a 4-function single-hidden-layer network (Total network parameters: 66,561). 
+**Setup:** GPU memory for a 4-function single-hidden-layer network (128 → 512 → 1, 66,561 parameters) as the batch size grows. PyTorch was measured over one forward/backward pass. HeteroSymNN was measured over model creation plus one full training step with Adam (see *Known differences*).
 
-.. list-table:: VRAM Reduction vs. PyTorch
+.. list-table:: GPU memory vs. batch size
     :header-rows: 1
 
     * - Batch Size
       - PyTorch
       - H-SymNN
-      - VRAM Reduction 
+      - Difference
     * - 1,024
       - 33.1 MB
       - 7.8 MB
@@ -106,7 +116,7 @@ Benchmark Scenarios
     * - 4,096
       - 67.6 MB
       - 27.3 MB
-      - -60% 
+      - -60%
     * - 16,384
       - 205.7 MB
       - 105.5 MB
@@ -118,17 +128,17 @@ Benchmark Scenarios
     * - 131,072
       - 1494.5 MB
       - 834.8 MB
-      - -44%  
+      - -44%
 
-**Analysis:** Because HeteroSymNN relies on a single fused kernel implementation, there is no requirement to save intermediate routing results. This drops VRAM usage by ~76% at smaller batch sizes and ~44% at massive batch sizes. Consequently, devices with limited VRAM—such as laptops and edge devices (e.g., Raspberry Pi)—can confidently run batch sizes approximately twice as large as PyTorch.
+**Analysis:** The slice-and-concatenate PyTorch layer keeps extra copies of the pre-activations (one per slice plus the concatenated result) for the backward pass. HeteroSymNN keeps a fixed set of buffers per layer (pre-activation, activation and delta), whatever the number of functions. The gap is largest at small batch sizes (-76%), where fixed overheads dominate, and settles around -44% at large batch sizes. With the same memory budget, this allows roughly 1.8× larger batches for this kind of layer.
 
 
 3. General Computing
 ^^^^^^^^^^^^^^^^^^^^
 
-**Setup:** Here we test general computation overhead for homogeneous networks across wide and deep architectures. 
+**Setup:** Homogeneous networks (one activation function everywhere), batch 2,048.
 
-.. list-table:: Wide vs. Deep Architecture Performance
+.. list-table:: Wide vs. deep homogeneous networks
     :header-rows: 1
 
     * - Architecture
@@ -139,48 +149,52 @@ Benchmark Scenarios
       - H-SymNN (ms)
     * - Wide & Shallow (1x1024)
       - 264,193
-      - 1.89 ± 0.45 ms
-      - 1.33 ± 0.17 ms
+      - 1.89 ± 0.45
+      - 1.33 ± 0.17
       - 0.012 s
-      - 3.01 ± 2.31 ms
+      - 3.01 ± 2.31
     * - Deep & Narrow (16x64)
       - 78,913
-      - 3.18 ± 0.32 ms
-      - 0.83 ± 0.01 ms
+      - 3.18 ± 0.32
+      - 0.83 ± 0.01
       - 0.019 s
-      - 5.14 ± 0.09 ms
+      - 5.14 ± 0.09
 
-**Analysis:** On standard, static architectures compiled entirely into C++ (like `jax.lax.scan`), Google JAX is heavily optimized. HeteroSymNN trades a few milliseconds here for Python loop dispatch overhead. However, this is an artifact of the current implementation, not an architectural ceiling. By logically decoupling the execution routing loop from the JIT-compiled kernels, HeteroSymNN intentionally avoids fusing the entire training process into a rigid static graph. Porting this decoupled routing logic to a native C++ object in the future will minimize this dispatch overhead while retaining the immense flexibility demonstrated in the other benchmarks.
+**Analysis:** On standard networks HeteroSymNN is about 1.6× slower than PyTorch and 2–6× slower than JAX. The gap is largest on the deep network, where a step runs many small layers and the per-layer Python dispatch dominates. JAX compiles the entire training loop into one program (``jax.lax.scan``), which removes that overhead completely. Moving the layer loop out of Python is on the roadmap. Until then, for homogeneous networks PyTorch or JAX are the better choice.
 
 
-4. Mutation Frequency
-^^^^^^^^^^^^^^^^^^^^^
+4. Changing a Constant During Training
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Setup:** This test compares compilation and execution latency when a constant within an activation function is dynamically mutated. We used `sin(x * alpha)`, where `alpha` acts as the mutating constant. 
+**Setup:** A 128 → 256 → 1 network with the activation ``sin(x * alpha)``, batch 1,024. `alpha` is changed on all 256 neurons never, every 10th batch, or every batch.
 
-.. list-table:: Impact of Dynamic Graph Topology Changes
+.. list-table:: Step time vs. how often the constant changes
     :header-rows: 1
 
-    * - Mutation Freq
-      - Google JAX (ms/batch)
-      - HeteroSymNN (ms/batch)
-    * - Static
-      - 1.63 ± 0.12 ms
-      - 1.81 ± 0.55 ms
-    * - Medium (1/10 batches)
-      - 20.51 ± 26.08 ms
-      - 1.69 ± 0.06 ms
-    * - Extreme (Every batch)
-      - 168.16 ± 234.57 ms
-      - 4.97 ± 0.11 ms
+    * - Change Frequency
+      - JAX, alpha as static argument (ms/step)
+      - HeteroSymNN (ms/step)
+    * - Never
+      - 1.63 ± 0.12
+      - 1.81 ± 0.55
+    * - Every 10 batches
+      - 20.51 ± 26.08
+      - 1.69 ± 0.06
+    * - Every batch
+      - 168.16 ± 234.57
+      - 4.97 ± 0.11
 
-**Analysis:** Static compilers like Google's XLA (JAX) cannot efficiently survive mutating architectures. When modifying graph topology dynamically, JAX treats structural changes as cache misses, triggering catastrophic C++ recompilation lockups (evidenced by the massive ± 234.57 ms stutter). Conversely, HeteroSymNN injects dynamic constants directly into active memory slots independently of the compiled kernel. This allows it to execute Liquid/Evolutionary networks with high consistency (± 0.11 ms) and over 33x faster than JAX under extreme mutation conditions.
+**Analysis:** In HeteroSymNN, constants are kernel arguments, so changing them never triggers a recompilation. The extra cost when changing all 256 constants every batch (~3 ms) is the ``change_constants`` call itself: it writes the constants one at a time, which on the GPU means one small host-to-device copy per constant.
+
+The JAX column shows what happens when a value is baked into the compiled program: every new value is a cache miss and a full XLA recompilation, hence the large and unstable times. This is **not** the idiomatic JAX setup. Passing `alpha` as a normal (traced) argument compiles once and reuses the program for every value. A CPU check of the same step confirms this: 30 changes of a static `alpha` caused 30 compilations, while a traced `alpha` compiled once. PyTorch's eager mode doesn't compile at all, so it has no recompilation cost either.
+
+The fair takeaway: HeteroSymNN makes *every* constant in a formula a runtime value automatically, per neuron, without the user having to design for it. Changing constants does not force recompilation in PyTorch eager or in idiomatic JAX either. The GPU numbers for traced JAX and for PyTorch will be added to this table in the next benchmark run.
 
 
-5. Hardware Agnosticism (Internal)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5. Backend Comparison (Internal)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Setup:** To guarantee execution on any hardware, HeteroSymNN features three computational backends that the framework selects automatically based on system capabilities. 
+**Setup:** The same small network (64 → 128 → 1, batch 1,024) on each HeteroSymNN backend.
 
 .. list-table:: Backend Performance Comparison
     :header-rows: 1
@@ -188,18 +202,20 @@ Benchmark Scenarios
     * - Execution Mode
       - Backend Tech
       - Compile Time
-      - Execution (ms/batch)
+      - Execution (ms/step)
     * - GPU_CUDA
       - NVRTC (In-Memory)
       - 0.0024 s
-      - 1.64 ± 0.16 ms
+      - 1.64 ± 0.16
     * - CPU_JIT
       - GCC/MSVC Subprocess
       - 0.7857 s
-      - 68.15 ± 28.77 ms 
+      - 68.15 ± 28.77
     * - CPU_PYTHON
-      - Pure NumPy 
+      - Pure NumPy
       - 0.0196 s
-      - 2.70 ± 0.35 ms
+      - 2.70 ± 0.35
 
-**Analysis:** As observed above, the `CPU_JIT` backend currently underperforms compared to the other two methods. Therefore, for the 0.3.0 version release, `CPU_JIT` will be deactivated, making `CPU_PYTHON` the default fallback for all CPU computations. By leveraging the NumPy architecture, the performance drop from GPU to CPU remains highly manageable (less than a 2x latency increase), ensuring robust accessibility and deployment safety across all devices.
+**Analysis:** The C++/OpenMP backend (``CPU_JIT``) was far slower than plain NumPy and slow to compile, so it is disabled from v0.3.0. Requests for it fall back to ``CPU_PYTHON``.
+
+On this small network, NumPy is within 2× of the GPU, because there is little work per step for the GPU to parallelize. The gap grows with network and batch size. Also note that on ``CPU_PYTHON``, layers with several distinct functions currently evaluate each neuron separately, so mixed layers are relatively slower on CPU than homogeneous ones.

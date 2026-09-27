@@ -18,7 +18,7 @@ If you are manually constructing a custom topology, you can initialize a ``Linea
 .. code-block:: python
 
     from HeteroSymNN.Core.layers import LinearLayer
-    from HeteroSymNN.Core.Nets.initializers import HeNormal
+    from HeteroSymNN.Core.initializers import HeNormal
 
     # 1. Define the symbolic physics for the 25 nodes
     node_configs = [("sin(num*a)", {"a": 1.5})] * 25

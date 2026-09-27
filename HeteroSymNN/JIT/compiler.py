@@ -10,11 +10,10 @@ import warnings
 import shutil 
 import json
 import hashlib
-import ast
 
 from ..Backend import hardware as HW
 from ..Backend.validators import _validate_gpu_id
-from . import codegen
+from . import codegen, validator
 from ..types import NodeConfig
 from ..exceptions import CompilationWarning,FormulaParsingError,JITCompilationError,InvalidDeviceIDError,PerformanceWarning,BackendNotAvailableError,ComputationalMethodValueError
 from ..config import settings
@@ -106,7 +105,7 @@ class SymbolicJITCompiler:
         self.func_ids_gpu = None 
         self.forward_kernel = None
         self.backward_kernel = None
-        self.func_ids = self.func_ids_cpu
+        self.func_ids = None
         self.activation_funcs = configs
         self.mode = mode
         self.main_vars = [sp.symbols('num', real=True)]
@@ -119,13 +118,12 @@ class SymbolicJITCompiler:
 
         if self.calculation_method == 'GPU_CUDA':
             _validate_gpu_id(device_id)
-            self._compile_cuda_kernels(configs)
-            
+            self.calculation_method = self._compile_cuda_kernels(configs)
 
         elif (calculation_method == "CPU_JIT"):
             warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"Using CPU_PYTHON instead.",PerformanceWarning,stacklevel=2)
             self.calculation_method = "CPU_PYTHON"
-            self._compile_py_kernels(configs)
+            self.calculation_method = self._compile_py_kernels(configs)
 
         elif ( calculation_method == "CPU_PYTHON"):
             self._compile_py_kernels(configs)
@@ -164,35 +162,24 @@ class SymbolicJITCompiler:
         for var in self.main_vars:
             local_dict[str(var)] = var
 
+        # SymPy's parser uses eval: reject anything that isn't plain math before it gets there.
+        # This also extracts the free symbols (e.g. 'beta') so SymPy can't mistake them for its own functions.
+        formula_names = validator.validate_formula(func_str)
+
         if func_str in codegen.COMMON_FORMULAS:
             func_str = codegen.COMMON_FORMULAS[func_str]
-        
+            formula_names = validator.validate_formula(func_str)
+
         for con in provided_constants:
             temp = sp.symbols(con, real=True)
             local_dict[con] = temp
             constat_sub.append(temp)
-            
-        # Use Python's AST to safely intercept user symbols (e.g. 'beta') before SymPy 
-        # accidentally misidentifies them as its own built-in functions.
-        try:
-            tree = ast.parse(func_str, mode='eval')
-            called_names = set()
-            all_names = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                    called_names.add(node.func.id)
-                elif isinstance(node, ast.Name):
-                    all_names.add(node.id)
-            
-            # Anything that wasn't used as a function call is a free symbol!
-            uncalled_symbols = all_names - called_names
-            for sym_name in uncalled_symbols:
-                if sym_name not in local_dict:
-                    temp = sp.symbols(sym_name, real=True)
-                    constat_sub.append(temp)
-                    local_dict[sym_name] = temp
-        except SyntaxError:
-            pass # Invalid syntax will be caught and explained beautifully by SymPy shortly.
+
+        for sym_name in formula_names.symbols:
+            if sym_name not in local_dict:
+                temp = sp.symbols(sym_name, real=True)
+                constat_sub.append(temp)
+                local_dict[sym_name] = temp
 
         temp_callables = {}
         y_pred_sym = local_dict.get('y_pred', sp.symbols('y_pred', real=True))
@@ -202,21 +189,9 @@ class SymbolicJITCompiler:
         for key, expr_string in codegen.COMMON_FORMULAS.items():
             try:
                 temp_dict = local_dict.copy()
-                try:
-                    tree = ast.parse(expr_string, mode='eval')
-                    called_names = set()
-                    all_names = set()
-                    for node in ast.walk(tree):
-                        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                            called_names.add(node.func.id)
-                        elif isinstance(node, ast.Name):
-                            all_names.add(node.id)
-                    uncalled_symbols = all_names - called_names
-                    for sym_name in uncalled_symbols:
-                        if sym_name not in temp_dict:
-                            temp_dict[sym_name] = sp.symbols(sym_name, real=True)
-                except SyntaxError:
-                    pass
+                for sym_name in validator.validate_formula(expr_string).symbols:
+                    if sym_name not in temp_dict:
+                        temp_dict[sym_name] = sp.symbols(sym_name, real=True)
                 base_expr = sp.parse_expr(expr_string, local_dict=temp_dict)
             except Exception as e:
                 warnings.warn(f"Error parsing expression for key '{key}': {e}")
@@ -338,15 +313,27 @@ class SymbolicJITCompiler:
         compiled_code = {} 
         parsed_funcs_cache = {} # Cache parsed equations during a single compilation run
         compilation_errors = [] # Collect errors for a comprehensive report
+        self.func_ids_cpu = []
 
         for idx, (func_str, consts) in enumerate(configs):
             consts = consts or {}
-            
-            # Inject defaults if it's a known alias
+
+            # Validate before the formula or constant names are used as cache keys or SymPy symbols
+            # (they may come from a loaded file). This also runs on kernel-cache hits.
+            try:
+                validator.validate_constants(consts)
+                validator.validate_formula(func_str)
+            except FormulaParsingError as e:
+                compilation_errors.append(f"Node {idx}: {e}" if self.mode == "activation" else str(e))
+                continue
+
+            # Inject defaults if it's a known alias (curringly having problems with the constant array creation when default values are injected)
+            """
             if func_str in codegen.ALIAS_DEFAULTS:
                 for default_key, default_val in codegen.ALIAS_DEFAULTS[func_str].items():
                     if default_key not in consts:
                         consts[default_key] = default_val
+            """
                         
             consts_keys = tuple(sorted(consts.keys()))
             
@@ -607,6 +594,7 @@ class SymbolicJITCompiler:
 
             self.forward_kernel = f_wrapper
             self.backward_kernel = b_wrapper
+            return "CPU_JIT"
 
         except Exception as e:
             full_warning = f"JIT compilation fatal error! {e}\nCheck if compiler is in the PATH variable.\nUsing 'CPU_PYTHON' backend as fallback."
@@ -627,8 +615,8 @@ class SymbolicJITCompiler:
         compiled = self._generate_kernel_artifacts(configs, "PY_LAMBDA", mode='lambda')
             
         if self.mode == "activation":
-            first_id = int(self.func_ids[0])
-            is_homogeneous = all(fid == first_id for fid in self.func_ids)
+            first_id = int(self.func_ids_cpu[0])
+            is_homogeneous = all(fid == first_id for fid in self.func_ids_cpu)
             
             if is_homogeneous:
                 func_fwd, func_bwd = compiled[first_id]
@@ -656,15 +644,17 @@ class SymbolicJITCompiler:
                         d[j,:] = err[j,:] * compiled[self.func_ids[j]][1](z[j,:],params,offset_list[j])
         else:
 
-            func_fwd, func_bwd = compiled[int(self.func_ids[0])]
+            func_fwd, func_bwd = compiled[int(self.func_ids_cpu[0])]
             def f_kernel(y_p, y_t, res_vec,params): res_vec[:] = func_fwd(y_p, y_t,params,0)
             def b_kernel(y_p, y_t, grad_vec,params): grad_vec[:] = func_bwd(y_p, y_t,params,0)
 
         self.forward_kernel = f_kernel
         self.backward_kernel = b_kernel
+        self.func_ids = self.func_ids_cpu
+        return "CPU_PYTHON"
 
 
-    def _compile_cuda_kernels(self, configs:list[NodeConfig]):
+    def _compile_cuda_kernels(self, configs:list[NodeConfig])->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Compiles the symbolic expressions into CUDA kernels using CuPy.
 
@@ -709,8 +699,7 @@ class SymbolicJITCompiler:
             error_message = f"CUDA JIT compilation fatal error for {len(configs)} functions (Mode: {self.mode})!"
             full_warning = f"{error_message}\n{e}\nCPU is required."
             warnings.warn(full_warning,PerformanceWarning,stacklevel=4)  
-            self._change_method("CPU_PYTHON")
-            return 
+            return self._change_method("CPU_PYTHON")
 
         # Wrappers
         if self.mode == "activation":
@@ -738,10 +727,10 @@ class SymbolicJITCompiler:
         self.backward_kernel = b_k_wrapper
         self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
         self.func_ids = self.func_ids_gpu
-            
+        return "GPU_CUDA"
         
 
-    def _change_method(self,new_calculatuion_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None):
+    def _change_method(self,new_calculatuion_method:Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"],gpu_id:int = None)->Literal["GPU_CUDA","CPU_JIT","CPU_PYTHON"]:
         """
         Internal method to change the calculation backend.
 
@@ -767,34 +756,27 @@ class SymbolicJITCompiler:
             If an invalid GPU ID is supplied.
         """
         new_calculatuion_method = new_calculatuion_method.upper()
+        if not(new_calculatuion_method in ["GPU_CUDA","CPU_JIT","CPU_PYTHON"]):
+            raise ComputationalMethodValueError("Calculation Method is not GPU_CUDA, CPU_JIT o CPU_PYTHON")
+        
         if(new_calculatuion_method != self.calculation_method):
             if ((new_calculatuion_method == "GPU_CUDA") and (HW.GPU_ENABLED)):
                 if (gpu_id is None):
                     gpu_id = self.device_id
                 _validate_gpu_id(gpu_id)
                 self.device_id = gpu_id
-                self.func_ids_cpu = []
-                self.calculation_method = "GPU_CUDA"
-                self._compile_cuda_kernels(self.activation_funcs)
-                self.func_ids_gpu = HW.be.array(self.func_ids_cpu,dtype=HW.be.int32)
-                self.func_ids = self.func_ids_gpu
+                self.calculation_method = self._compile_cuda_kernels(self.activation_funcs)
                     
             elif ((new_calculatuion_method == "CPU_JIT")):
                 warnings.warn("Tried to change to use 'CPU_JIT', but currently is not available."+"CPU_PYTHON is required.",PerformanceWarning,stacklevel=4)
-                self.func_ids_cpu = []
-                self.calculation_method = "CPU_PYTHON"
-                self._compile_py_kernels(self.activation_funcs)
-                self.func_ids = self.func_ids_cpu
+                self.calculation_method = self._compile_py_kernels(self.activation_funcs)
             
             elif (new_calculatuion_method == "CPU_PYTHON"):
-                self.func_ids_cpu = []
-                self.calculation_method = "CPU_PYTHON"
-                self._compile_py_kernels(self.activation_funcs)
-                self.func_ids = self.func_ids_cpu
-            else:
-                raise ComputationalMethodValueError("Calculation Method is not GPU_CUDA, CPU_JIT o CPU_PYTHON")
+                self.calculation_method = self._compile_py_kernels(self.activation_funcs)
+                
 
         return self.calculation_method
+
     
     def set_gpu_id(self,new_id:int):
         """

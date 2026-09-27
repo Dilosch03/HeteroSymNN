@@ -134,7 +134,7 @@ class Wrapper():
         batch_size : int, optional
             Size of the batch. If not pass, uses the model's configured default.
         return_batch_losses: bool, optional
-            Whether to return the loss for each batch or the average loss for each epoch.
+            Whether to return the loss for each batch or one loss per epoch.
             Default is False.
 
         Returns
@@ -142,7 +142,7 @@ class Wrapper():
         list[float]
             A list of loss values recorded during training.
             If ``return_batch_losses`` is True, it returns the loss for each batch.
-            If ``return_batch_losses`` is False, it returns the average loss for each epoch.
+            If ``return_batch_losses`` is False, it returns one loss per epoch, combined from its batches by the loss function (``combine_batches``).
         
         Raises
         ------
@@ -224,7 +224,7 @@ class Wrapper():
         batch_size : int, optional
             Size of the batch. If not pass, uses the model's configured default.
         return_batch_losses: bool, optional
-            Whether to return the loss for each batch or the average loss for each epoch.
+            Whether to return the loss for each batch or one loss per epoch.
             Default is False.
 
         Returns
@@ -232,7 +232,7 @@ class Wrapper():
         list[float]
             A list of loss values recorded during training.
             If ``return_batch_losses`` is True, it returns the loss for each batch.
-            If ``return_batch_losses`` is False, it returns the average loss for each epoch.
+            If ``return_batch_losses`` is False, it returns one loss per epoch, combined from its batches by the loss function (``combine_batches``).
         """
         if self.training_data is None:
             raise TrainingError("No Training data loaded. Use load_training() first.")
@@ -260,8 +260,9 @@ class Wrapper():
         batch_losses_list = []
         for _ in range(num_iterations):
             self.model.num_completed_epochs += 1
-            iter_loss = self.model._CALCULATION_MANAGER.array(0.0, dtype=self.model._DEFAULT_FLOAT_TYPE)
-            
+            # Per-batch values stay on the device; the loss decides how they combine into the epoch value.
+            epoch_batch_losses, epoch_batch_sizes = [], []
+
             # Using numpy since train_data is on CPU
             if self.shuffle_samples:
                 indices = np.random.permutation(num_samples)
@@ -295,10 +296,11 @@ class Wrapper():
                 if return_batch_losses:
                     batch_losses_list.append(float(self.model._ASNUMPY(loss_val)))
 
-                iter_loss += loss_val * (end_idx - start_idx)
+                epoch_batch_losses.append(loss_val)
+                epoch_batch_sizes.append(end_idx - start_idx)
 
-            avg_loss = float(self.model._ASNUMPY(iter_loss) / num_samples)
-            self.model.history_losses.append(avg_loss)
+            epoch_loss = self.model.loss_function.combine_batches(epoch_batch_losses, epoch_batch_sizes)
+            self.model.history_losses.append(float(self.model._ASNUMPY(epoch_loss)))
 
         if return_batch_losses:
             return batch_losses_list
@@ -401,11 +403,10 @@ class Wrapper():
         
         return results
 
-    def classification_test_accuracy(self, test_data: list, expected_results: list,threshold:float = 0.5)->tuple[dict[str, float], dict[str, int]]:
+    def classification_test_accuracy(self, test_data: list, expected_results: list, threshold: float = 0.5) -> tuple[dict[str, float], dict[str, int]]:
         """
-        Calculates classification metrics (Accuracy, Precision, Recall/TPR, F1 Score).
-
-        Note: Currently assumes binary classification or multi-label, default threshold is 0.5.
+        Calculates classification metrics by automatically routing to Binary, Multiclass,
+        or Multilabel evaluations based on the network's architecture and target shapes.
 
         Parameters
         ----------
@@ -414,59 +415,165 @@ class Wrapper():
         expected_results : list or np.ndarray
             Ground truth values.
         threshold : float, optional
-            Threshold for binary classification. Default is 0.5.
+            Threshold for binary/multilabel classification. Default is 0.5.
 
         Returns
         -------
         tuple[dict[str, float], dict[str, int]]
             A tuple containing:
             
-            1.  Dictionary of metrics (Acur, Press, TPR, F1).
+            1.  Dictionary of metrics (Acur, Press, TPR, F1, ExactMatch).
             2.  Dictionary of raw counts (TP, TN, FP, FN).
         """
+        expected_results_np = np.array(expected_results)
+        output_nodes = self.model.layers[-1].num_nodes
+        
+        # 1. Route Binary
+        if output_nodes == 1:
+            return self._binary_test_accuracy(test_data, expected_results_np, threshold)
+            
+        # 2. Determine Multiclass vs Multilabel
+        is_multilabel = False
+        if expected_results_np.ndim == 2 and expected_results_np.shape[1] > 1:
+            # Check row sums. If strictly one-hot, every row sums to exactly 1.
+            row_sums = np.sum(expected_results_np, axis=1)
+            # If any row has 0 or >1 active classes, it is definitively Multilabel
+            if np.any(row_sums != 1):
+                is_multilabel = True
+
+        # 3. Route accordingly
+        if is_multilabel:
+            return self._multilabel_test_accuracy(test_data, expected_results_np, threshold)
+        else:
+            return self._multiclass_test_accuracy(test_data, expected_results_np)
+
+    def _binary_test_accuracy(self, test_data: list, expected_results: np.ndarray, threshold: float) -> tuple[dict[str, float], dict[str, int]]:
+        """Internal method for calculating binary metrics."""
         predictions_raw = self.predict(test_data)
-        expected_results = np.array(expected_results)
         
         if predictions_raw.ndim == 1:
             predictions_raw = predictions_raw.reshape(-1, 1)
         if expected_results.ndim == 1:
             expected_results = expected_results.reshape(-1, 1)
+        
+        predictions = (predictions_raw > threshold).astype(int).flatten()
+        expected_results = expected_results.flatten()
+        
+        results_compare = {"correc_pos":0, "correct_neg":0, "false_pos":0, "false_neg":0}
+        evals = {"Acur":0.0, "Press":0.0, "TPR":0.0, "F1":0.0}
+
+        total = expected_results.size
+        if total == 0:
+            return (evals, results_compare)
             
+        results_compare["correc_pos"] = int(np.sum((predictions == 1) & (expected_results == 1)))
+        results_compare["correct_neg"] = int(np.sum((predictions == 0) & (expected_results == 0)))
+        results_compare["false_pos"] = int(np.sum((predictions == 1) & (expected_results == 0)))
+        results_compare["false_neg"] = int(np.sum((predictions == 0) & (expected_results == 1)))
+        
+        tp = results_compare["correc_pos"]
+        fp = results_compare["false_pos"]
+        fn = results_compare["false_neg"]
+        tn = results_compare["correct_neg"]
+        
+        evals["Acur"] = (tp + tn) / total
+        evals["Press"] = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        evals["TPR"] = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        
+        if (evals["Press"] + evals["TPR"]) > 0:
+            evals["F1"] = 2 * evals["Press"] * evals["TPR"] / (evals["Press"] + evals["TPR"])
+            
+        return (evals, results_compare)
+
+    def _multilabel_test_accuracy(self, test_data: list, expected_results: np.ndarray, threshold: float) -> tuple[dict[str, float], dict[str, int]]:
+        """Internal method for calculating multilabel metrics (Micro Average & Exact Match)."""
+        predictions_raw = self.predict(test_data)
+        
+        # Multilabel uses independent binary thresholding per class
         predictions = (predictions_raw > threshold).astype(int)
         
         results_compare = {"correc_pos":0, "correct_neg":0, "false_pos":0, "false_neg":0}
+        evals = {"Acur":0.0, "Press":0.0, "TPR":0.0, "F1":0.0, "ExactMatch":0.0}
 
-        for i in range(expected_results.shape[0]):
-            for j in range(expected_results.shape[1]):
-                is_equal = (predictions[i, j] == expected_results[i, j])
-                if(is_equal):
-                    if(predictions[i, j]):
-                        results_compare["correc_pos"] += 1
-                    else:
-                        results_compare["correct_neg"] += 1
-                else:
-                    if(predictions[i, j]):
-                        results_compare["false_pos"] += 1
-                    else:
-                        results_compare["false_neg"] += 1
-        
-        evals = {"Acur":-1, "Press":-1, "TPR":-1, "F1":-1}
-        correct = results_compare["correc_pos"] + results_compare["correct_neg"]
         total = expected_results.size
+        if total == 0:
+            return (evals, results_compare)
+            
+        # 1. Exact Match Ratio (Subset Accuracy)
+        # Calculates the percentage of samples where EVERY label was predicted perfectly.
+        exact_matches = np.all(predictions == expected_results, axis=1)
+        evals["ExactMatch"] = float(np.mean(exact_matches))
+            
+        # 2. Micro-Averaged Metrics (treating every label decision independently)
+        results_compare["correc_pos"] = int(np.sum((predictions == 1) & (expected_results == 1)))
+        results_compare["correct_neg"] = int(np.sum((predictions == 0) & (expected_results == 0)))
+        results_compare["false_pos"] = int(np.sum((predictions == 1) & (expected_results == 0)))
+        results_compare["false_neg"] = int(np.sum((predictions == 0) & (expected_results == 1)))
         
-        try:
-            evals["Acur"] = correct / total
-        except ZeroDivisionError: pass
-        try:
-            evals["Press"] = results_compare["correc_pos"] / (results_compare["correc_pos"] + results_compare["false_pos"])
-        except ZeroDivisionError: pass
-        try:
-            evals["TPR"] = results_compare["correc_pos"] / (results_compare["correc_pos"] + results_compare["false_neg"])
-        except ZeroDivisionError: pass
-        try:
-            if (evals["Press"] >= 0 and evals["TPR"] >= 0):
-                evals["F1"] = 2 * evals["Press"] * evals["TPR"] / (evals["Press"] + evals["TPR"])
-        except ZeroDivisionError: pass
+        tp = results_compare["correc_pos"]
+        fp = results_compare["false_pos"]
+        fn = results_compare["false_neg"]
+        tn = results_compare["correct_neg"]
+        
+        evals["Acur"] = (tp + tn) / total
+        evals["Press"] = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        evals["TPR"] = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        
+        if (evals["Press"] + evals["TPR"]) > 0:
+            evals["F1"] = 2 * evals["Press"] * evals["TPR"] / (evals["Press"] + evals["TPR"])
+            
+        return (evals, results_compare)
+
+    def _multiclass_test_accuracy(self, test_data: list, expected_results: np.ndarray) -> tuple[dict[str, float], dict[str, int]]:
+        """Internal method for calculating multiclass (Macro Average) metrics."""
+        predictions_raw = self.predict(test_data)
+        
+        # 1. THE BRIDGE: Convert float logits/probs to integer class predictions
+        predictions = np.argmax(predictions_raw, axis=1)
+        
+        # If expected_results are one-hot encoded, convert them to integers too. 
+        if expected_results.ndim == 2 and expected_results.shape[1] > 1:
+            expected_results = np.argmax(expected_results, axis=1)
+        else:
+            expected_results = expected_results.flatten()
+            
+        results_compare = {"correc_pos":0, "correct_neg":0, "false_pos":0, "false_neg":0}
+        evals = {"Acur":0.0, "Press":0.0, "TPR":0.0, "F1":0.0}
+
+        total = expected_results.size
+        if total == 0:
+            return (evals, results_compare)
+            
+        # Multiclass Metrics (Macro Average using pure numpy)
+        correct = int(np.sum(predictions == expected_results))
+        evals["Acur"] = correct / total
+        
+        unique_classes = np.unique(np.concatenate((expected_results, predictions)))
+        precisions, recalls, f1s = [], [], []
+        
+        for c in unique_classes:
+            tp = np.sum((predictions == c) & (expected_results == c))
+            fp = np.sum((predictions == c) & (expected_results != c))
+            fn = np.sum((predictions != c) & (expected_results == c))
+            tn = np.sum((predictions != c) & (expected_results != c))
+            
+            # Accumulate micro-counts for the return dict
+            results_compare["correc_pos"] += int(tp)
+            results_compare["false_pos"] += int(fp)
+            results_compare["false_neg"] += int(fn)
+            results_compare["correct_neg"] += int(tn)
+            
+            p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            r = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+            
+            precisions.append(p)
+            recalls.append(r)
+            f1s.append(f1)
+        
+        evals["Press"] = float(np.mean(precisions)) if precisions else 0.0
+        evals["TPR"] = float(np.mean(recalls)) if recalls else 0.0
+        evals["F1"] = float(np.mean(f1s)) if f1s else 0.0
 
         return (evals, results_compare)
     
@@ -641,11 +748,11 @@ class Wrapper():
                 archive.writestr("config.json", json.dumps(config_to_save, indent=4, cls=_NumpyEncoder))
                 archive.writestr("weights.npz", npz_ram_buffer.getvalue())
 
-            return full_path
+            return str(full_path.absolute())
         except Exception as e:
             raise SavingError(f"Error ocured when saving the model {self.model_name}. {str(e)}")
 
-    def load_state(self, path: str) -> None:
+    def load_state(self, path: str|Path) -> None:
         """
         Loads a model from a ``.symnn`` ZIP archive created by :meth:`save_model` and ovewrittes the current paramteres of the model and wrapper.
 
@@ -654,7 +761,7 @@ class Wrapper():
 
         Parameters
         ----------
-        path : str
+        path : str | `Path`
             Path to the ``.symnn`` file.
         
         Raises
@@ -671,13 +778,13 @@ class Wrapper():
         self.shuffle_samples = metadata.get('shuffle_samples', False)
         
     @classmethod
-    def load_model(cls, path: str) -> "Wrapper":
+    def load_model(cls, path: str|Path) -> "Wrapper":
         """
         Creates a brand new Wrapper and populates it directly from a .symnn archive.
         
         Parameters
         ----------
-        path : str
+        path : str | `Path`
             Path to the .symnn archive.
         """
         model,input_transformer,output_transformer,metadata = cls._extract_symnn_archive(path)
@@ -690,15 +797,19 @@ class Wrapper():
         return instance
     
     @staticmethod
-    def _extract_symnn_archive(path: str) -> tuple[BaseNetwork,data_transformers.DataTransformer,data_transformers.DataTransformer,dict[str, any]]:
+    def _extract_symnn_archive(path: str|Path) -> tuple[BaseNetwork,data_transformers.DataTransformer,data_transformers.DataTransformer,dict[str, any]]:
         """
         Internal method to load a .symnn archive.
         
         Parameters
         ----------
-        path : str
+        path : str | `Path`
             Path to the .symnn archive.
         """
+
+        if  (type(path) is Path):
+            path = str(path.absolute())
+            
         if not path.endswith(".symnn"):
             path = path + ".symnn"
 

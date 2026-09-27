@@ -43,16 +43,16 @@ class LogCoshLoss(Loss):
         return super()._change_COMPUTATIONAL_METHOD(new_method, gpu_id)
 
     def forward(self, y_pred, y_true):
-        # MUST return a BackendArray. We perform calculations using self.be (np or cp)
-        # to ensure seamless CPU/GPU portability.
+        # MUST return the MEAN loss over every element as a scalar BackendArray.
+        # We perform calculations using self.be (np or cp) to ensure seamless CPU/GPU portability.
         diff = y_pred - y_true
-        return self.be.log(self.be.cosh(diff))
+        return self.be.mean(self.be.log(self.be.cosh(diff)))
 
     def backward(self, y_pred, y_true):
-        # MUST return a BackendArray representing the derivative w.r.t y_pred.
-        # The derivative of log(cosh(x)) is tanh(x).
+        # MUST return the gradient of forward() w.r.t y_pred, with the same shape as y_pred.
+        # d/dx log(cosh(x)) = tanh(x); dividing by y_pred.size accounts for the mean in forward().
         diff = y_pred - y_true
-        return self.be.tanh(diff)
+        return self.be.tanh(diff) / y_pred.size
 
 # -------------------------------------------------------------------------
 # CONTRACT 2: Custom Optimizer (SGD with Weight Decay)
@@ -136,14 +136,16 @@ class ClipTransformer(DataTransformer):
         return data
 
     def get_config(self) -> dict[str, any]:
-        # MUST return a configuration dictionary containing all serializable parameters
-        return {"min_val": self.min_val, "max_val": self.max_val}
+        # MUST extend super().get_config() (it stores the fitted state) with all serializable parameters
+        config = super().get_config()
+        config.update({"min_val": self.min_val, "max_val": self.max_val})
+        return config
 
     def set_config(self, config: dict[str, any]) -> None:
-        # MUST load parameters from config and set self.is_fitted = True
+        # MUST call super().set_config() to restore the fitted state (is_fitted is read-only)
+        super().set_config(config)
         self.min_val = config.get("min_val", -1.0)
         self.max_val = config.get("max_val", 1.0)
-        self.is_fitted = True
 
 # -------------------------------------------------------------------------
 # CONTRACT 5: Global Registry Integration

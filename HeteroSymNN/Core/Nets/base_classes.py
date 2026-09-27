@@ -855,13 +855,15 @@ class BaseNetwork:
         params : dict[Union[str,int],dict[str,np.ndarray]]
             Dictionary containing the parameters for each layer.
         """
+        old_location = self.current_location
         self.to("host")
         for key in params:
             index = key
             if (type(key) != int):
                 index = int(key.split("_")[-1])
             self._LAYERS[index].set_parameters(params[key])
-
+        self.to(old_location)
+        
     @clean_traceback
     def change_constants(self,new_constants:dict[int,Union[list[ConstantToUpdate],ConstantToUpdate]])->None:
         """
@@ -976,7 +978,7 @@ class BaseNetwork:
                 archive.writestr("config.json", json.dumps(config_to_save, indent=4, cls=_NumpyEncoder))
                 archive.writestr("weights.npz", npz_ram_buffer.getvalue())
 
-            return full_path
+            return str(full_path)
         except Exception as e:
             raise SavingError(f"Error ocured when saving the model {model_name}. {str(e)}")
 
@@ -1031,15 +1033,17 @@ class BaseNetwork:
         return config_to_save,flat_params
 
     @classmethod
-    def _extract_symnn_archive(cls, path: str) -> tuple["BaseNetwork", dict[str, Any]]:
+    def _extract_symnn_archive(cls, path: str|Path) -> tuple["BaseNetwork", dict[str, Any]]:
         """
         Internal method to load a .symnn archive.
         
         Parameters
         ----------
-        path : str
+        path : str | `Path`
             Path to the .symnn archive.
         """
+        if (type(path) is Path):
+            path = str(path.absolute())
         if not path.endswith(".symnn"):
             path = path + ".symnn"
 

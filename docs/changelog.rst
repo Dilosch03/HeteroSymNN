@@ -13,7 +13,7 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`
 * **Centralized Configuration & Error Handling:**
 
   * Added ``config.py`` utilizing a singleton design pattern to manage global framework defaults and automatic hardware fallback logic (``GPU_CUDA`` -> ``CPU_JIT`` -> ``CPU_PYTHON``).
-  * Added ``exceptions.py`` to provide custom, framework-specific exceptions (e.g., :exec:`~HeteroSymNN.exceptions.BackendNotAvailableError`, :exec:`~HeteroSymNN.exceptions.CompilationWarning`) for safer try/except blocks.
+  * Added ``exceptions.py`` to provide custom, framework-specific exceptions (e.g., :exc:`~HeteroSymNN.exceptions.BackendNotAvailableError`, :exc:`~HeteroSymNN.exceptions.CompilationWarning`) for safer try/except blocks.
 
 * **New API Subsystems:**
 

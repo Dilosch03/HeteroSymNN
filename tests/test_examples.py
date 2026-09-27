@@ -19,19 +19,22 @@ def get_example_scripts():
     ]
 
 @pytest.mark.parametrize("script_name", get_example_scripts())
-def test_example_script_runs_successfully(script_name):
+def test_example_script_runs_successfully(script_name, tmp_path, monkeypatch):
     """
     Dynamically load and run each example script using runpy.
     This ensures that the scripts run from top to bottom without exceptions.
     """
     script_path = os.path.join(EXAMPLES_DIR, script_name)
-    
+
     # We use run_path to execute the script in its own module namespace
     # To speed up training if hardcoded, we could potentially monkeypatch num_training_iter
     # or epochs, but here we just run them as-is ensuring they pass.
     from HeteroSymNN.config import settings
 
-    settings.debug_mode = True
+    # Scripts save models, checkpoints and logs to relative paths: keep them out of the repo.
+    monkeypatch.chdir(tmp_path)
+    # Full tracebacks for failures, restored afterwards so other tests see the default behaviour.
+    monkeypatch.setattr(settings, "debug_mode", True, raising=False)
 
     try:
         runpy.run_path(script_path, run_name="__main__")

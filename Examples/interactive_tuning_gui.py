@@ -10,7 +10,7 @@ It demonstrates:
 3. Zero-recompile JIT inference updating the prediction curve in real-time.
 4. Seamless automated testing integration (bypasses GUI execution in test suites).
 """
-
+import sys
 import numpy as np
 
 from HeteroSymNN.Core.Nets import MLP

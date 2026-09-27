@@ -229,8 +229,8 @@ class BaseLayer:
             self.CONSTANT_DICT.update({i:node_constant_dict})
         
         if (len(temp)==0):
-            return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self._num_nodes)
-        return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets)
+            return np.array([0.0],dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array([0]*self._num_nodes,dtype=np.int32)
+        return np.array(temp,dtype=self._DEFAULT_FLOAT_TYPE),self._CALCULATION_MANAGER.array(offsets,dtype=np.int32)
 
     def reconstruct_layer_config (self)->Sequence[NodeConfig]:
         """
@@ -435,6 +435,54 @@ class BaseLayer:
                 Dictionary mapping parameter names to their mask :type:`~HeteroSymNN.types.BackendArray` objects.
         """
         return {}
+    
+    def cast_arrays(self, *tensors: np.ndarray, gpu_id: int = None)->Union[BackendArray,tuple[BackendArray]]:
+        """
+        Method to cast one or more arrays to the target hardware backend.
+        
+        Parameters
+        ----------
+        *tensors : np.ndarray
+            Arrays to cast.
+        gpu_id : int, optional
+            GPU ID to use if computational_method of the network is "GPU_CUDA".
+        
+        Returns
+        -------
+        :type:`~HeteroSymNN.types.BackendArray` or tuple[:type:`~HeteroSymNN.types.BackendArray`]
+            The casted arrays using the internal computational manager of the network.
+        """
+        if (gpu_id == None):
+            gpu_id = self._GPU_ID
+        else:
+            _validate_gpu_id(gpu_id)
+
+        if self._COMPUTATIONAL_METHOD == "GPU_CUDA":
+            with HW.be.cuda.Device(gpu_id):
+                result = tuple(self._CALCULATION_MANAGER.array(t, dtype=self._DEFAULT_FLOAT_TYPE) for t in tensors)
+        else:
+            result = tuple(self._CALCULATION_MANAGER.array(t, dtype=self._DEFAULT_FLOAT_TYPE) for t in tensors)
+            
+
+        return result[0] if len(result) == 1 else result
+    
+    def asnumpy(self, *tensors: BackendArray)->Union[np.ndarray,tuple[np.ndarray]]:
+        """
+        Method to bring one or more backend arrays (e.g., CuPy) back to Host RAM as standard NumPy arrays.
+        
+        Parameters
+        ----------
+        *tensors : :type:`~HeteroSymNN.types.BackendArray`
+            Arrays to cast
+
+        Returns
+        -------
+        np.ndarray or tuple[np.ndarray]
+            The `np.ndarray` version of the arrays.
+        """
+        result = tuple(self._ASNUMPY(t) for t in tensors)
+        
+        return result[0] if len(result) == 1 else result
 
     def forward(self,input_values:BackendArray)->BackendArray:
         """
@@ -450,7 +498,8 @@ class BaseLayer:
         :type:`~HeteroSymNN.types.BackendArray`
             Output values of the layer after applying the activation functions.
         """
-        raise NotImplementedError
+        self._cached_input = input_values
+        self.batch_size_change(input_values.shape[1])
 
     def backward(self,error_values:BackendArray)->BackendArray:
         """
@@ -464,9 +513,11 @@ class BaseLayer:
         Returns
         ------- 
         :type:`~HeteroSymNN.types.BackendArray`
-            Error values to be passed to the previous layer.
+            Error values to be passed to the previous layer.s
         """
-        raise NotImplementedError
+        if (self._cached_input is None):
+            raise RuntimeStateError("Can't calculate the backward pass if a forward pass has not been done yet.")
+        return self._CALCULATION_MANAGER.ascontiguousarray(error_values)
     
     def change_constant(self,new_values:Union[list[ConstantToUpdate],ConstantToUpdate])-> None:
         """
@@ -488,27 +539,27 @@ class BaseLayer:
         """
         Method to get the parameters of the layer.
         
-        This method must be implemented by the subclasses.
+        This method must be implemented by the subclasses and `super()` this method in your implementation.
 
         Returns
         ------
         dict[str, ndarray]:
             Dictionary of the parameters by string. 
         """
-        raise NotImplementedError
+        self.to("host")
         
     def set_parameters(self, params:dict[str,np.ndarray])->None:
         """
         Method to set the parameters of the layer.
         
-        This method must be implemented by the subclasses.
+        This method must be implemented by the subclasses and `super()` this method in your implementation.
 
         Parameters
         ----------
         params : dict[str, np.ndarray]
             Dictionary containing the new parameters with string keys.
         """
-        raise NotImplementedError
+        self.to("host")
     
     def get_config(self)->dict[str,any]:
         """
@@ -521,6 +572,7 @@ class BaseLayer:
         dict[str, any]
             Dictionary containing the configuration of the layer.
         """
+        self.to("host")
         return  {"num_nodes":self._num_nodes,
                 "num_inputs":self._num_inputs,
                 "layer_node_configs":self.reconstruct_layer_config (),
@@ -718,9 +770,8 @@ class LinearLayer(BaseLayer):
         :type:`~HeteroSymNN.types.BackendArray`
             Output values of the layer after applying the activation functions.
         """
-        self._cached_input = input_values
-        batch_size = input_values.shape[1]
-        self.batch_size_change(batch_size)
+        super().forward(input_values)
+        batch_size = self.z.shape[1]
         effective_weights = self._weights * self._connection_mask
         self._CALCULATION_MANAGER.dot(effective_weights, input_values, out=self.z)
         self.z += self._biases
@@ -742,12 +793,12 @@ class LinearLayer(BaseLayer):
         :type:`~HeteroSymNN.types.BackendArray`
             Error values to be passed to the previous layer.
         """
-        if (self._cached_input is None):
-            raise RuntimeStateError("Can't calculate the backward pass if a forward pass has not been done yet.")
+        error_values = super().backward(error_values)
         batch_size = self.z.shape[1]
         self._act_funcions_manager.backward_kernel(self.z, error_values, self.delta, self._funcs_constats, self.param_offsets, self._num_nodes,batch_size)
-        self._grad_biases = self._CALCULATION_MANAGER.mean(self.delta, axis=1, keepdims=True)
-        self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T) / self._DEFAULT_FLOAT_TYPE(batch_size)
+        # Plain chain rule: sum over the batch. The loss already scaled error_values for its reduction.
+        self._grad_biases = self._CALCULATION_MANAGER.sum(self.delta, axis=1, keepdims=True)
+        self._grad_weights = self._CALCULATION_MANAGER.dot(self.delta, self._cached_input.T)
         effective_weights = self._weights * self._connection_mask
         self._CALCULATION_MANAGER.dot(effective_weights.T, self.delta, out=self._prev_error_buffer)
         
@@ -762,6 +813,7 @@ class LinearLayer(BaseLayer):
         dict[str, np.ndarray]
             Dictionary containing the parameters with keys 'weights', 'biases' and 'connection_mask'.
         """
+        super().get_parameters()
         return {
             'weights': self._ASNUMPY(self._weights).T,
             'biases': self._ASNUMPY(self._biases).T,
@@ -794,7 +846,7 @@ class LinearLayer(BaseLayer):
                 Biases are not in the correct dimentions. Expected {self._biases.T.shape} for the biases.
                 Received {params["biases"].shape} for the biases.
                 """)
-        
+        super().set_parameters(params)
         if ("connection_mask" in params.keys()):
             self.set_connection_mask(params['connection_mask'].T)
         self._weights = np.array(params['weights'].T, dtype=self._DEFAULT_FLOAT_TYPE)
@@ -811,11 +863,9 @@ class LinearLayer(BaseLayer):
         """
         if (connection_mask.shape != (self._num_nodes,self._num_inputs)):
             raise LayerConfigurationError(f"Connection mask is not in the correct dimentions. Expected ({self._num_nodes},{self._num_inputs}), received {connection_mask.shape} instead.)")
-
-        if self._CURRENT_DEVICE == 'GPU':
-            self._connection_mask = self._CALCULATION_MANAGER.array(connection_mask,dtype=self._CALCULATION_MANAGER.float32)
-        else:
-            self._connection_mask = connection_mask.astype(self._DEFAULT_FLOAT_TYPE)
+        
+        self.to("host")
+        self._connection_mask = np.array(connection_mask,self._DEFAULT_FLOAT_TYPE)
     
     def get_config(self)->dict[str,any]:
         config = super().get_config()

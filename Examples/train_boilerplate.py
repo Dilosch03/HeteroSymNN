@@ -11,7 +11,7 @@ Features demonstrated:
 4. Graceful interrupt handling (Ctrl+C / SIGINT) to save an emergency checkpoint.
 5. Automatic hardware-accelerated training (CPU JIT / GPU CUDA) managed by the framework.
 """
-
+import os
 import numpy as np
 import csv
 

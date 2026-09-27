@@ -33,6 +33,21 @@ def reload_framework_modules():
     
     return hw, cfg
 
+@pytest.fixture(autouse=True)
+def restore_framework_modules():
+    """
+    importlib.reload rewrites the real module objects in place, so the mocked CuPy and the
+    rebuilt settings would leak into every test that runs afterwards. Snapshot and restore them.
+    """
+    import HeteroSymNN.Backend.hardware as hw
+    import HeteroSymNN.config as cfg
+    hw_state, cfg_state = dict(vars(hw)), dict(vars(cfg))
+    yield
+    vars(hw).clear()
+    vars(hw).update(hw_state)
+    vars(cfg).clear()
+    vars(cfg).update(cfg_state)
+
 class TestHardwareDetection:
     """
     Test suite dedicated to testing agnostic hardware detection.
